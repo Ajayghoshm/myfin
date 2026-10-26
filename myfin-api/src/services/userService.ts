@@ -37,7 +37,10 @@ const userService = {
     return performDatabaseRequest(async (prismaTx) => {
       // eslint-disable-next-line no-param-reassign
       user.password = cryptoUtils.hashPassword(user.password);
-      return prismaTx.users.create({ data: user });
+      return prismaTx.users.create({ data: user }).catch((err) => {
+        if (err?.code === 'P2002') throw APIError.conflict('Username or email already in use.');
+        throw err;
+      });
     }, dbClient);
   },
   attemptLogin: async (username: string, password: string, mobile: boolean, dbClient = prisma) => {
@@ -89,7 +92,9 @@ const userService = {
       currency: data.currency,
     };
   },
-  getUserIdFromUsername: async (username: string): Promise<bigint> => {
+  getUserIdFromUsername: async (username: string, dbClient = prisma): Promise<bigint> => {
+    // a missing or unknown user is an authentication failure, not a server error
+    if (!username) throw APIError.notAuthorized();
     const whereCondition = { username };
     const selectCondition: Prisma.usersSelect = {
       user_id: true
@@ -97,10 +102,11 @@ const userService = {
 
     /* type UserPayload = Prisma.usersGetPayload<{select: typeof selectCondition}> */
 
-    const user = await User.findUnique({
+    const user = await dbClient.users.findUnique({
       where: whereCondition,
       select: selectCondition
     });
+    if (!user) throw APIError.notAuthorized();
     return (user as { user_id: bigint }).user_id;
   },
   setupLastUpdateTimestamp: async (userId, timestamp, prismaClient = prisma) => {

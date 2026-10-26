@@ -85,6 +85,8 @@ const Login = () => {
           t('login.addUserDisabledError'), // Add this to your translations
           AlertSeverity.ERROR,
         );
+      } else if (error?.response?.status === 409) {
+        snackbar.showSnackbar(t('login.userAlreadyExists'), AlertSeverity.ERROR);
       } else {
         snackbar.showSnackbar(
           t('common.somethingWentWrongTryAgain'),

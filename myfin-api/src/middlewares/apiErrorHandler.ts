@@ -13,6 +13,11 @@ export function apiErrorHandler(err: { message: string, code: string, type: stri
     });
     return;
   }
+  // request validation failures (joi) are the client's error
+  if ((err as { isJoi?: boolean }).isJoi) {
+    res.status(400).json({ message: errorMessage });
+    return;
+  }
   Logger.addStringifiedLog(err);
   if (err.type === "entity.too.large") {
     return res.status(413).json({ rationale: CommonApiErrorCode.RequestPayloadTooLarge});

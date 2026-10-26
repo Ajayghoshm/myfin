@@ -22,6 +22,10 @@ export default class APIError extends Error {
     return new APIError(403, msg, rationale);
   }
 
+  static conflict(msg = "The resource already exists.", rationale?: string) {
+    return new APIError(409, msg, rationale);
+  }
+
   static notFound(msg = "The requested resource could not be found.", rationale?: string) {
     return new APIError(404, msg, rationale);
   }

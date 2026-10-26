@@ -293,6 +293,7 @@
     "alreadyRegisteredQuestion": "Already registered?",
     "signIn": "Sign In",
     "addUserDisabledError": "Sign ups are disabled in the API settings",
+    "userAlreadyExists": "That username or email is already registered.",
     "forgotYourPassword": "Forgot your password?",
     "accountRecovery": "Account recovery",
     "accountRecoveryStrapline": "Recover access to your account if you've forgotten your password",

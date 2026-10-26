@@ -3,6 +3,7 @@ services:
     image: mysql:8.4
     restart: always
     container_name: db
+    command: --default-authentication-plugin=caching_sha2_password
     environment:
       MYSQL_ROOT_PASSWORD: myfinrootpassword
       MYSQL_DATABASE: myfin
@@ -29,17 +30,17 @@ services:
       - DB_PORT=3306
       - DB_HOST=db
       # Email Configuration
-      - SMTP_HOST=
-      - SMTP_PORT=
-      - SMTP_SECURE=
-      - SMTP_USER=
-      - SMTP_PASSWORD=
-      - SMTP_FROM=
+      - SMTP_HOST=smtp.gmail.com
+      - SMTP_PORT=465
+      - SMTP_SECURE=ssl
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SMTP_FROM=${SMTP_FROM}
       # Application Configuration
       - PORT=3001
       - LOGGING=false
       - BYPASS_SESSION_CHECK=false
-      - ENABLE_USER_SIGNUP=false
+      - ENABLE_USER_SIGNUP=true
     depends_on:
       db:
         condition: service_healthy

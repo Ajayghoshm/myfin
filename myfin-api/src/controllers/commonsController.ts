@@ -23,8 +23,10 @@ const checkAuthSessionValidity = async (req: Request, renewTrustLimit = true) =>
   const mobile: boolean = req.get('mobile') === 'true';
   const userId : bigint  = await userService.getUserIdFromUsername(username);
 
+  // BYPASS_SESSION_CHECK=true skips session key validation (development only)
   if (
-    !(!bypassSessionChecking && (await SessionManager.checkIfSessionKeyIsValid(sessionkey, username, renewTrustLimit, mobile)))
+    !bypassSessionChecking &&
+    !(await SessionManager.checkIfSessionKeyIsValid(sessionkey, username, renewTrustLimit, mobile))
   ) {
     throw APIError.notAuthorized();
   }

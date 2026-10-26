@@ -295,6 +295,7 @@
     "alreadyRegisteredQuestion": "Já registado?",
     "signIn": "Entrar",
     "addUserDisabledError": "A criação de utilizadores está desativada nas definições da API",
+    "userAlreadyExists": "Esse nome de utilizador ou email já está registado.",
     "forgotYourPassword": "Esqueceu-se da password?",
     "accountRecovery": "Recuperação de conta",
     "accountRecoveryStrapline": "Recupere acessso à sua conta se se esquece da sua password",
