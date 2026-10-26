@@ -32,7 +32,10 @@ import { ImportTrxStep1Result } from './ImportTrxStep1.tsx';
 export type Props = {
   csv: string;
   preview: PhonePePreviewResponse;
-  onNext: (result: ImportTrxStep1Result) => void;
+  onNext: (
+    result: ImportTrxStep1Result,
+    mappings: Array<{ key: string; account_id: bigint }>,
+  ) => void;
 };
 
 const ImportTrxPhonePeMapping = (props: Props) => {
@@ -98,7 +101,10 @@ const ImportTrxPhonePeMapping = (props: Props) => {
         csv: props.csv,
         mappings,
       });
-      props.onNext({ ...result, duplicateRows: result.duplicate_rows });
+      props.onNext(
+        { ...result, duplicateRows: result.duplicate_rows },
+        mappings,
+      );
     } catch (_error) {
       /* handled by the error effect */
     }
@@ -120,7 +126,9 @@ const ImportTrxPhonePeMapping = (props: Props) => {
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell />
+                <TableCell>
+                  {t('importTransactions.phonePePaymentMethod')}
+                </TableCell>
                 <TableCell>{t('common.description')}</TableCell>
                 <TableCell sx={{ minWidth: 250 }}>
                   {t('common.account')}

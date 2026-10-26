@@ -259,6 +259,8 @@
     "noNewTransactions": "Não existem novas transações neste extrato.",
     "skippedDuplicates": "{{count}} transações já tinham sido importadas e foram ignoradas.",
     "invalidPhonePeFile": "Este ficheiro não parece ser um extrato CSV do PhonePe.",
+    "phonePePaymentMethod": "Método de pagamento PhonePe",
+    "phonePeFileTooLarge": "Este ficheiro é demasiado grande para importar.",
     "step3TextMulti": "{{count}} novas transações foram importadas com sucesso. Bom trabalho!"
   },
   "login": {

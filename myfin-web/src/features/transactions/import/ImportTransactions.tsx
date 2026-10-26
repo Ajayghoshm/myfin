@@ -67,9 +67,20 @@ const ImportTransactions = () => {
       preview = await phonePePreviewRequest.mutateAsync(csv);
     } catch (error) {
       loader.hideLoading();
-      if ((error as AxiosError)?.response?.status === 400) {
+      const response = (error as AxiosError<{ message?: string }>)?.response;
+      if (response?.status === 400) {
+        // The API's APIError responses carry { message, rationale }; show the parser's
+        // "line N" detail after the generic text.
+        const detail = response.data?.message;
         snackbar.showSnackbar(
-          t('importTransactions.invalidPhonePeFile'),
+          detail
+            ? `${t('importTransactions.invalidPhonePeFile')} ${detail}`
+            : t('importTransactions.invalidPhonePeFile'),
+          AlertSeverity.ERROR,
+        );
+      } else if (response?.status === 413) {
+        snackbar.showSnackbar(
+          t('importTransactions.phonePeFileTooLarge'),
           AlertSeverity.ERROR,
         );
       } else {
@@ -153,7 +164,19 @@ const ImportTransactions = () => {
             <ImportTrxPhonePeMapping
               csv={phonePeCsv}
               preview={phonePePreview}
-              onNext={(result) => {
+              onNext={(result, mappings) => {
+                // Keep the user's choices so going back to this step shows them again
+                const chosen = new Map(
+                  mappings.map((mapping) => [mapping.key, mapping.account_id]),
+                );
+                setPhonePePreview({
+                  ...phonePePreview,
+                  instruments: phonePePreview.instruments.map((instrument) => ({
+                    ...instrument,
+                    account_id:
+                      chosen.get(instrument.key) ?? instrument.account_id,
+                  })),
+                });
                 setStep1Result(result);
                 setCurrentStep(2);
               }}

@@ -259,6 +259,8 @@
     "noNewTransactions": "No new transactions in this statement.",
     "skippedDuplicates": "{{count}} transactions were already imported and have been skipped.",
     "invalidPhonePeFile": "This doesn't look like a PhonePe statement CSV.",
+    "phonePePaymentMethod": "PhonePe payment method",
+    "phonePeFileTooLarge": "This file is too large to import.",
     "step3TextMulti": "{{count}} new transactions have successfully been imported. Good job!"
   },
   "login": {
