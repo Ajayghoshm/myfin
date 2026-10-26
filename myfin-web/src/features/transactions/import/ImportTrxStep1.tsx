@@ -155,7 +155,8 @@ export type Props = {
 };
 
 export type ImportTrxStep1Result = ImportTransactionsStep1Response & {
-  selectedAccountId: bigint;
+  selectedAccountId?: bigint;
+  duplicateRows?: number;
 };
 
 const ImportTrxStep1 = (props: Props) => {

@@ -5,6 +5,7 @@ import TrxServices, {
   AutoCategorizeTransactionRequest,
   EditTransactionRequest,
   ImportTransactionsStep1Request,
+  PhonePeCategorizeRequest,
   TransactionsInMonthForCategoryRequest,
 } from './trxServices.ts';
 import { useUserData } from '../../providers/UserProvider.tsx';
@@ -17,6 +18,10 @@ const QUERY_KEY_IMPORT_TRANSACTIONS_STEP1 =
   'QUERY_KEY_IMPORT_TRANSACTIONS_STEP1';
 const QUERY_KEY_IMPORT_TRANSACTIONS_STEP2 =
   'QUERY_KEY_IMPORT_TRANSACTIONS_STEP2';
+const MUTATION_KEY_IMPORT_PHONEPE_PREVIEW =
+  'MUTATION_KEY_IMPORT_PHONEPE_PREVIEW';
+const MUTATION_KEY_IMPORT_PHONEPE_CATEGORIZE =
+  'MUTATION_KEY_IMPORT_PHONEPE_CATEGORIZE';
 const MUTATION_KEY_AUTO_CATEGORIZE_TRANSACTION = [
   'MUTATION_KEY_AUTO_CATEGORIZE_TRANSACTION',
 ];
@@ -183,5 +188,29 @@ export function useImportTransactionsStep2() {
   return useMutation({
     mutationKey: [QUERY_KEY_IMPORT_TRANSACTIONS_STEP2],
     mutationFn: importTransactionsStep2,
+  });
+}
+
+export function useImportPhonePePreview() {
+  async function importPhonePePreview(csv: string) {
+    const data = await TrxServices.importPhonePePreview(csv);
+    return data.data;
+  }
+
+  return useMutation({
+    mutationKey: [MUTATION_KEY_IMPORT_PHONEPE_PREVIEW],
+    mutationFn: importPhonePePreview,
+  });
+}
+
+export function useImportPhonePeCategorize() {
+  async function importPhonePeCategorize(request: PhonePeCategorizeRequest) {
+    const data = await TrxServices.importPhonePeCategorize(request);
+    return data.data;
+  }
+
+  return useMutation({
+    mutationKey: [MUTATION_KEY_IMPORT_PHONEPE_CATEGORIZE],
+    mutationFn: importPhonePeCategorize,
   });
 }

@@ -1,4 +1,4 @@
-import { KeyboardDoubleArrowRight } from '@mui/icons-material';
+import { KeyboardDoubleArrowRight, UploadFile } from '@mui/icons-material';
 import Button from '@mui/material/Button';
 import { useTranslation } from 'react-i18next';
 import Typography from '@mui/material/Typography';
@@ -7,15 +7,37 @@ import {
   AlertSeverity,
   useSnackbar,
 } from '../../../providers/SnackbarProvider.tsx';
+import { ChangeEvent, useRef } from 'react';
 
 export type Props = {
   onNext: (clipboardText: string) => void;
+  onPhonePeFile: (csv: string) => void;
 };
 
 const ImportTrxStep0 = (props: Props) => {
   const theme = useTheme();
   const { t } = useTranslation();
   const snackbar = useSnackbar();
+  const phonePeInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePhonePeFileChange = async (
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    // Reset so that selecting the same file again still triggers onChange
+    event.target.value = '';
+    if (!file) return;
+    try {
+      const csv = await file.text();
+      props.onPhonePeFile(csv);
+    } catch (error) {
+      console.error('Failed to read file:', error);
+      snackbar.showSnackbar(
+        t('common.somethingWentWrongTryAgain'),
+        AlertSeverity.ERROR,
+      );
+    }
+  };
 
   /**
    * Will try to use the Clipboard API to ask for clipboard permission (if needed) and read the clipboard.
@@ -115,6 +137,22 @@ const ImportTrxStep0 = (props: Props) => {
         sx={{ width: 'fit-content', mt: theme.spacing(2) }}
       >
         {t('transactions.continueImport')}
+      </Button>
+      <input
+        ref={phonePeInputRef}
+        type="file"
+        accept=".csv"
+        hidden
+        onChange={(e) => void handlePhonePeFileChange(e)}
+      />
+      <Button
+        variant="outlined"
+        color="primary"
+        startIcon={<UploadFile />}
+        onClick={() => phonePeInputRef.current?.click()}
+        sx={{ width: 'fit-content', mt: theme.spacing(2) }}
+      >
+        {t('importTransactions.uploadPhonePe')}
       </Button>
     </Box>
   );

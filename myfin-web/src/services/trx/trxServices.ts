@@ -78,6 +78,7 @@ export type AddTransactionRequest = {
   date_timestamp?: number;
   is_essential: boolean;
   tags?: string;
+  external_id?: string;
 };
 
 const addTransactionStep1 = (data: AddTransactionRequest): Promise<string> => {
@@ -185,10 +186,54 @@ const importTransactionsStep1 = (request: ImportTransactionsStep1Request) => {
   });
 };
 
+export type ImportTransactionsStep2Response = {
+  imported: number;
+  skipped: number;
+};
+
 const importTransactionsStep2 = (list: AddTransactionRequest[]) => {
-  return axios.post<ImportTransactionsStep1Response>('/trxs/import/step2', {
+  return axios.post<ImportTransactionsStep2Response>('/trxs/import/step2', {
     trx_list: JSON.stringify(list),
   });
+};
+
+export type PhonePeInstrument = {
+  key: string;
+  sample_description: string;
+  account_id: bigint | null;
+};
+
+export type PhonePePreviewResponse = {
+  instruments: PhonePeInstrument[];
+  total_rows: number;
+  duplicate_rows: number;
+  new_rows: number;
+};
+
+export type PhonePeCategorizeRequest = {
+  csv: string;
+  mappings: { key: string; account_id: bigint }[];
+};
+
+export type PhonePeCategorizeResponse = ImportTransactionsStep1Response & {
+  fillData: (RuleInstructions & { external_id: string })[];
+  duplicate_rows: number;
+};
+
+const importPhonePePreview = (csv: string) => {
+  return axios.post<PhonePePreviewResponse>('/trxs/import/phonepe/preview', {
+    csv,
+  });
+};
+
+const importPhonePeCategorize = (request: PhonePeCategorizeRequest) => {
+  return axios.post<PhonePeCategorizeResponse>(
+    '/trxs/import/phonepe/categorize',
+    {
+      csv: request.csv,
+      mappings: JSON.stringify(request.mappings),
+    },
+  );
 };
 
 export default {
@@ -202,4 +247,6 @@ export default {
   importTransactionsStep0,
   importTransactionsStep1,
   importTransactionsStep2,
+  importPhonePePreview,
+  importPhonePeCategorize,
 };

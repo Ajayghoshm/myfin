@@ -8,17 +8,46 @@ import ImportTrxStep0 from './ImportTrxStep0.tsx';
 import ImportTrxStep1, { ImportTrxStep1Result } from './ImportTrxStep1.tsx';
 import ImportTrxStep2, { ImportTrxStep2Result } from './ImportTrxStep2.tsx';
 import ImportTrxStep3 from './ImportTrxStep3.tsx';
+import ImportTrxPhonePeMapping from './ImportTrxPhonePeMapping.tsx';
+import {
+  useImportPhonePeCategorize,
+  useImportPhonePePreview,
+} from '../../../services/trx/trxHooks.ts';
+import { PhonePePreviewResponse } from '../../../services/trx/trxServices.ts';
+import { useLoading } from '../../../providers/LoadingProvider.tsx';
+import {
+  AlertSeverity,
+  useSnackbar,
+} from '../../../providers/SnackbarProvider.tsx';
+import { AxiosError } from 'axios';
 
 const ImportTransactions = () => {
   const theme = useTheme();
   const { t } = useTranslation();
+  const loader = useLoading();
+  const snackbar = useSnackbar();
+  const phonePePreviewRequest = useImportPhonePePreview();
+  const phonePeCategorizeRequest = useImportPhonePeCategorize();
 
-  const steps = [
-    t('importTransactions.step0Label'),
-    t('importTransactions.step1Label'),
-    t('importTransactions.step2Label'),
-    t('importTransactions.step3Label'),
-  ];
+  const [flow, setFlow] = useState<'paste' | 'phonepe'>('paste');
+  const [phonePeCsv, setPhonePeCsv] = useState('');
+  const [phonePePreview, setPhonePePreview] =
+    useState<PhonePePreviewResponse | null>(null);
+
+  const steps =
+    flow === 'phonepe'
+      ? [
+          t('importTransactions.step0Label'),
+          t('importTransactions.phonePeMappingLabel'),
+          t('importTransactions.step2Label'),
+          t('importTransactions.step3Label'),
+        ]
+      : [
+          t('importTransactions.step0Label'),
+          t('importTransactions.step1Label'),
+          t('importTransactions.step2Label'),
+          t('importTransactions.step3Label'),
+        ];
 
   const [currentStep, setCurrentStep] = useState(0);
   const [completed, _setCompleted] = useState<{
@@ -31,18 +60,106 @@ const ImportTransactions = () => {
   const [step2Result, setStep2Result] = useState<ImportTrxStep2Result | null>(
     null,
   );
+  const handlePhonePeFile = async (csv: string) => {
+    let preview: PhonePePreviewResponse;
+    loader.showLoading();
+    try {
+      preview = await phonePePreviewRequest.mutateAsync(csv);
+    } catch (error) {
+      loader.hideLoading();
+      if ((error as AxiosError)?.response?.status === 400) {
+        snackbar.showSnackbar(
+          t('importTransactions.invalidPhonePeFile'),
+          AlertSeverity.ERROR,
+        );
+      } else {
+        snackbar.showSnackbar(
+          t('common.somethingWentWrongTryAgain'),
+          AlertSeverity.ERROR,
+        );
+      }
+      return;
+    }
+
+    if (preview.new_rows === 0) {
+      loader.hideLoading();
+      snackbar.showSnackbar(
+        t('importTransactions.noNewTransactions'),
+        AlertSeverity.INFO,
+      );
+      return;
+    }
+
+    setFlow('phonepe');
+    setPhonePeCsv(csv);
+    setPhonePePreview(preview);
+    setStep1Result(null);
+
+    const allMapped = preview.instruments.every(
+      (instrument) => instrument.account_id != null,
+    );
+    if (!allMapped) {
+      loader.hideLoading();
+      setCurrentStep(1);
+      return;
+    }
+
+    try {
+      const result = await phonePeCategorizeRequest.mutateAsync({
+        csv,
+        mappings: preview.instruments.map((instrument) => ({
+          key: instrument.key,
+          account_id: instrument.account_id as bigint,
+        })),
+      });
+      loader.hideLoading();
+      setStep1Result({ ...result, duplicateRows: result.duplicate_rows });
+      setCurrentStep(2);
+    } catch (_error) {
+      loader.hideLoading();
+      snackbar.showSnackbar(
+        t('common.somethingWentWrongTryAgain'),
+        AlertSeverity.ERROR,
+      );
+      // Let the user review/fix the mappings and retry from there
+      setCurrentStep(1);
+    }
+  };
+
+  const isStepClickable = (index: number) =>
+    flow === 'phonepe' &&
+    index === 1 &&
+    phonePePreview != null &&
+    currentStep > 1 &&
+    currentStep < 3;
+
   const renderStepContent = (step: number) => {
     switch (step) {
       case 0:
         return (
           <ImportTrxStep0
             onNext={(clipboardText: string) => {
+              setFlow('paste');
               setClipboardText(clipboardText);
               setCurrentStep(1);
             }}
+            onPhonePeFile={(csv: string) => void handlePhonePeFile(csv)}
           />
         );
       case 1:
+        if (flow === 'phonepe') {
+          if (!phonePePreview) return null;
+          return (
+            <ImportTrxPhonePeMapping
+              csv={phonePeCsv}
+              preview={phonePePreview}
+              onNext={(result) => {
+                setStep1Result(result);
+                setCurrentStep(2);
+              }}
+            />
+          );
+        }
         return (
           <ImportTrxStep1
             clipboardText={clipboardText}
@@ -92,7 +209,12 @@ const ImportTransactions = () => {
         <Stepper activeStep={currentStep}>
           {steps.map((label, index) => (
             <Step key={label} completed={completed[index]}>
-              <StepButton color="inherit" onClick={() => {}}>
+              <StepButton
+                color="inherit"
+                onClick={() => {
+                  if (isStepClickable(index)) setCurrentStep(index);
+                }}
+              >
                 {label}
               </StepButton>
             </Step>
