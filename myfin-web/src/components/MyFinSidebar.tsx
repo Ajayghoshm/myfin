@@ -10,6 +10,7 @@ import {
   DonutLargeOutlined,
   FolderSharedOutlined,
   InsertChartOutlined,
+  InsightsOutlined,
   LocalOfferOutlined,
   MenuOutlined,
   PaymentsOutlined,
@@ -25,6 +26,7 @@ import {
   ROUTE_DASHBOARD,
   ROUTE_ENTITIES,
   ROUTE_GOALS,
+  ROUTE_INSIGHTS,
   ROUTE_INVEST,
   ROUTE_RULES,
   ROUTE_STATS,
@@ -161,6 +163,13 @@ const MyFinSidebar = () => {
               {t('sidebar.rules')}
             </MenuItem>
           </SubMenu>
+          <MenuItem
+            icon={<InsightsOutlined />}
+            component={<NavLink to={ROUTE_INSIGHTS} />}
+          >
+            {' '}
+            {t('sidebar.insights')}
+          </MenuItem>
           <MenuItem
             icon={<InsertChartOutlined />}
             component={<NavLink to={ROUTE_STATS} />}

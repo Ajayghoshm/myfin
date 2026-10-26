@@ -18,6 +18,7 @@ import Stats, { StatTab } from '../features/stats/Stats.tsx';
 import RecoverPassword from '../features/auth/RecoverPassword.tsx';
 import Setup from '../features/setup/Setup.tsx';
 import Goals from '../features/goals/Goals.tsx';
+import Insights from '../features/insights/Insights.tsx';
 
 export const ROUTE_AUTH = '/auth';
 export const ROUTE_RECOVER_PASSWORD = '/recover-password';
@@ -47,6 +48,7 @@ export const ROUTE_STATS_EXPENSES = '/stats/expenses';
 export const ROUTE_STATS_INCOME = '/stats/income';
 export const ROUTE_STATS_YEAR_BY_YEAR = '/stats/year-by-year';
 export const ROUTE_GOALS = '/goals';
+export const ROUTE_INSIGHTS = '/insights';
 export const ROUTE_SETUP = '/setup';
 
 const RoutesProvider = () => {
@@ -93,6 +95,7 @@ const RoutesProvider = () => {
             path={ROUTE_INVEST_REPORTS}
             element={<Invest defaultTab={InvestTab.Reports} />}
           />
+          <Route path={ROUTE_INSIGHTS} element={<Insights />} />
           <Route path={ROUTE_STATS} element={<Stats />} />
           <Route
             path={ROUTE_STATS_PATRIMONY_EVO}
