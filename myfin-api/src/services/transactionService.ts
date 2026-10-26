@@ -12,6 +12,7 @@ import RuleService from './ruleService.js';
 import TagService, { Tag } from './tagService.js';
 import { getExistingExternalIds } from './phonePeImportService.js';
 import UserService from './userService.js';
+import { payeeKeySql } from './insights/insightsPrimitives.js';
 
 const getTransactionsForUser = async (
   userId: bigint,
@@ -102,18 +103,57 @@ const getAllTagsForTransaction = async (
     return tagsData;
   }, dbClient);
 
-export type TransactionListOptions = {
+/** Structured filters shared by the list, its count, bulk updates and the insights drill-down. */
+export type TransactionFilter = {
+  query?: string;
+  type?: string | null;
+  /** Epoch seconds, inclusive. */
+  dateFrom?: number;
+  /** Epoch seconds, exclusive. */
+  dateTo?: number;
+  /** A category id, or 'none' for uncategorised transactions. */
+  categoryId?: bigint | 'none';
+  payeeKey?: string;
+  /** Matches either side of a transaction. */
+  accountId?: bigint;
+};
+
+export type TransactionListOptions = Omit<TransactionFilter, 'query'> & {
   sortBy?: 'date' | 'amount' | 'type';
   sortDir?: 'asc' | 'desc';
-  type?: string;
 };
+
+/**
+ * "AND …" predicates for the structured filter fields (everything except search and ownership).
+ * References only `transactions.*` columns and `payeeKeySql`, so it can be appended to tag-free
+ * aggregation queries. Emits an empty fragment when no field is set.
+ */
+export function structuredFilterSql(filter: TransactionFilter): Prisma.Sql {
+  const parts: Prisma.Sql[] = [];
+  if (filter.type != null) parts.push(Prisma.sql`transactions.type = ${filter.type}`);
+  if (filter.dateFrom != null) parts.push(Prisma.sql`transactions.date_timestamp >= ${filter.dateFrom}`);
+  if (filter.dateTo != null) parts.push(Prisma.sql`transactions.date_timestamp < ${filter.dateTo}`);
+  if (filter.categoryId === 'none') {
+    parts.push(Prisma.sql`transactions.categories_category_id IS NULL`);
+  } else if (filter.categoryId != null) {
+    parts.push(Prisma.sql`transactions.categories_category_id = ${filter.categoryId}`);
+  }
+  if (filter.payeeKey != null) parts.push(Prisma.sql`${payeeKeySql} = ${filter.payeeKey}`);
+  if (filter.accountId != null) {
+    parts.push(
+      Prisma.sql`(transactions.accounts_account_from_id = ${filter.accountId} OR transactions.accounts_account_to_id = ${filter.accountId})`
+    );
+  }
+  if (parts.length === 0) return Prisma.empty;
+  return Prisma.sql`AND ${Prisma.join(parts, ' AND ')}`;
+}
 
 /**
  * FROM/JOIN/WHERE shared by the transactions list, its filtered count and bulk updates by filter,
  * so "select all matching" always matches exactly what the list shows.
  */
-const filteredTransactionsFrom = (userId: bigint, searchQuery: string, typeFilter: string | null) => {
-  const query = `%${searchQuery}%`;
+const filteredTransactionsFrom = (userId: bigint, filter: TransactionFilter) => {
+  const query = `%${filter.query ?? ''}%`;
   return Prisma.sql`FROM transactions
                       LEFT JOIN accounts ON accounts.account_id = transactions.accounts_account_from_id
                       LEFT JOIN categories
@@ -133,7 +173,7 @@ const filteredTransactionsFrom = (userId: bigint, searchQuery: string, typeFilte
                         OR entities.name LIKE ${query}
                         OR categories.name LIKE ${query}
                         OR tags.name LIKE ${query})
-                      AND (${typeFilter} IS NULL OR transactions.type = ${typeFilter})`;
+                      ${structuredFilterSql(filter)}`;
 };
 
 const getFilteredTransactionsByForUser = async (
@@ -144,7 +184,15 @@ const getFilteredTransactionsByForUser = async (
   options: TransactionListOptions = {}
 ) => {
   const offsetValue = page * pageSize;
-  const typeFilter = options.type ?? null;
+  const filter: TransactionFilter = {
+    query: searchQuery,
+    type: options.type,
+    dateFrom: options.dateFrom,
+    dateTo: options.dateTo,
+    categoryId: options.categoryId,
+    payeeKey: options.payeeKey,
+    accountId: options.accountId,
+  };
   // ORDER BY can't be parameterised, so only whitelisted fragments are interpolated
   const sortDir = Prisma.raw(options.sortDir === 'asc' ? 'ASC' : 'DESC');
   const newestFirst = Prisma.sql`transactions.date_timestamp DESC, transactions.transaction_id DESC`;
@@ -177,7 +225,7 @@ const getFilteredTransactionsByForUser = async (
                                             accounts_account_to_id,
                                             acc_from.name               as account_from_name,
                                             GROUP_CONCAT(tags.name) as tag_names
-                                     ${filteredTransactionsFrom(userId, searchQuery, typeFilter)}
+                                     ${filteredTransactionsFrom(userId, filter)}
                                      GROUP BY transaction_id
                                      ORDER BY ${orderBy}
                                      LIMIT ${pageSize} OFFSET ${offsetValue}`;
@@ -185,7 +233,7 @@ const getFilteredTransactionsByForUser = async (
   // count of total of filtered results
   const countQuery = prisma.$queryRaw`SELECT count(*) as 'count'
                                       FROM (SELECT transactions.date_timestamp, GROUP_CONCAT(tags.name) as tag_names
-                                            ${filteredTransactionsFrom(userId, searchQuery, typeFilter)}
+                                            ${filteredTransactionsFrom(userId, filter)}
                                             GROUP BY transaction_id) trx`;
 
   const totalCountQuery = prisma.$queryRaw`SELECT count(*) as 'count'
@@ -917,7 +965,7 @@ WHERE acc_to.users_user_id = ${userId} OR acc_from.users_user_id = ${userId} `;
 
 export type BulkUpdateSelection =
   | { transaction_ids: bigint[]; filter?: undefined }
-  | { filter: { query: string; type?: string }; transaction_ids?: undefined };
+  | { filter: TransactionFilter; transaction_ids?: undefined };
 
 export type BulkUpdateChanges = {
   category_id?: bigint | null;
@@ -963,7 +1011,7 @@ const bulkUpdateTransactions = async (
     let transactionIds: bigint[];
     if (selection.filter) {
       const rows: Array<{ transaction_id: bigint }> = await prismaTx.$queryRaw`SELECT DISTINCT transactions.transaction_id
-        ${filteredTransactionsFrom(userId, selection.filter.query, selection.filter.type ?? null)}`;
+        ${filteredTransactionsFrom(userId, selection.filter)}`;
       transactionIds = rows.map((row) => row.transaction_id);
     } else {
       const requestedIds = [...new Set(selection.transaction_ids.map((id) => BigInt(id)))];

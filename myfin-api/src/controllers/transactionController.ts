@@ -34,6 +34,39 @@ const getTransactionsForUser = async (req: Request, res: Response, next: NextFun
   }
 };
 
+/** Structured filter fields shared by the list and bulk-update `filter` (snake_case over HTTP). */
+const structuredFilterKeys = {
+  date_from: joi.number().integer().empty(''),
+  date_to: joi.number().integer().empty(''),
+  category_id: joi
+    .alternatives()
+    .try(joi.number().integer().positive(), joi.string().valid('none'))
+    .empty(''),
+  payee_key: joi.string().max(255).empty(''),
+  account_id: joi.number().integer().positive().empty(''),
+};
+
+type StructuredFilterInput = {
+  date_from?: number;
+  date_to?: number;
+  category_id?: number | 'none';
+  payee_key?: string;
+  account_id?: number;
+};
+
+const toTransactionFilter = (input: StructuredFilterInput) => ({
+  dateFrom: input.date_from,
+  dateTo: input.date_to,
+  categoryId:
+    input.category_id === undefined
+      ? undefined
+      : input.category_id === 'none'
+        ? ('none' as const)
+        : BigInt(input.category_id),
+  payeeKey: input.payee_key,
+  accountId: input.account_id === undefined ? undefined : BigInt(input.account_id),
+});
+
 const getFilteredTrxByPageSchema = joi
   .object({
     page_size: joi.number().default(MYFIN.DEFAULT_TRANSACTIONS_FETCH_LIMIT).min(1).max(300),
@@ -44,6 +77,7 @@ const getFilteredTrxByPageSchema = joi
       .string()
       .valid(MYFIN.TRX_TYPES.EXPENSE, MYFIN.TRX_TYPES.INCOME, MYFIN.TRX_TYPES.TRANSFER)
       .empty(''),
+    ...structuredFilterKeys,
   })
   .unknown(true);
 
@@ -56,7 +90,7 @@ const getFilteredTrxByPage = async (req, res, next) => {
       req.params.page,
       trx.page_size,
       trx.query,
-      { sortBy: trx.sort_by, sortDir: trx.sort_dir, type: trx.type }
+      { sortBy: trx.sort_by, sortDir: trx.sort_dir, type: trx.type, ...toTransactionFilter(trx) }
     );
     res.send(trxList);
   } catch (err) {
@@ -373,6 +407,7 @@ const bulkUpdateTransactionsSchema = joi
         .string()
         .valid(MYFIN.TRX_TYPES.EXPENSE, MYFIN.TRX_TYPES.INCOME, MYFIN.TRX_TYPES.TRANSFER)
         .empty(''),
+      ...structuredFilterKeys,
     }),
     category_id: joi.number().integer().positive().allow(null),
     entity_id: joi.number().integer().positive().allow(null),
@@ -389,7 +424,13 @@ const bulkUpdateTransactions = async (req: Request, res: Response, next: NextFun
     const updated = await TransactionService.bulkUpdateTransactions(
       sessionData.userId,
       input.filter
-        ? { filter: input.filter }
+        ? {
+            filter: {
+              query: input.filter.query,
+              type: input.filter.type,
+              ...toTransactionFilter(input.filter),
+            },
+          }
         : { transaction_ids: input.transaction_ids.map((id: number) => BigInt(id)) },
       {
         category_id: toBigIntOrNull(input.category_id),
