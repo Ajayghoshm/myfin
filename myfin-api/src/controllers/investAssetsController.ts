@@ -4,7 +4,6 @@ import APIError from '../errorHandling/apiError.js';
 import CommonsController from './commonsController.js';
 import InvestAssetService from '../services/investAssetService.js';
 import joi from 'joi';
-import { MYFIN } from '../consts.js';
 
 const getAllAssetsForUser = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -19,10 +18,8 @@ const getAllAssetsForUser = async (req: Request, res: Response, next: NextFuncti
 
 const createAssetSchema = joi.object({
   name: joi.string().required(),
-  type: joi
-    .string()
-    .allow(MYFIN.TRX_TYPES.EXPENSE, MYFIN.TRX_TYPES.INCOME, MYFIN.TRX_TYPES.TRANSFER)
-    .required(),
+  // built-in type codes or a user-defined type name
+  type: joi.string().trim().max(75).required(),
   ticker: joi.string().required(),
   broker: joi.string().required(),
 });
@@ -41,10 +38,8 @@ const createAsset = async (req: Request, res: Response, next: NextFunction) => {
 
 const updateAssetSchema = joi.object({
   name: joi.string().required(),
-  type: joi
-    .string()
-    .allow(MYFIN.TRX_TYPES.EXPENSE, MYFIN.TRX_TYPES.INCOME, MYFIN.TRX_TYPES.TRANSFER)
-    .required(),
+  // built-in type codes or a user-defined type name
+  type: joi.string().trim().max(75).required(),
   ticker: joi.string().optional().default(''),
   broker: joi.string().optional().default(''),
 });

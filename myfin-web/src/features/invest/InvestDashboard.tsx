@@ -217,7 +217,8 @@ const getLocalizedTextForAssetType = (
     case AssetType.P2pLoans:
       return t('investments.p2pLoans');
     default:
-      return '';
+      // user-defined asset type: its name is the label
+      return key;
   }
 };
 

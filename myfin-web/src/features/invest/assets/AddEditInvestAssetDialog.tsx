@@ -1,11 +1,15 @@
-import { DialogContent, MenuItem } from '@mui/material';
+import {
+  Autocomplete,
+  createFilterOptions,
+  DialogContent,
+} from '@mui/material';
 import { useLoading } from '../../../providers/LoadingProvider.tsx';
 import {
   AlertSeverity,
   useSnackbar,
 } from '../../../providers/SnackbarProvider.tsx';
 import { Trans, useTranslation } from 'react-i18next';
-import React, { useEffect, useReducer } from 'react';
+import React, { useEffect, useMemo, useReducer } from 'react';
 import {
   AssetType,
   InvestAsset,
@@ -13,6 +17,7 @@ import {
 import {
   useAddAsset,
   useEditAsset,
+  useGetAssets,
 } from '../../../services/invest/investHooks.ts';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
@@ -30,6 +35,11 @@ import TextField from '@mui/material/TextField';
 import Button from '@mui/material/Button';
 import DialogActions from '@mui/material/DialogActions';
 import { useGetLocalizedAssetType } from '../InvestUtilHooks.ts';
+
+/** A type choice: a built-in code or custom name, or a "+ Add" entry carrying the typed name. */
+type AssetTypeOption = { value: string; label: string; createName?: string };
+
+const filterAssetTypeOptions = createFilterOptions<AssetTypeOption>();
 
 type UiState = {
   isLoading: boolean;
@@ -124,6 +134,19 @@ const AddEditInvestAssetDialog = (props: Props) => {
   const addAssetRequest = useAddAsset();
   const editAssetRequest = useEditAsset();
   const getLocalizedAssetType = useGetLocalizedAssetType();
+  const getAssetsRequest = useGetAssets();
+
+  // built-in types, then every custom type already used on one of the user's assets
+  const typeOptions: AssetTypeOption[] = useMemo(() => {
+    const builtIn = Object.values(AssetType) as string[];
+    const custom = (getAssetsRequest.data || [])
+      .map((asset) => asset.type as string)
+      .filter((type) => !builtIn.includes(type));
+    return [...new Set([...builtIn, ...custom])].map((value) => ({
+      value,
+      label: getLocalizedAssetType.invoke(value as AssetType),
+    }));
+  }, [getAssetsRequest.data, t]);
 
   const [state, dispatch] = useReducer(
     reduceState,
@@ -286,36 +309,63 @@ const AddEditInvestAssetDialog = (props: Props) => {
               md: 8,
             }}
           >
-            <TextField
-              select
-              required
-              margin="dense"
+            <Autocomplete
               id="type"
-              name="type"
-              value={state.typeInput}
-              onChange={(e) =>
+              options={typeOptions}
+              value={
+                state.typeInput
+                  ? typeOptions.find((option) => option.value === state.typeInput) ?? {
+                      value: state.typeInput,
+                      label: getLocalizedAssetType.invoke(state.typeInput),
+                    }
+                  : null
+              }
+              filterOptions={(options, params) => {
+                const filtered = filterAssetTypeOptions(options, params);
+                const typed = params.inputValue.trim();
+                const exists = options.some(
+                  (option) => option.label.toLowerCase() === typed.toLowerCase(),
+                );
+                if (typed && !exists) {
+                  filtered.push({
+                    value: typed,
+                    label: t('common.addNamed', { name: typed }),
+                    createName: typed,
+                  });
+                }
+                return filtered;
+              }}
+              onChange={(_event, option) => {
+                if (!option) return;
                 dispatch({
                   type: StateActionType.TypeUpdated,
-                  payload: e.target.value as AssetType,
-                })
-              }
-              label={t('common.type')}
-              fullWidth
-              variant="outlined"
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Folder />
-                  </InputAdornment>
-                ),
+                  payload: (option.createName ?? option.value) as AssetType,
+                });
               }}
-            >
-              {Object.values(AssetType).map((type) => (
-                <MenuItem key={type} value={type}>
-                  {getLocalizedAssetType.invoke(type)}
-                </MenuItem>
-              ))}
-            </TextField>
+              isOptionEqualToValue={(option, selected) =>
+                option.value === selected.value
+              }
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  required
+                  margin="dense"
+                  name="type"
+                  label={t('common.type')}
+                  fullWidth
+                  variant="outlined"
+                  inputProps={{ ...params.inputProps, maxLength: 75 }}
+                  InputProps={{
+                    ...params.InputProps,
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Folder />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              )}
+            />
           </Grid>
           <Grid
             size={{

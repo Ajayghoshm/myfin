@@ -46,7 +46,8 @@ export function useGetLocalizedAssetType() {
       case AssetType.P2pLoans:
         return t('investments.p2pLoans');
       default:
-        return '';
+        // user-defined asset type: its name is the label
+        return key;
     }
   }
 
@@ -54,6 +55,22 @@ export function useGetLocalizedAssetType() {
     invoke,
   };
 }
+
+// user-defined asset types get a stable colour derived from their name
+const customAssetTypeGradients = [
+  ColorGradient.Purple,
+  ColorGradient.Yellow,
+  ColorGradient.Mauve,
+  ColorGradient.Lush,
+  ColorGradient.Dusk,
+  ColorGradient.PaleWood,
+];
+
+const getGradientForCustomAssetType = (type: string): ColorGradient => {
+  let hash = 0;
+  for (const char of type) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return customAssetTypeGradients[hash % customAssetTypeGradients.length];
+};
 
 export function useGetGradientColorForAssetType() {
   function invoke(key: AssetType): ColorGradient {
@@ -75,7 +92,7 @@ export function useGetGradientColorForAssetType() {
       case AssetType.P2pLoans:
         return ColorGradient.GreenColor;
       default:
-        return ColorGradient.None;
+        return getGradientForCustomAssetType(key);
     }
   }
 
