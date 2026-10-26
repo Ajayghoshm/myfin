@@ -14,6 +14,7 @@ import {
 } from "./importers/phonePeImporter.js";
 
 const SOURCE = "phonepe";
+const CATEGORIZE_CONCURRENCY = 5;
 
 type DbClient = Prisma.TransactionClient;
 
@@ -130,8 +131,11 @@ export async function categorizePhonePeImport(
     throw APIError.badRequest(`Unmapped payment instruments: ${unmapped.join(", ")}`);
   }
 
+  // Only persist mappings for instruments actually used by this file's new rows
+  const usedKeys = new Set(keys);
+  const mappingsToSave = mappings.filter((m) => usedKeys.has(m.key));
   await performDatabaseRequest(async (prismaTx) => {
-    for (const m of mappings) {
+    for (const m of mappingsToSave) {
       const accountId = BigInt(m.account_id);
       await prismaTx.import_instrument_mappings.upsert({
         where: {
@@ -163,24 +167,31 @@ export async function categorizePhonePeImport(
     AccountService.getAccountsForUser(userId, { account_id: true, name: true, current_balance: true }),
   ]);
 
-  const fillData = await Promise.all(
-    newRows.map(async (row) => {
-      const instructions = await TransactionService.autoCategorizeTransaction(
-        userId,
-        row.description,
-        row.amount,
-        row.type,
-        row.fromKey ? resolved.get(row.fromKey) : null,
-        row.toKey ? resolved.get(row.toKey) : null,
-        row.date,
-        entities,
-        categories,
-        // read-only rule lookup: use the plain client instead of opening one interactive transaction per row
-        prisma
-      );
-      return { ...instructions, external_id: row.externalId };
-    })
-  );
+  // Bounded concurrency so a large statement cannot exhaust the connection pool.
+  // Passing the plain `prisma` client makes autoCategorizeTransaction run its (read-only) rule
+  // lookup directly instead of opening an interactive transaction per row.
+  const fillData: Array<RuleInstructions & { external_id: string }> = [];
+  for (let i = 0; i < newRows.length; i += CATEGORIZE_CONCURRENCY) {
+    const chunk = newRows.slice(i, i + CATEGORIZE_CONCURRENCY);
+    const results = await Promise.all(
+      chunk.map(async (row) => {
+        const instructions = await TransactionService.autoCategorizeTransaction(
+          userId,
+          row.description,
+          row.amount,
+          row.type,
+          row.fromKey ? resolved.get(row.fromKey) : null,
+          row.toKey ? resolved.get(row.toKey) : null,
+          row.date,
+          entities,
+          categories,
+          prisma
+        );
+        return { ...instructions, external_id: row.externalId };
+      })
+    );
+    fillData.push(...results);
+  }
 
   return {
     fillData,

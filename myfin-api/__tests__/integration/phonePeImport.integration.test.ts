@@ -215,6 +215,31 @@ describe("PhonePe import (preview / categorize)", () => {
     expect(result.fillData.filter((r) => r.external_id === SWIGGY_ID)).toHaveLength(1);
   });
 
+  test("mappings for keys not used by the file's new rows are not saved", async () => {
+    const extra = { key: "XXXXUNUSED9999", account_id: other.account_id };
+    await PhonePeImportService.categorizePhonePeImport(user.user_id, fixture, [...allMappings, extra]);
+    const saved = await prisma.import_instrument_mappings.findMany({ where: { users_user_id: user.user_id } });
+    expect(saved.map((m) => m.instrument_key).sort()).toEqual(allMappings.map((m) => m.key).sort());
+  });
+
+  test("categorize handles a large statement (300 new rows)", async () => {
+    const header =
+      "Date,Time,Transaction Details,Transaction ID,UTR,Transaction Type,Credit/debit instrument,Amount";
+    const rows = Array.from(
+      { length: 300 },
+      (_, i) =>
+        `"Oct 26, 2026","01:46 pm","Paid to MERCHANT ${i}","TSYN${String(i).padStart(6, "0")}","${i}","DEBIT","Paid by ${BANK_KEY}","${i + 1}"`
+    );
+    const csv = [header, ...rows].join("\n");
+    const result = await PhonePeImportService.categorizePhonePeImport(user.user_id, csv, [
+      { key: BANK_KEY, account_id: bank3300.account_id },
+    ]);
+    expect(result.fillData).toHaveLength(300);
+    expect(new Set(result.fillData.map((r) => r.external_id)).size).toBe(300);
+    expect(result.fillData[299].amount).toBe(300);
+    for (const item of result.fillData) expect(item.selectedAccountFromID).toBe(bank3300.account_id);
+  }, 60_000);
+
   test("an instrument used only by duplicate rows is not listed and need not be mapped", async () => {
     // Make every row paid by 356146XXXXXXXX05 (only the INDIGO row) a duplicate
     await prisma.transactions.create({

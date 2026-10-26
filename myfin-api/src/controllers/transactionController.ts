@@ -318,6 +318,7 @@ const phonePeMappingsSchema = joi
       account_id: joi.alternatives(joi.number().integer(), joi.string().pattern(/^\d+$/)).required(),
     })
   )
+  .max(100)
   .unique('key');
 
 const importPhonePeCategorize = async (req: Request, res: Response, next: NextFunction) => {

@@ -109,15 +109,15 @@ export function parsePhonePeCsv(text: string): PhonePeRow[] {
 export function classifyPhonePeRow(row: PhonePeRow): ClassifiedPhonePeRow {
   if (row.direction === "DEBIT") {
     if (/^Add money UPI Lite\b/i.test(row.description)) {
-      return { ...row, type: MYFIN.TRX_TYPES.TRANSFER, fromKey: row.instrumentKey, toKey: UPI_LITE_KEY };
+      return { ...row, type: MYFIN.TRX_TYPES.TRANSFER as ClassifiedPhonePeRow["type"], fromKey: row.instrumentKey, toKey: UPI_LITE_KEY };
     }
     const card = row.description.match(/^Credit card bill paid\s+(\S+)/i);
     if (card) {
-      return { ...row, type: MYFIN.TRX_TYPES.TRANSFER, fromKey: row.instrumentKey, toKey: card[1] };
+      return { ...row, type: MYFIN.TRX_TYPES.TRANSFER as ClassifiedPhonePeRow["type"], fromKey: row.instrumentKey, toKey: card[1] };
     }
-    return { ...row, type: MYFIN.TRX_TYPES.EXPENSE, fromKey: row.instrumentKey, toKey: null };
+    return { ...row, type: MYFIN.TRX_TYPES.EXPENSE as ClassifiedPhonePeRow["type"], fromKey: row.instrumentKey, toKey: null };
   }
-  return { ...row, type: MYFIN.TRX_TYPES.INCOME, fromKey: null, toKey: row.instrumentKey };
+  return { ...row, type: MYFIN.TRX_TYPES.INCOME as ClassifiedPhonePeRow["type"], fromKey: null, toKey: row.instrumentKey };
 }
 
 export function instrumentKeysOf(rows: ClassifiedPhonePeRow[]): string[] {
