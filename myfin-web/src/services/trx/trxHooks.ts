@@ -6,13 +6,14 @@ import TrxServices, {
   EditTransactionRequest,
   ImportTransactionsStep1Request,
   PhonePeCategorizeRequest,
+  TransactionListOptions,
   TransactionsInMonthForCategoryRequest,
 } from './trxServices.ts';
 import { useUserData } from '../../providers/UserProvider.tsx';
 
 const QUERY_KEY_GET_TRANSACTIONS = 'QUERY_KEY_GET_TRANSACTIONS';
 const QUERY_KEY_ADD_TRANSACTION_STEP0 = 'QUERY_KEY_ADD_TRANSACTION_STEP0';
-const QUERY_KEY_IMPORT_TRANSACTIONS_STEP0 =
+export const QUERY_KEY_IMPORT_TRANSACTIONS_STEP0 =
   'QUERY_KEY_IMPORT_TRANSACTIONS_STEP0';
 const QUERY_KEY_IMPORT_TRANSACTIONS_STEP1 =
   'QUERY_KEY_IMPORT_TRANSACTIONS_STEP1';
@@ -32,14 +33,28 @@ export function useGetTransactions(
   page: number,
   pageSize: number,
   query?: string,
+  options: TransactionListOptions = {},
 ) {
   async function getTransactions() {
-    const data = await TrxServices.getTransactions(page, pageSize, query);
+    const data = await TrxServices.getTransactions(
+      page,
+      pageSize,
+      query,
+      options,
+    );
     return data.data;
   }
 
   return useQuery({
-    queryKey: [QUERY_KEY_GET_TRANSACTIONS, page, pageSize, query],
+    queryKey: [
+      QUERY_KEY_GET_TRANSACTIONS,
+      page,
+      pageSize,
+      query,
+      options.sortBy,
+      options.sortDir,
+      options.type,
+    ],
     queryFn: getTransactions,
     placeholderData: keepPreviousData,
   });
@@ -162,6 +177,8 @@ export function useImportTransactionsStep0() {
   return useQuery({
     queryKey: [QUERY_KEY_IMPORT_TRANSACTIONS_STEP0],
     queryFn: importTransactionsStep0,
+    // accounts may be added in another tab while the import wizard is open
+    refetchOnWindowFocus: true,
   });
 }
 
