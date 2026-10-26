@@ -401,6 +401,8 @@ class BackupManager {
           accounts_account_to_id: accountIdMap.get(trx.accounts_account_to_id),
           categories_category_id: categoryIdMap.get(trx.categories_category_id),
           is_essential: trx.is_essential,
+          // Older backups have no external_id; keep it when present so re-imports still dedupe.
+          external_id: trx.external_id ?? undefined,
         },
       });
       return newTrx;

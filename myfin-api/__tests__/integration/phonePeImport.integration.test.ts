@@ -334,5 +334,80 @@ describe("PhonePe import (preview / categorize)", () => {
       const again = await TransactionService.createTransactionsInBulk(user.user_id, [paste()]);
       expect(again).toEqual({ imported: 1, skipped: 0 });
     });
+
+    test("two concurrent saves of the same list import each row only once", async () => {
+      const list = await toCreateList();
+      const results = await Promise.all([
+        TransactionService.createTransactionsInBulk(user.user_id, list.map((t) => ({ ...t }))),
+        TransactionService.createTransactionsInBulk(user.user_id, list.map((t) => ({ ...t }))),
+      ]);
+      expect(results[0].imported + results[1].imported).toBe(FIXTURE_ROWS);
+      expect(results[0].skipped + results[1].skipped).toBe(FIXTURE_ROWS);
+      expect(await prisma.transactions.count({ where: { external_id: { startsWith: "phonepe:" } } })).toBe(
+        FIXTURE_ROWS
+      );
+    }, 60_000);
+
+    test("saves 300 rows in one call", async () => {
+      const list: Array<CreateTransactionType> = Array.from({ length: 300 }, (_, i) => ({
+        amount: i + 1,
+        type: MYFIN.TRX_TYPES.EXPENSE,
+        description: `Paid to MERCHANT ${i}`,
+        entity_id: undefined,
+        account_from_id: bank3300.account_id,
+        account_to_id: undefined,
+        category_id: undefined,
+        date_timestamp: 1790000000 + i * 60,
+        is_essential: false,
+        external_id: `phonepe:TBULK${String(i).padStart(6, "0")}:DEBIT`,
+      }));
+      const res = await TransactionService.createTransactionsInBulk(user.user_id, list);
+      expect(res).toEqual({ imported: 300, skipped: 0 });
+      expect(await prisma.transactions.count()).toBe(300);
+      expect(await balanceOf(bank3300.account_id)).toBe(-((300 * 301) / 2) * 100);
+    }, 120_000);
+
+    test("bulk save leaves the same balances and snapshots as saving rows one by one", async () => {
+      const list = await toCreateList();
+      await TransactionService.createTransactionsInBulk(user.user_id, list.map((t) => ({ ...t })));
+
+      const accounts = [bank3300, upiLite, card2001, other];
+      const snapshotsOf = async () => {
+        const out = [];
+        for (const a of accounts) {
+          const rows = await prisma.balances_snapshot.findMany({
+            where: { accounts_account_id: a.account_id },
+            orderBy: [{ year: "asc" }, { month: "asc" }],
+          });
+          out.push({
+            balance: await balanceOf(a.account_id),
+            snapshots: rows.map((r) => `${r.year}-${r.month}:${Number(r.balance)}`),
+          });
+        }
+        return out;
+      };
+      const bulk = await snapshotsOf();
+
+      await prisma.balances_snapshot.deleteMany();
+      await prisma.transactions.deleteMany();
+      await prisma.accounts.updateMany({ data: { current_balance: 0 } });
+      for (const t of list) await TransactionService.createTransaction(user.user_id, { ...t });
+
+      expect(bulk).toEqual(await snapshotsOf());
+      expect(bulk[0].balance).not.toBe(0);
+    }, 120_000);
+
+    test("external_id survives backup and restore, so re-uploading finds no new rows", async () => {
+      await TransactionService.createTransactionsInBulk(user.user_id, await toCreateList());
+      const backup = await UserService.backupUser(user.user_id);
+      await UserService.restoreUser(user.user_id, backup);
+
+      expect(await prisma.transactions.count({ where: { external_id: { startsWith: "phonepe:" } } })).toBe(
+        FIXTURE_ROWS
+      );
+      const preview = await PhonePeImportService.previewPhonePeImport(user.user_id, fixture);
+      expect(preview.new_rows).toBe(0);
+      expect(preview.duplicate_rows).toBe(FIXTURE_ROWS);
+    }, 60_000);
   });
 });

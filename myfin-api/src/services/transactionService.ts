@@ -244,10 +244,41 @@ export type CreateTransactionType = {
   tags?: Array<string>;
   external_id?: string;
 };
+/** Accounts whose balance a transaction moves: `to` for income, `from` for expense, both for a transfer. */
+const accountsAffectedBy = (trx: { type: string; account_from_id?: bigint; account_to_id?: bigint }) => {
+  switch (trx.type) {
+    case MYFIN.TRX_TYPES.INCOME:
+      return [trx.account_to_id];
+    case MYFIN.TRX_TYPES.EXPENSE:
+      return [trx.account_from_id];
+    case MYFIN.TRX_TYPES.TRANSFER:
+    default:
+      return [trx.account_to_id, trx.account_from_id];
+  }
+};
+
+/** Recalculates an account's balance snapshots from `fromTimestamp` until now and stores the new balance. */
+const updateAccountBalanceFrom = async (
+  userId: bigint,
+  accountId: bigint,
+  fromTimestamp: number,
+  prismaTx
+) => {
+  const newBalance = await AccountService.recalculateBalanceForAccountIncrementally(
+    accountId,
+    fromTimestamp,
+    DateTimeUtils.getCurrentUnixTimestamp() + 1,
+    prismaTx
+  );
+  await AccountService.setNewAccountBalance(userId, accountId, newBalance, prismaTx);
+};
+
 const createTransaction = async (
   userId: bigint,
   trx: CreateTransactionType,
-  dbClient = undefined
+  dbClient = undefined,
+  // Bulk imports insert every row first and then recalculate each account once (see createTransactionsInBulk).
+  options: { skipBalanceUpdate?: boolean } = {}
 ) => {
   //Logger.addStringifiedLog(trx);
   trx.amount = ConvertUtils.convertFloatToBigInteger(trx.amount);
@@ -289,53 +320,11 @@ const createTransaction = async (
       }) || []
     );
 
-    let newBalance;
-    switch (trx.type) {
-      case MYFIN.TRX_TYPES.INCOME:
-        newBalance = await AccountService.recalculateBalanceForAccountIncrementally(
-          trx.account_to_id,
-          trx.date_timestamp - 1,
-          DateTimeUtils.getCurrentUnixTimestamp() + 1,
-          prismaTx
-        );
-        await AccountService.setNewAccountBalance(userId, trx.account_to_id, newBalance, prismaTx);
-        break;
-      case MYFIN.TRX_TYPES.EXPENSE:
-        newBalance = await AccountService.recalculateBalanceForAccountIncrementally(
-          trx.account_from_id,
-          trx.date_timestamp - 1,
-          DateTimeUtils.getCurrentUnixTimestamp() + 1,
-          prismaTx
-        );
-        await AccountService.setNewAccountBalance(
-          userId,
-          trx.account_from_id,
-          newBalance,
-          prismaTx
-        );
-        break;
-      case MYFIN.TRX_TYPES.TRANSFER:
-      default:
-        newBalance = await AccountService.recalculateBalanceForAccountIncrementally(
-          trx.account_to_id,
-          trx.date_timestamp - 1,
-          DateTimeUtils.getCurrentUnixTimestamp() + 1,
-          prismaTx
-        );
-        await AccountService.setNewAccountBalance(userId, trx.account_to_id, newBalance, prismaTx);
-        newBalance = await AccountService.recalculateBalanceForAccountIncrementally(
-          trx.account_from_id,
-          trx.date_timestamp - 1,
-          DateTimeUtils.getCurrentUnixTimestamp() + 1,
-          prismaTx
-        );
-        await AccountService.setNewAccountBalance(
-          userId,
-          trx.account_from_id,
-          newBalance,
-          prismaTx
-        );
-        break;
+    if (!options.skipBalanceUpdate) {
+      const fromTimestamp = trx.date_timestamp - 1;
+      for (const accountId of accountsAffectedBy(trx)) {
+        await updateAccountBalanceFrom(userId, accountId, fromTimestamp, prismaTx);
+      }
     }
 
     return addedTrx;
@@ -354,8 +343,24 @@ const createTransactionsInBulk = async (
     // Rows carrying an external_id (e.g. PhonePe) are skipped if already stored for this user,
     // or if repeated earlier in this same list. Rows without one (paste import) always import.
     const externalIds = [...new Set(trxList.map((t) => t.external_id).filter((id) => !!id))];
+    if (externalIds.length > 0) {
+      // Serialise concurrent imports for this user: without this lock (and with no unique
+      // constraint on external_id) two in-flight saves could both miss each other's rows.
+      // It must be the first read in the transaction, so the dedup read below sees the
+      // rows committed by a save that held the lock before us.
+      await prismaTx.$queryRaw`SELECT user_id FROM users WHERE user_id = ${userId} FOR UPDATE`;
+    }
     const existingIds = await getExistingExternalIds(userId, externalIds, prismaTx);
     const seenIds = new Set<string>();
+    const earliestDateByAccount = new Map<string, { accountId: bigint; date: number }>();
+    const ownership = new Map<string, boolean>();
+    const accountBelongsToUser = async (accountId: bigint) => {
+      const key = String(accountId);
+      if (!ownership.has(key)) {
+        ownership.set(key, await AccountService.doesAccountBelongToUser(userId, accountId, prismaTx));
+      }
+      return ownership.get(key);
+    };
 
     for (const trx of trxList) {
       if (
@@ -376,26 +381,32 @@ const createTransactionsInBulk = async (
       }
 
       // Both accounts (if defined) need to belong to the user making the request
-      if (
-        trx.account_from_id &&
-        !(await AccountService.doesAccountBelongToUser(userId, trx.account_from_id))
-      ) {
-        throw APIError.notAuthorized();
+      for (const accountId of [trx.account_from_id, trx.account_to_id]) {
+        if (accountId && !(await accountBelongsToUser(accountId))) {
+          throw APIError.notAuthorized();
+        }
       }
 
-      if (
-        trx.account_to_id &&
-        !(await AccountService.doesAccountBelongToUser(userId, trx.account_to_id))
-      ) {
-        throw APIError.notAuthorized();
+      await createTransaction(userId, trx, prismaTx, { skipBalanceUpdate: true });
+      for (const accountId of accountsAffectedBy(trx)) {
+        if (!accountId) continue;
+        const key = String(accountId);
+        const earliest = earliestDateByAccount.get(key);
+        if (!earliest || trx.date_timestamp < earliest.date) {
+          earliestDateByAccount.set(key, { accountId, date: trx.date_timestamp });
+        }
       }
-
-      await createTransaction(userId, trx, prismaTx);
       importedCnt++;
     }
 
+    // Recalculating balances once per account (from its earliest new row) instead of once per row
+    // keeps large imports linear; the end state is the same as per-row recalculation.
+    for (const { accountId, date } of earliestDateByAccount.values()) {
+      await updateAccountBalanceFrom(userId, accountId, date - 1, prismaTx);
+    }
+
     return { imported: importedCnt, skipped: skippedCnt };
-  }, dbClient);
+  }, dbClient, { timeout: 60_000, maxWait: 10_000 });
 
 const deleteTransaction = async (userId: bigint, transactionId: number, dbClient = undefined) => {
   await performDatabaseRequest(async (prismaTx) => {
