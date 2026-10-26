@@ -1,0 +1,31 @@
+Transaction Statement for 9999999999
+Duration,"26 Sept, 2026 - 26 Oct, 2026"
+
+Date,Time,Transaction Details,Transaction ID,UTR,Transaction Type,Credit/debit instrument,Amount
+"Oct 26, 2026","01:46 pm","Paid to SWIGGY","T2610261346425001911421","111270645076","DEBIT","Paid by XXXXXXXXXXX3300","121"
+"Oct 26, 2026","12:58 pm","Requested by PERSON A","D2610261258325418587280","158315608420","DEBIT","Paid by XXXXXX6759","4837.55"
+"Oct 26, 2026","11:23 am","Paid to PERSON D","T2610261123367537860380","128606505347","DEBIT","Paid by UPI Lite","25"
+"Oct 22, 2026","09:11 am","Paid to VEG BASKET ","T2610220911392492059530","268914662724","DEBIT","Paid by UPI Lite","28"
+"Oct 21, 2026","12:48 am","Paid to PERSON  B","T2610210048049194422347","662858110083","DEBIT","Paid by UPI Lite","124"
+"Oct 21, 2026","12:32 am","Paid to MEMORIES HOSPITALITY SERVICES","T2610210032231645679420","966528361590","DEBIT","Paid by 653001XXXXXXXX73","10630"
+"Oct 14, 2026","02:42 pm","Received from PERSON E","T2610141442574594348185","628771981784","CREDIT","Credited to XXXXXXXXXXX3300","190"
+"Oct 13, 2026","11:11 am","Electricity bill paid 5168652","NB26101311112582770248692","793082202671","DEBIT","Paid by XXXXXXXXXXX3300","29"
+"Oct 12, 2026","10:38 pm","Paid to INDIGO AIRLINE","T2610122237588295373882","657665965953","DEBIT","Paid by 356146XXXXXXXX05","11670"
+"Oct 12, 2026","05:15 pm","Credit card bill paid XXXXXXXXXXXX2001","NB26101217153886129140372","033361874285","DEBIT","Paid by XXXXXXXXXXX3300","354"
+"Oct 10, 2026","10:45 pm","Payment to NETFLIX","OLEX2610102245491511929608","104224569535","DEBIT","Paid by XXXXXXXXXXX3300","199"
+"Oct 08, 2026","01:03 pm","Add money UPI Lite","W2610081303177861357192","326040619687","DEBIT","Paid by XXXXXXXXXXX3300","4998"
+"Oct 05, 2026","03:23 pm","Paid to PERSON F","R10502610051523189444985548","207443535088","DEBIT","Paid by XXXXXXXXXXX3300","1118"
+"Oct 05, 2026","03:21 pm","Paid to PERSON C 🌛","T2610051521432239038260","439070899107","DEBIT","Paid by XXXXXXXXXXX3300","10000"
+"Oct 01, 2026","12:54 pm","Received from PERSON G","T2610011254140457596665","551887707065","CREDIT","Credited to XXXXXXXXXXX3300","5000"
+"Sept 30, 2026","09:33 pm","Paid to PERSON H","T2609302133580825142206","476243724309","DEBIT","Paid by UPI Lite","50"
+"Sept 29, 2026","07:09 am","Paid to Udemy","T2609290709137136702739","165662292437","DEBIT","Paid by 653001XXXXXXXX73","17069"
+"Sept 26, 2026","01:52 am","Paid to PERSON I","T2609260152253299888736","228864684410","DEBIT","Paid by UPI Lite","107"
+
+This is an automatically generated statement. Customer(s) are requested to immediately notify PhonePe in case
+of any errors in the statement at https://support.phonepe.com/statement and visit https://www.phonepe.com/
+terms-conditions/ for PhonePe Terms & Conditions and Privacy Policy.
+
+Disclaimer : Do not fall prey to fictitious offers of winning prizes, money circulation schemes and cheap funds,
+etc. through SMS, emails and calls. The contents of this email and document are confidential and intended for
+the recipient specified in this document. If you received this message by mistake, please inform PhonePe at
+https://support.phonepe.com/statement so that we can ensure the recipient's details are corrected.
