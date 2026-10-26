@@ -28,12 +28,13 @@ const createEntity = async (req: Request, res: Response, next: NextFunction) => 
   try {
     const sessionData = await CommonsController.checkAuthSessionValidity(req);
     const input = await createEntitySchema.validateAsync(req.body);
-    await EntityService.createEntity({
+    const entity = await EntityService.createEntity({
       users_user_id: sessionData.userId,
       name: input.name
     });
 
-    return res.json("Entity successfully created!");
+    // returned so clients can select an entity they just created
+    return res.json({ entity_id: entity.entity_id, name: entity.name });
   } catch (err) {
     Logger.addLog(err);
     next(err || APIError.internalServerError());

@@ -6,15 +6,20 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogContentText from '@mui/material/DialogContentText';
 import DialogActions from '@mui/material/DialogActions';
 import Button from '@mui/material/Button';
+import Autocomplete from '@mui/material/Autocomplete';
 import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import { useGetCategories } from '../../services/category/CategoryHooks.tsx';
 import { useGetEntities } from '../../services/entity/entityHooks.ts';
 import { BulkUpdateTransactionsRequest } from '../../services/trx/trxServices.ts';
+import { IdLabelPair } from './AddEditTransactionDialog.tsx';
+import {
+  CreatableKind,
+  useCreatableOptions,
+} from '../../components/useCreatableOptions.ts';
 
 const UNCHANGED = 'unchanged';
-const NONE = 'none';
 
 type Props = {
   isOpen: boolean;
@@ -23,20 +28,61 @@ type Props = {
   onApply: (changes: Omit<BulkUpdateTransactionsRequest, 'transaction_ids' | 'filter'>) => void;
 };
 
-const toIdChange = (value: string) =>
-  value === UNCHANGED ? undefined : value === NONE ? null : BigInt(value);
+// placeholder ids for the "leave unchanged" and "no category/entity" choices
+const UNCHANGED_ID = -2n;
+const NONE_ID = -3n;
+
+const toIdChange = (option: IdLabelPair) =>
+  option.id === UNCHANGED_ID ? undefined : option.id === NONE_ID ? null : option.id;
+
+/** Type-to-search picker that can also create a missing category/entity. */
+const CreatablePicker = ({
+  kind,
+  label,
+  noneLabel,
+  items,
+  value,
+  onChange,
+}: {
+  kind: CreatableKind;
+  label: string;
+  noneLabel: string;
+  items: IdLabelPair[];
+  value: IdLabelPair;
+  onChange: (value: IdLabelPair) => void;
+}) => {
+  const { t } = useTranslation();
+  const creatable = useCreatableOptions(kind);
+  const unchanged = { id: UNCHANGED_ID, label: t('transactions.bulkEditLeaveUnchanged') };
+  const none = { id: NONE_ID, label: noneLabel };
+  return (
+    <Autocomplete
+      disableClearable
+      options={[unchanged, none, ...creatable.withCreated(items)]}
+      filterOptions={creatable.filterOptions}
+      value={value}
+      onChange={async (_event, picked) => {
+        const resolved = await creatable.resolve(picked, items);
+        if (resolved) onChange(resolved);
+      }}
+      isOptionEqualToValue={(option, selected) => option.id === selected.id}
+      renderInput={(params) => <TextField {...params} label={label} />}
+    />
+  );
+};
 
 const BulkEditTransactionsDialog = (props: Props) => {
   const { t } = useTranslation();
   const categoriesRequest = useGetCategories();
   const entitiesRequest = useGetEntities();
-  const [category, setCategory] = useState(UNCHANGED);
-  const [entity, setEntity] = useState(UNCHANGED);
+  const unchanged = { id: UNCHANGED_ID, label: t('transactions.bulkEditLeaveUnchanged') };
+  const [category, setCategory] = useState<IdLabelPair>(unchanged);
+  const [entity, setEntity] = useState<IdLabelPair>(unchanged);
   const [essential, setEssential] = useState(UNCHANGED);
   const [isConfirming, setConfirming] = useState(false);
 
   const nothingChosen =
-    category === UNCHANGED && entity === UNCHANGED && essential === UNCHANGED;
+    category.id === UNCHANGED_ID && entity.id === UNCHANGED_ID && essential === UNCHANGED;
 
   const apply = () => {
     props.onApply({
@@ -58,34 +104,28 @@ const BulkEditTransactionsDialog = (props: Props) => {
           <DialogContentText>{t('transactions.bulkEditConfirmText')}</DialogContentText>
         ) : (
           <Stack gap={2} sx={{ mt: 1 }}>
-            <TextField
-              select
+            <CreatablePicker
+              kind="category"
               label={t('transactions.category')}
+              noneLabel={t('common.noCategory')}
+              items={(categoriesRequest.data || []).map((cat) => ({
+                id: cat.category_id,
+                label: cat.name,
+              }))}
               value={category}
-              onChange={(event) => setCategory(event.target.value)}
-            >
-              <MenuItem value={UNCHANGED}>{t('transactions.bulkEditLeaveUnchanged')}</MenuItem>
-              <MenuItem value={NONE}>{t('common.noCategory')}</MenuItem>
-              {(categoriesRequest.data || []).map((cat) => (
-                <MenuItem key={String(cat.category_id)} value={String(cat.category_id)}>
-                  {cat.name}
-                </MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              select
+              onChange={setCategory}
+            />
+            <CreatablePicker
+              kind="entity"
               label={t('transactions.entity')}
+              noneLabel={t('common.noEntity')}
+              items={(entitiesRequest.data || []).map((ent) => ({
+                id: ent.entity_id,
+                label: ent.name,
+              }))}
               value={entity}
-              onChange={(event) => setEntity(event.target.value)}
-            >
-              <MenuItem value={UNCHANGED}>{t('transactions.bulkEditLeaveUnchanged')}</MenuItem>
-              <MenuItem value={NONE}>{t('common.noEntity')}</MenuItem>
-              {(entitiesRequest.data || []).map((ent) => (
-                <MenuItem key={String(ent.entity_id)} value={String(ent.entity_id)}>
-                  {ent.name}
-                </MenuItem>
-              ))}
-            </TextField>
+              onChange={setEntity}
+            />
             <TextField
               select
               label={t('transactions.essential')}

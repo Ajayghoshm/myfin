@@ -19,6 +19,7 @@
     "clickHere": "Clique aqui",
     "search": "Pesquisar",
     "noEntity": "No Entity",
+    "addNamed": "+ Adicionar \"{{name}}\"",
     "noCategory": "No Category",
     "delete": "Remover",
     "edit": "Editar",

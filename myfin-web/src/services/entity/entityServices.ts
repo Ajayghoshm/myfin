@@ -10,7 +10,7 @@ export type AddEntityRequest = {
 };
 
 const addEntity = (request: AddEntityRequest) => {
-  return axios.post(`/entities`, request);
+  return axios.post<{ entity_id: bigint; name: string }>(`/entities`, request);
 };
 
 const removeEntity = (id: bigint) => {

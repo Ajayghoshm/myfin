@@ -1,4 +1,5 @@
 import React, { SyntheticEvent, useEffect, useState } from 'react';
+import { useCreatableOptions } from '../../components/useCreatableOptions.ts';
 import {
   Transaction,
   TransactionType,
@@ -83,6 +84,8 @@ const AddEditTransactionDialog = (props: Props) => {
     return { id: id, label: name };
   };
 
+  const categoryCreate = useCreatableOptions('category');
+  const entityCreate = useCreatableOptions('entity');
   const { t } = useTranslation();
   const loader = useLoading();
   const snackbar = useSnackbar();
@@ -774,10 +777,15 @@ const AddEditTransactionDialog = (props: Props) => {
               <Autocomplete
                 id="category"
                 value={categoryValue}
-                onChange={(_event, value) => {
-                  setCategoryValue(value as IdLabelPair);
+                onChange={async (_event, value) => {
+                  const resolved = await categoryCreate.resolve(
+                    value,
+                    categoryOptionsValue,
+                  );
+                  if (resolved !== undefined) setCategoryValue(resolved as IdLabelPair);
                 }}
-                options={categoryOptionsValue}
+                options={categoryCreate.withCreated(categoryOptionsValue)}
+                filterOptions={categoryCreate.filterOptions}
                 isOptionEqualToValue={(option, value) => option.id === value.id}
                 renderInput={(params) => (
                   <TextField
@@ -805,10 +813,15 @@ const AddEditTransactionDialog = (props: Props) => {
               <Autocomplete
                 id="entity"
                 value={entityValue}
-                onChange={(_event, value) => {
-                  setEntityValue(value as IdLabelPair);
+                onChange={async (_event, value) => {
+                  const resolved = await entityCreate.resolve(
+                    value,
+                    entityOptionsValue,
+                  );
+                  if (resolved !== undefined) setEntityValue(resolved as IdLabelPair);
                 }}
-                options={entityOptionsValue}
+                options={entityCreate.withCreated(entityOptionsValue)}
+                filterOptions={entityCreate.filterOptions}
                 isOptionEqualToValue={(option, value) => option.id === value.id}
                 renderInput={(params) => (
                   <TextField
@@ -983,6 +996,8 @@ const SplitTransactionForm = ({
   handleTagsChange,
 }: SplitTransactionFormProps) => {
   const { t } = useTranslation();
+  const categoryCreate = useCreatableOptions('category');
+  const entityCreate = useCreatableOptions('entity');
   const [isEssentialVisible, setEssentialVisible] = useState(true);
   const [isAccountFromRequired, setAccountFromRequired] = useState(true);
   const [isAccountToRequired, setAccountToRequired] = useState(false);
@@ -1224,10 +1239,15 @@ const SplitTransactionForm = ({
             <Autocomplete
               id="split_category"
               value={state?.category ?? null}
-              onChange={(_event, value) => {
-                handleCategoryChange(value as IdLabelPair);
+              onChange={async (_event, value) => {
+                const resolved = await categoryCreate.resolve(
+                  value,
+                  state?.categoryOptions ?? [],
+                );
+                if (resolved !== undefined) handleCategoryChange(resolved as IdLabelPair);
               }}
-              options={state?.categoryOptions ?? []}
+              options={categoryCreate.withCreated(state?.categoryOptions ?? [])}
+              filterOptions={categoryCreate.filterOptions}
               isOptionEqualToValue={(option, value) => option.id === value.id}
               renderInput={(params) => (
                 <TextField
@@ -1255,10 +1275,15 @@ const SplitTransactionForm = ({
             <Autocomplete
               id="split_entity"
               value={state?.entity ?? null}
-              onChange={(_event, value) => {
-                handleEntityChange(value as IdLabelPair);
+              onChange={async (_event, value) => {
+                const resolved = await entityCreate.resolve(
+                  value,
+                  state?.entityOptions ?? [],
+                );
+                if (resolved !== undefined) handleEntityChange(resolved as IdLabelPair);
               }}
-              options={state?.entityOptions ?? []}
+              options={entityCreate.withCreated(state?.entityOptions ?? [])}
+              filterOptions={entityCreate.filterOptions}
               isOptionEqualToValue={(option, value) => option.id === value.id}
               renderInput={(params) => (
                 <TextField

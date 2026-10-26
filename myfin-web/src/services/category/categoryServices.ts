@@ -29,7 +29,7 @@ export type AddCategoryRequest = {
 };
 
 const addCategory = (request: AddCategoryRequest) => {
-  return axios.post('/cats', request);
+  return axios.post<{ category_id: bigint; name: string }>('/cats', request);
 };
 
 export type EditCategoryRequest = {

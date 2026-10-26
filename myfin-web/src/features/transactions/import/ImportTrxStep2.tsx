@@ -1,4 +1,5 @@
 import { KeyboardDoubleArrowRight } from '@mui/icons-material';
+import { useCreatableOptions } from '../../../components/useCreatableOptions.ts';
 import Button from '@mui/material/Button';
 import { Trans, useTranslation } from 'react-i18next';
 import { memo, useCallback, useEffect, useMemo, useState, useRef } from 'react';
@@ -105,6 +106,8 @@ const ImportTrxStep2 = (props: Props) => {
   const snackbar = useSnackbar();
 
   const importTrxStep2Request = useImportTransactionsStep2();
+  const categoryCreate = useCreatableOptions('category');
+  const entityCreate = useCreatableOptions('entity');
   const formatNumberAsCurrency = useFormatNumberAsCurrency();
   const [isConfirmationDialogOpen, setConfirmationDialogOpen] = useState(false);
   const [transactions, setTransactions] = useState<ImportedTrx[]>([]);
@@ -374,12 +377,15 @@ const ImportTrxStep2 = (props: Props) => {
               id="category"
               fullWidth
               value={params.value.category}
-              onChange={(_event, value) => {
+              onChange={async (_event, value) => {
+                const resolved = await categoryCreate.resolve(value, categories);
+                if (resolved === undefined) return;
                 updateTransactionRef.current(params.id as number, {
-                  category: value,
+                  category: resolved ?? undefined,
                 });
               }}
-              options={categories}
+              options={categoryCreate.withCreated(categories)}
+              filterOptions={categoryCreate.filterOptions}
               isOptionEqualToValue={(option, value) => option.id === value.id}
               renderInput={(params) => (
                 <TextField
@@ -394,12 +400,15 @@ const ImportTrxStep2 = (props: Props) => {
               id="entity"
               fullWidth
               value={params.value.entity}
-              onChange={(_event, value) => {
+              onChange={async (_event, value) => {
+                const resolved = await entityCreate.resolve(value, entities);
+                if (resolved === undefined) return;
                 updateTransactionRef.current(params.id as number, {
-                  entity: value,
+                  entity: resolved ?? undefined,
                 });
               }}
-              options={entities}
+              options={entityCreate.withCreated(entities)}
+              filterOptions={entityCreate.filterOptions}
               isOptionEqualToValue={(option, value) => option.id === value.id}
               renderInput={(params) => (
                 <TextField
@@ -456,7 +465,15 @@ const ImportTrxStep2 = (props: Props) => {
         ),
       },
     ],
-    [t, categories, entities, accounts, debouncedUpdateTransaction],
+    [
+      t,
+      categories,
+      entities,
+      accounts,
+      debouncedUpdateTransaction,
+      categoryCreate.created,
+      entityCreate.created,
+    ],
   );
 
   const handleContinueButtonClick = () => {

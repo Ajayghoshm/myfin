@@ -1,3 +1,4 @@
+import { useCreatableOptions } from '../../components/useCreatableOptions.ts';
 import {
   Rule,
   RuleMatchingOperatorType,
@@ -89,6 +90,16 @@ const AddEditRuleDialog = (props: Props) => {
   ]);
 
   const ignoreOption = { id: -1n, label: t('common.ignore') };
+  const categoryCreate = useCreatableOptions('category');
+  const entityCreate = useCreatableOptions('entity');
+  const categoryPairs = props.categories.map((category) => ({
+    id: category.category_id,
+    label: category.name,
+  }));
+  const entityPairs = props.entities.map((entity) => ({
+    id: entity.entity_id,
+    label: entity.name,
+  }));
 
   // Loading
   useEffect(() => {
@@ -530,31 +541,20 @@ const AddEditRuleDialog = (props: Props) => {
                 <Autocomplete
                   fullWidth
                   id="category-result"
-                  options={[
-                    {
-                      category_id: ignoreOption.id,
-                      name: ignoreOption.label,
-                    },
-                    ...props.categories,
-                  ]}
-                  getOptionLabel={(option) => option.name || ''}
+                  options={[ignoreOption, ...categoryCreate.withCreated(categoryPairs)]}
+                  filterOptions={categoryCreate.filterOptions}
                   value={
-                    props.categories.find(
-                      (category) =>
-                        category.category_id === rule?.assign_category_id,
-                    ) || {
-                      category_id: ignoreOption.id,
-                      name: ignoreOption.label,
-                    }
+                    categoryCreate
+                      .withCreated(categoryPairs)
+                      .find((option) => option.id === rule?.assign_category_id) ||
+                    ignoreOption
                   }
-                  onChange={(_event, value) =>
-                    updateRule({
-                      assign_category_id: value?.category_id,
-                    })
-                  }
-                  isOptionEqualToValue={(option, value) =>
-                    option.category_id === value.category_id
-                  }
+                  onChange={async (_event, value) => {
+                    const resolved = await categoryCreate.resolve(value, categoryPairs);
+                    if (resolved === undefined) return;
+                    updateRule({ assign_category_id: resolved?.id });
+                  }}
+                  isOptionEqualToValue={(option, value) => option.id === value.id}
                   renderInput={(params) => (
                     <TextField
                       {...params}
@@ -570,30 +570,20 @@ const AddEditRuleDialog = (props: Props) => {
                 <Autocomplete
                   fullWidth
                   id="entity-result"
-                  options={[
-                    {
-                      entity_id: ignoreOption.id,
-                      name: ignoreOption.label,
-                    },
-                    ...props.entities,
-                  ]}
-                  getOptionLabel={(option) => option.name || ''}
+                  options={[ignoreOption, ...entityCreate.withCreated(entityPairs)]}
+                  filterOptions={entityCreate.filterOptions}
                   value={
-                    props.entities.find(
-                      (entity) => entity.entity_id === rule?.assign_entity_id,
-                    ) || {
-                      entity_id: ignoreOption.id,
-                      name: ignoreOption.label,
-                    }
+                    entityCreate
+                      .withCreated(entityPairs)
+                      .find((option) => option.id === rule?.assign_entity_id) ||
+                    ignoreOption
                   }
-                  onChange={(_event, value) =>
-                    updateRule({
-                      assign_entity_id: value?.entity_id,
-                    })
-                  }
-                  isOptionEqualToValue={(option, value) =>
-                    option.entity_id === value.entity_id
-                  }
+                  onChange={async (_event, value) => {
+                    const resolved = await entityCreate.resolve(value, entityPairs);
+                    if (resolved === undefined) return;
+                    updateRule({ assign_entity_id: resolved?.id });
+                  }}
+                  isOptionEqualToValue={(option, value) => option.id === value.id}
                   renderInput={(params) => (
                     <TextField
                       {...params}

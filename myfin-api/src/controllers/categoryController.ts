@@ -31,14 +31,15 @@ const createCategory = async (req: Request, res: Response, next: NextFunction) =
   try {
     const sessionData = await CommonsController.checkAuthSessionValidity(req);
     const input = await createCategorySchema.validateAsync(req.body);
-    await CategoryService.createCategory({
+    const category = await CategoryService.createCategory({
       users_user_id: sessionData.userId,
       ...input,
       exclude_from_budgets: +input.exclude_from_budgets,
       type: 'M',
     });
 
-    return res.json('Category successfully created!');
+    // returned so clients can select a category they just created
+    return res.json({ category_id: category.category_id, name: category.name });
   } catch (err) {
     Logger.addLog(err);
     next(err || APIError.internalServerError());
