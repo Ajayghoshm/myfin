@@ -43,6 +43,11 @@ describe('guessIsPerson', () => {
   it('matches whole words only', () => {
     expect(guessIsPerson('CAFEINE RAO', { hasPersonPrefix: true, hasRoundPaymentOver1000: false })).toBe(true);
   });
+  it('splits on punctuation as well as whitespace', () => {
+    const sig = { hasPersonPrefix: true, hasRoundPaymentOver1000: true };
+    expect(guessIsPerson('ABC PVT. LTD.', sig)).toBe(false);
+    expect(guessIsPerson('XYZ & CO.', sig)).toBe(false);
+  });
   it('has expected business words', () => {
     for (const w of ['PVT', 'LTD', 'CAFE', 'SWIGGY', 'ZOMATO', 'NETFLIX']) expect(BUSINESS_WORDS).toContain(w);
   });

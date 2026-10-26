@@ -36,6 +36,8 @@ export interface BackupData {
   goals?: Prisma.goalsGetPayload<object>[];
   goal_has_accounts?: Prisma.goal_has_accountGetPayload<object>[];
   transactions?: Prisma.transactionsGetPayload<object>[];
+  /** Person/merchant corrections. Absent in backups made before insights. */
+  payee_classifications?: { payee_key: string; kind: string }[];
 }
 
 class BackupManager {
@@ -164,6 +166,11 @@ class BackupManager {
       goals,
       goal_has_accounts: goalHasAccounts,
       transactions,
+      payee_classifications: await dbClient.payee_classifications.findMany({
+        where: { users_user_id: userId },
+        select: { payee_key: true, kind: true },
+        orderBy: { payee_key: 'asc' },
+      }),
     };
   }
 
@@ -231,6 +238,22 @@ class BackupManager {
             'Budget breakdown totals in backup do not match their allocation.',
             'BUDGET_BREAKDOWN_CONFLICT'
           );
+      }
+    }
+
+    // Validate payee classifications before wiping anything
+    const classifications = data.payee_classifications ?? [];
+    for (const c of classifications) {
+      if (
+        typeof c?.payee_key !== 'string' ||
+        c.payee_key.length === 0 ||
+        c.payee_key.length > 255 ||
+        (c.kind !== 'person' && c.kind !== 'merchant')
+      ) {
+        throw APIError.notAcceptable(
+          'Payee classification not recognized in backup',
+          RestoreUserErrorCodes.MalformedBackup
+        );
       }
     }
 
@@ -601,6 +624,19 @@ class BackupManager {
 
       return newGoalAccount;
     });
+    // endregion
+
+    // region Payee classifications
+    if (classifications.length > 0) {
+      await dbClient.payee_classifications.createMany({
+        data: classifications.map((c) => ({
+          users_user_id: userId,
+          payee_key: c.payee_key,
+          kind: c.kind,
+        })),
+        skipDuplicates: true,
+      });
+    }
     // endregion
 
     Logger.addLog('BackupManager > Restore | Recalculating balances...');

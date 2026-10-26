@@ -398,6 +398,29 @@ describe('Monthly insights', () => {
     ).toBe(1);
   });
 
+  test('classifications survive backup and restore; old backups without them still restore', async () => {
+    await setPayeeClassification(ctx.user.user_id, 'ACHAN', 'merchant');
+    const backup = JSON.parse(JSON.stringify(await UserService.backupUser(ctx.user.user_id)));
+    expect(backup.payee_classifications).toEqual([{ payee_key: 'ACHAN', kind: 'merchant' }]);
+
+    await UserService.restoreUser(ctx.user.user_id, backup);
+    const r = await getMonthInsights(ctx.user.user_id, OCT);
+    expect(r.people.map((p) => p.payee_key)).not.toContain('ACHAN');
+    expect(r.merchants.top.find((m) => m.payee_key === 'ACHAN')).toMatchObject({ amount: 10000 });
+
+    const malformed = { ...backup, payee_classifications: [{ payee_key: 'ACHAN', kind: 'robot' }] };
+    await expect(UserService.restoreUser(ctx.user.user_id, malformed)).rejects.toBeDefined();
+    expect(
+      await prisma.payee_classifications.count({ where: { users_user_id: ctx.user.user_id } })
+    ).toBe(1);
+
+    const older = { ...backup, payee_classifications: undefined };
+    await UserService.restoreUser(ctx.user.user_id, older);
+    expect(
+      await prisma.payee_classifications.count({ where: { users_user_id: ctx.user.user_id } })
+    ).toBe(0);
+  });
+
   test('JSON has no bigint values', async () => {
     const r = await getMonthInsights(ctx.user.user_id, OCT);
     expect(() => JSON.stringify(r)).not.toThrow();

@@ -41,6 +41,6 @@ export function guessIsPerson(
   signals: { hasPersonPrefix: boolean; hasRoundPaymentOver1000: boolean },
 ): boolean {
   if (!payeeKey) return false;
-  if (payeeKey.toUpperCase().split(/\s+/).some((w) => BUSINESS_SET.has(w))) return false;
+  if (payeeKey.toUpperCase().split(/[^A-Z0-9]+/).some((w) => BUSINESS_SET.has(w))) return false;
   return signals.hasPersonPrefix || signals.hasRoundPaymentOver1000;
 }
