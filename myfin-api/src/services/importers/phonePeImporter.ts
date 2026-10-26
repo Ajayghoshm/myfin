@@ -12,6 +12,15 @@ dayjs.extend(customParseFormat);
 const TIMEZONE = "Asia/Kolkata";
 const UPI_LITE_KEY = "UPI Lite";
 const HEADER_PREFIX = "Date,Time,Transaction Details";
+const MAX_KEY_LENGTH = 64; // transactions.external_id and import_instrument_mappings.instrument_key are VARCHAR(64)
+const DATE_TIME_FORMATS = [
+  "MMM DD, YYYY hh:mm a",
+  "MMM D, YYYY h:mm a",
+  "MMM DD, YYYY h:mm a",
+  "MMM D, YYYY hh:mm a",
+];
+/** A line that starts like a PhonePe data row: optional quote, month abbreviation, day, comma, year. */
+const DATA_ROW_LIKE = /^"?[A-Z][a-z]{2,3} \d{1,2}, \d{4}/;
 
 export type PhonePeRow = {
   externalId: string; // `phonepe:${txnId}:${direction}`
@@ -68,8 +77,11 @@ const parseDataRow = (line: string, lineNo: number): PhonePeRow | null => {
   const [dateStr, timeStr, details, txnId, , type, instrument, amountStr] = f.map((s) => s.trim());
 
   // Parse in UTC first (non-throwing, strict), then re-interpret the wall-clock time as IST.
-  const wall = dayjs.utc(`${dateStr.replace(/^Sept\b/, "Sep")} ${timeStr}`, "MMM DD, YYYY hh:mm a", true);
-  if (!wall.isValid()) throw invalid("unparseable date/time");
+  // Strict parsing only matches lowercase am/pm, so normalise the meridiem first.
+  // Formats are tried one by one: dayjs.utc() with a format array silently drops UTC mode.
+  const input = `${dateStr.replace(/^Sept\b/, "Sep")} ${timeStr.replace(/\b(am|pm)$/i, (m) => m.toLowerCase())}`;
+  const wall = DATE_TIME_FORMATS.map((fmt) => dayjs.utc(input, fmt, true)).find((d) => d.isValid());
+  if (!wall) throw invalid("unparseable date/time");
   const parsed = dayjs.tz(wall.format("YYYY-MM-DD HH:mm"), TIMEZONE);
 
   const direction = type.toUpperCase();
@@ -77,14 +89,19 @@ const parseDataRow = (line: string, lineNo: number): PhonePeRow | null => {
   const amount = Number(amountStr);
   if (amountStr === "" || !Number.isFinite(amount) || amount <= 0) throw invalid("invalid amount");
   if (!txnId) throw invalid("missing transaction id");
+  const externalId = `phonepe:${txnId}:${direction}`;
+  if (externalId.length > MAX_KEY_LENGTH) throw invalid("transaction id too long");
+  const instrumentKey = instrument.replace(/^(Paid by|Credited to)(\s+|$)/i, "").trim();
+  if (!instrumentKey) throw invalid("missing credit/debit instrument");
+  if (instrumentKey.length > MAX_KEY_LENGTH) throw invalid("credit/debit instrument too long");
 
   return {
-    externalId: `phonepe:${txnId}:${direction}`,
+    externalId,
     date: parsed.unix(),
     description: details.replace(/\s+/g, " ").trim(),
     amount,
     direction,
-    instrumentKey: instrument.replace(/^(Paid by|Credited to)\s+/i, "").trim(),
+    instrumentKey,
   };
 };
 
@@ -100,7 +117,16 @@ export function parsePhonePeCsv(text: string): PhonePeRow[] {
     const line = lines[i];
     if (line.trim() === "") continue;
     const row = parseDataRow(line, i + 1);
-    if (!row) break; // footer / disclaimer
+    if (!row) {
+      // End of the data section (footer / disclaimer). A later line that still looks like a
+      // data row means a malformed row cut the data short: fail instead of dropping rows.
+      for (let j = i; j < lines.length; j++) {
+        if (DATA_ROW_LIKE.test(lines[j].trim())) {
+          throw APIError.badRequest(`Invalid PhonePe statement: malformed row on line ${j + 1}`);
+        }
+      }
+      break;
+    }
     rows.push(row);
   }
   return rows;

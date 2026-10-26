@@ -121,6 +121,49 @@ describe("parsePhonePeCsv", () => {
     expect(csv.length).toBeGreaterThan(300 * 1024);
     expect(parsePhonePeCsv(csv)).toHaveLength(3500);
   });
+
+  test("throws 400 naming the line for a mid-file data row with 9 fields; footer still parses", () => {
+    const ok = (id: string) => csvRow("Oct 26, 2026", "01:46 pm", "Paid to A", id, "DEBIT", "Paid by X1", "1");
+    const nineFields = `"Oct 26, 2026","01:46 pm","Paid to B","T2","1","DEBIT","Paid by X1","1","extra"\n`;
+    const csv = HEADER + ok("T1") + nineFields + ok("T3");
+    expect(() => parsePhonePeCsv(csv)).toThrowError(
+      expect.objectContaining({ code: 400, message: expect.stringContaining("line 3") }),
+    );
+    const withFooter = HEADER + ok("T1") + ok("T2") + "\nThis is an automatically generated statement, see https://x\n";
+    expect(parsePhonePeCsv(withFooter)).toHaveLength(2);
+  });
+
+  test.each([
+    ["01:46 PM", "Oct 26, 2026", "2026-10-26 13:46"],
+    ["1:46 pm", "Oct 26, 2026", "2026-10-26 13:46"],
+    ["01:46 pm", "Oct 6, 2026", "2026-10-06 13:46"],
+  ])("accepts time %s with date %s", (time, date, expected) => {
+    const [row] = parsePhonePeCsv(HEADER + csvRow(date, time, "Paid to A", "T1", "DEBIT", "Paid by X1", "1"));
+    expect(row.date).toBe(dayjs.tz(expected, IST).unix());
+  });
+
+  test("throws 400 naming the line for an empty instrument", () => {
+    for (const instr of ["", "Paid by ", "Credited to"]) {
+      const csv = HEADER + csvRow("Oct 26, 2026", "01:46 pm", "Paid to A", "T1", "DEBIT", instr, "1");
+      expect(() => parsePhonePeCsv(csv)).toThrowError(
+        expect.objectContaining({ code: 400, message: expect.stringContaining("line 2") }),
+      );
+    }
+  });
+
+  test("throws 400 naming the line when the external id or instrument key is longer than 64 chars", () => {
+    const longId = "T".repeat(64 - "phonepe::CREDIT".length + 1);
+    const okId = "T".repeat(64 - "phonepe::CREDIT".length);
+    expect(() =>
+      parsePhonePeCsv(HEADER + csvRow("Oct 26, 2026", "01:46 pm", "x", longId, "CREDIT", "Credited to X1", "1")),
+    ).toThrowError(expect.objectContaining({ code: 400, message: expect.stringContaining("line 2") }));
+    expect(
+      parsePhonePeCsv(HEADER + csvRow("Oct 26, 2026", "01:46 pm", "x", okId, "CREDIT", "Credited to X1", "1")),
+    ).toHaveLength(1);
+    expect(() =>
+      parsePhonePeCsv(HEADER + csvRow("Oct 26, 2026", "01:46 pm", "x", "T1", "DEBIT", `Paid by ${"X".repeat(65)}`, "1")),
+    ).toThrowError(expect.objectContaining({ code: 400, message: expect.stringContaining("line 2") }));
+  });
 });
 
 describe("classifyPhonePeRow", () => {
