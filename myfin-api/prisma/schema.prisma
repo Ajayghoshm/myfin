@@ -24,6 +24,7 @@ model accounts {
   balances_snapshot                                            balances_snapshot[]
   transactions_transactions_accounts_account_to_idToaccounts   transactions[]      @relation("transactions_accounts_account_to_idToaccounts")
   transactions_transactions_accounts_account_from_idToaccounts transactions[]      @relation("transactions_accounts_account_from_idToaccounts")
+  import_instrument_mappings                                   import_instrument_mappings[]
 
   @@unique([name, users_user_id], map: "name_UNIQUE")
   @@index([users_user_id], map: "fk_accounts_users1_idx")
@@ -201,6 +202,7 @@ model transactions {
   accounts_account_to_id                                   BigInt?
   categories_category_id                                   BigInt?
   is_essential                                             Boolean                @default(false)
+  external_id                                              String?                @db.VarChar(64)
   transaction_has_tags                                     transaction_has_tags[]
   accounts_transactions_accounts_account_to_idToaccounts   accounts?              @relation("transactions_accounts_account_to_idToaccounts", fields: [accounts_account_to_id], references: [account_id], onDelete: NoAction, onUpdate: NoAction, map: "transactions_accounts_account_id_fk")
   accounts_transactions_accounts_account_from_idToaccounts accounts?              @relation("transactions_accounts_account_from_idToaccounts", fields: [accounts_account_from_id], references: [account_id], onDelete: NoAction, onUpdate: NoAction, map: "transactions_accounts_account_id_fk2")
@@ -211,6 +213,7 @@ model transactions {
   @@index([categories_category_id], map: "fk_transactions_categories1_idx")
   @@index([entities_entity_id], map: "fk_transactions_entities2_idx")
   @@index([accounts_account_to_id], map: "transactions_accounts_account_to_id_index")
+  @@index([external_id])
 }
 
 model users {
@@ -232,6 +235,7 @@ model users {
   otp_codes                  otp_codes[]
   rules                      rules[]
   tags                       tags[]
+  import_instrument_mappings import_instrument_mappings[]
   currency                   String                       @default("EUR")
 }
 
@@ -272,4 +276,16 @@ model otp_codes {
 enum invest_transactions_type {
   B
   S
+}
+
+model import_instrument_mappings {
+  mapping_id          BigInt   @id @default(autoincrement())
+  users_user_id       BigInt
+  source              String   @db.VarChar(32)
+  instrument_key      String   @db.VarChar(64)
+  accounts_account_id BigInt
+  users               users    @relation(fields: [users_user_id], references: [user_id], onDelete: Cascade)
+  accounts            accounts @relation(fields: [accounts_account_id], references: [account_id], onDelete: Cascade)
+
+  @@unique([users_user_id, source, instrument_key])
 }

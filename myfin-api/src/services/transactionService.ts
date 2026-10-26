@@ -773,7 +773,7 @@ const getCountOfUserTransactions = async (userId: bigint, dbClient = prisma) => 
   return rawData[0].count;
 };
 
-interface RuleInstructions {
+export interface RuleInstructions {
   matching_rule?: bigint;
   date?: number;
   description?: string;

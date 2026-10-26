@@ -368,6 +368,11 @@ const userService = {
         })
       );
 
+      // Delete import instrument mappings (they reference accounts)
+      await prismaTx.import_instrument_mappings.deleteMany({
+        where: { users_user_id: userId }
+      });
+
       // Delete all current accounts
       promises.push(AccountService.deleteBalanceSnapshotsForUser(userId, prismaTx));
       promises.push(

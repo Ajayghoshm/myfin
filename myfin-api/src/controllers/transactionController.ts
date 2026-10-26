@@ -9,6 +9,7 @@ import AccountService from '../services/accountService.js';
 import CategoryService from '../services/categoryService.js';
 import EntityService from '../services/entityService.js';
 import ConvertUtils from '../utils/convertUtils.js';
+import PhonePeImportService from '../services/phonePeImportService.js';
 
 // READ
 const getAllTrxForUserSchema = joi
@@ -287,6 +288,66 @@ const importTransactionsStep2 = async (req: Request, res: Response, next: NextFu
   }
 };
 
+const importPhonePePreviewSchema = joi.object({
+  csv: joi.string().required(),
+});
+
+const importPhonePePreview = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    const input = await importPhonePePreviewSchema.validateAsync(req.body);
+
+    const preview = await PhonePeImportService.previewPhonePeImport(sessionData.userId, input.csv);
+    res.json(preview);
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
+const importPhonePeCategorizeSchema = joi.object({
+  csv: joi.string().required(),
+  mappings: joi.string().required(),
+});
+
+const phonePeMappingsSchema = joi
+  .array()
+  .items(
+    joi.object({
+      key: joi.string().max(64).required(),
+      account_id: joi.alternatives(joi.number().integer(), joi.string().pattern(/^\d+$/)).required(),
+    })
+  )
+  .unique('key');
+
+const importPhonePeCategorize = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    const input = await importPhonePeCategorizeSchema.validateAsync(req.body);
+
+    let parsedMappings: unknown;
+    try {
+      parsedMappings = JSON.parse(input.mappings);
+    } catch {
+      throw APIError.badRequest('Invalid mappings');
+    }
+    const mappings = await phonePeMappingsSchema.validateAsync(parsedMappings);
+
+    const result = await PhonePeImportService.categorizePhonePeImport(
+      sessionData.userId,
+      input.csv,
+      mappings.map((m: { key: string; account_id: number | string }) => ({
+        key: m.key,
+        account_id: BigInt(m.account_id),
+      }))
+    );
+    res.json(result);
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
 export default {
   getTransactionsForUser,
   getFilteredTrxByPage,
@@ -299,4 +360,6 @@ export default {
   importTransactionsStep0,
   importTransactionsStep1,
   importTransactionsStep2,
+  importPhonePePreview,
+  importPhonePeCategorize,
 };

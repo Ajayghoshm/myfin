@@ -23,6 +23,8 @@ app.use("/user/restore",
     limit: '100mb'
   })
 );
+// payload size exception for statement imports (e.g. PhonePe CSV upload)
+app.use("/trxs/import", express.json({ limit: '5mb' }));
 // set global json setup
 app.use("/", express.json());
 app.use("/",

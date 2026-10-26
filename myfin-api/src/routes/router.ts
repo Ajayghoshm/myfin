@@ -129,6 +129,8 @@ const router = (app: Express) => {
   trxRoutes.post("/import/step0", TransactionController.importTransactionsStep0);
   trxRoutes.post("/import/step1", TransactionController.importTransactionsStep1);
   trxRoutes.post("/import/step2", TransactionController.importTransactionsStep2);
+  trxRoutes.post("/import/phonepe/preview", TransactionController.importPhonePePreview);
+  trxRoutes.post("/import/phonepe/categorize", TransactionController.importPhonePeCategorize);
   //endregion
 
   //region INVEST ASSET ROUTES
