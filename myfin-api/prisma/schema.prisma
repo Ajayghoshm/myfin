@@ -265,6 +265,7 @@ model users {
   tags                       tags[]
   goals                      goals[]
   import_instrument_mappings import_instrument_mappings[]
+  payee_classifications      payee_classifications[]
   currency                   String                       @default("EUR")
 }
 
@@ -352,3 +353,12 @@ model import_instrument_mappings {
   @@unique([users_user_id, source, instrument_key])
 }
 
+model payee_classifications {
+  classification_id BigInt @id @default(autoincrement())
+  users_user_id     BigInt
+  payee_key         String @db.VarChar(255)
+  kind              String @db.VarChar(16)
+  users             users  @relation(fields: [users_user_id], references: [user_id], onDelete: Cascade)
+
+  @@unique([users_user_id, payee_key])
+}

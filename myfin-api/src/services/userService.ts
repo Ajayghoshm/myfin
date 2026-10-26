@@ -526,6 +526,13 @@ const userService = {
           })
         );
 
+        // Delete payee person/merchant corrections
+        promises.push(
+          prismaTx.payee_classifications.deleteMany({
+            where: { users_user_id: userId },
+          })
+        );
+
         // Delete import instrument mappings (they reference accounts)
         await prismaTx.import_instrument_mappings.deleteMany({
           where: { users_user_id: userId },

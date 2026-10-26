@@ -20,6 +20,7 @@ export default async () => {
     prisma.goals.deleteMany(),
     prisma.accounts.deleteMany(),
     prisma.otp_codes.deleteMany(),
+    prisma.payee_classifications.deleteMany(),
     prisma.users.deleteMany(),
   ]);
 };

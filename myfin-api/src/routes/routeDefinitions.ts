@@ -5,6 +5,7 @@ import BudgetController from '../controllers/budgetController.js';
 import CategoryController from '../controllers/categoryController.js';
 import EntityController from '../controllers/entityController.js';
 import GoalController from '../controllers/goalController.js';
+import InsightsController from '../controllers/insightsController.js';
 import InvestAssetsController from '../controllers/investAssetsController.js';
 import InvestReportsController from '../controllers/investReportsController.js';
 import InvestTransactionsController from '../controllers/investTransactionsController.js';
@@ -78,6 +79,16 @@ export const routeGroups: RouteGroup[] = [
     controller: UserController as ControllerModule,
     controllerSourceBaseUrl: new URL('../controllers/userController', import.meta.url).href,
     routes: [{ method: 'post', path: '/', handlerName: 'checkSessionValidity' }],
+  },
+  {
+    tag: 'Insights',
+    basePath: '/insights',
+    controller: InsightsController as ControllerModule,
+    controllerSourceBaseUrl: new URL('../controllers/insightsController', import.meta.url).href,
+    routes: [
+      { method: 'get', path: '/month', handlerName: 'getMonthInsights' },
+      { method: 'put', path: '/payee-classification', handlerName: 'setPayeeClassification' },
+    ],
   },
   {
     tag: 'Accounts',
