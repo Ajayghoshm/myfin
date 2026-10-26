@@ -108,6 +108,34 @@ export type TransactionListOptions = {
   type?: string;
 };
 
+/**
+ * FROM/JOIN/WHERE shared by the transactions list, its filtered count and bulk updates by filter,
+ * so "select all matching" always matches exactly what the list shows.
+ */
+const filteredTransactionsFrom = (userId: bigint, searchQuery: string, typeFilter: string | null) => {
+  const query = `%${searchQuery}%`;
+  return Prisma.sql`FROM transactions
+                      LEFT JOIN accounts ON accounts.account_id = transactions.accounts_account_from_id
+                      LEFT JOIN categories
+                                ON categories.category_id = transactions.categories_category_id
+                      LEFT JOIN entities ON entities.entity_id = transactions.entities_entity_id
+                      LEFT JOIN accounts acc_to
+                                ON acc_to.account_id = transactions.accounts_account_to_id
+                      LEFT JOIN accounts acc_from
+                                ON acc_from.account_id = transactions.accounts_account_from_id
+                      LEFT JOIN transaction_has_tags ON transaction_has_tags.transactions_transaction_id = transactions.transaction_id
+                      LEFT JOIN tags ON tags.tag_id = transaction_has_tags.tags_tag_id
+                    WHERE (acc_to.users_user_id = ${userId} OR acc_from.users_user_id = ${userId})
+                      AND (transactions.description LIKE ${query}
+                        OR acc_from.name LIKE ${query}
+                        OR acc_to.name LIKE ${query}
+                        OR (amount / 100) LIKE ${query}
+                        OR entities.name LIKE ${query}
+                        OR categories.name LIKE ${query}
+                        OR tags.name LIKE ${query})
+                      AND (${typeFilter} IS NULL OR transactions.type = ${typeFilter})`;
+};
+
 const getFilteredTransactionsByForUser = async (
   userId: bigint,
   page: number,
@@ -115,7 +143,6 @@ const getFilteredTransactionsByForUser = async (
   searchQuery: string,
   options: TransactionListOptions = {}
 ) => {
-  const query = `%${searchQuery}%`;
   const offsetValue = page * pageSize;
   const typeFilter = options.type ?? null;
   // ORDER BY can't be parameterised, so only whitelisted fragments are interpolated
@@ -149,27 +176,7 @@ const getFilteredTransactionsByForUser = async (
                                             accounts_account_to_id,
                                             acc_from.name               as account_from_name,
                                             GROUP_CONCAT(tags.name) as tag_names
-                                     FROM transactions
-                                            LEFT JOIN accounts ON accounts.account_id = transactions.accounts_account_from_id
-                                            LEFT JOIN categories
-                                                      ON categories.category_id = transactions.categories_category_id
-                                            LEFT JOIN entities ON entities.entity_id = transactions.entities_entity_id
-                                            LEFT JOIN accounts acc_to
-                                                      ON acc_to.account_id = transactions.accounts_account_to_id
-                                            LEFT JOIN accounts acc_from
-                                                      ON acc_from.account_id = transactions.accounts_account_from_id
-                                            LEFT JOIN transaction_has_tags ON transaction_has_tags.transactions_transaction_id = transactions.transaction_id
-                                            LEFT JOIN tags ON tags.tag_id = transaction_has_tags.tags_tag_id
-                                     WHERE (acc_to.users_user_id = ${userId} OR acc_from.users_user_id = ${userId})
-                                       AND (transactions.description LIKE
-                                            ${query} OR
-                                            acc_from.name LIKE ${query}
-                                       OR acc_to.name LIKE ${query}
-                                       OR (amount / 100) LIKE ${query}
-                                       OR entities.name LIKE ${query}
-                                       OR categories.name LIKE ${query}
-                                       OR tags.name LIKE ${query})
-                                       AND (${typeFilter} IS NULL OR transactions.type = ${typeFilter})
+                                     ${filteredTransactionsFrom(userId, searchQuery, typeFilter)}
                                      GROUP BY transaction_id
                                      ORDER BY ${orderBy}
                                      LIMIT ${pageSize} OFFSET ${offsetValue}`;
@@ -177,28 +184,7 @@ const getFilteredTransactionsByForUser = async (
   // count of total of filtered results
   const countQuery = prisma.$queryRaw`SELECT count(*) as 'count'
                                       FROM (SELECT transactions.date_timestamp, GROUP_CONCAT(tags.name) as tag_names
-                                            from transactions
-                                                   LEFT JOIN accounts ON accounts.account_id = transactions.accounts_account_from_id
-                                                   LEFT JOIN categories
-                                                             ON categories.category_id = transactions.categories_category_id
-                                                   LEFT JOIN entities ON entities.entity_id = transactions.entities_entity_id
-                                                   LEFT JOIN accounts acc_to
-                                                             ON acc_to.account_id = transactions.accounts_account_to_id
-                                                   LEFT JOIN accounts acc_from
-                                                             ON acc_from.account_id = transactions.accounts_account_from_id
-                                                   LEFT JOIN transaction_has_tags ON transaction_has_tags.transactions_transaction_id = transactions.transaction_id
-                                                   LEFT JOIN tags ON tags.tag_id = transaction_has_tags.tags_tag_id          
-                                            WHERE (acc_to.users_user_id = ${userId} OR acc_from.users_user_id = ${userId})
-                                              AND (transactions.description LIKE
-                                                   ${query} OR
-                                                   acc_from.name LIKE ${query}
-                                              OR acc_to.name LIKE ${query}
-                                              OR (amount / 100) LIKE ${query}
-                                              OR entities.name LIKE ${query}
-                                              OR categories.name LIKE
-                                                 ${query}
-                                              OR tags.name LIKE ${query})
-                                              AND (${typeFilter} IS NULL OR transactions.type = ${typeFilter})
+                                            ${filteredTransactionsFrom(userId, searchQuery, typeFilter)}
                                             GROUP BY transaction_id) trx`;
 
   const totalCountQuery = prisma.$queryRaw`SELECT count(*) as 'count'
@@ -976,9 +962,90 @@ LEFT JOIN accounts acc_from ON acc_from.account_id = transactions.accounts_accou
 WHERE acc_to.users_user_id = ${userId} OR acc_from.users_user_id = ${userId} `;
 };
 
+export type BulkUpdateSelection =
+  | { transaction_ids: bigint[]; filter?: undefined }
+  | { filter: { query: string; type?: string }; transaction_ids?: undefined };
+
+export type BulkUpdateChanges = {
+  category_id?: bigint | null;
+  entity_id?: bigint | null;
+  is_essential?: boolean;
+};
+
+/**
+ * Sets category, entity and/or the essential flag on many transactions at once.
+ * A field left undefined is unchanged; null clears it. Amounts, dates and accounts
+ * are never touched, so no balance recalculation is needed.
+ * @returns the number of transactions updated
+ */
+const bulkUpdateTransactions = async (
+  userId: bigint,
+  selection: BulkUpdateSelection,
+  changes: BulkUpdateChanges
+): Promise<number> => {
+  const data: Prisma.transactionsUncheckedUpdateManyInput = {};
+  if (changes.category_id !== undefined) data.categories_category_id = changes.category_id;
+  if (changes.entity_id !== undefined) data.entities_entity_id = changes.entity_id;
+  if (changes.is_essential !== undefined) data.is_essential = changes.is_essential;
+  if (Object.keys(data).length === 0) throw APIError.badRequest('No changes were given.');
+
+  return performDatabaseRequest(async (prismaTx) => {
+    if (
+      changes.category_id != null &&
+      (await prismaTx.categories.count({
+        where: { category_id: changes.category_id, users_user_id: userId },
+      })) === 0
+    ) {
+      throw APIError.notAuthorized();
+    }
+    if (
+      changes.entity_id != null &&
+      (await prismaTx.entities.count({
+        where: { entity_id: changes.entity_id, users_user_id: userId },
+      })) === 0
+    ) {
+      throw APIError.notAuthorized();
+    }
+
+    let transactionIds: bigint[];
+    if (selection.filter) {
+      const rows: Array<{ transaction_id: bigint }> = await prismaTx.$queryRaw`SELECT DISTINCT transactions.transaction_id
+        ${filteredTransactionsFrom(userId, selection.filter.query, selection.filter.type ?? null)}`;
+      transactionIds = rows.map((row) => row.transaction_id);
+    } else {
+      const requestedIds = [...new Set(selection.transaction_ids.map((id) => BigInt(id)))];
+      if (requestedIds.length === 0) throw APIError.badRequest('No transactions were selected.');
+      const owned = await prismaTx.transactions.count({
+        where: {
+          transaction_id: { in: requestedIds },
+          OR: [
+            { accounts_transactions_accounts_account_from_idToaccounts: { users_user_id: userId } },
+            { accounts_transactions_accounts_account_to_idToaccounts: { users_user_id: userId } },
+          ],
+        },
+      });
+      if (owned !== requestedIds.length) throw APIError.notAuthorized();
+      transactionIds = requestedIds;
+    }
+    if (transactionIds.length === 0) return 0;
+
+    const result = await prismaTx.transactions.updateMany({
+      where: { transaction_id: { in: transactionIds } },
+      data,
+    });
+    await UserService.setupLastUpdateTimestamp(
+      userId,
+      DateTimeUtils.getCurrentUnixTimestamp(),
+      prismaTx
+    );
+    return result.count;
+  });
+};
+
 export default {
   getTransactionsForUser,
   getFilteredTransactionsByForUser,
+  bulkUpdateTransactions,
   createTransactionStep0,
   createTransaction,
   deleteTransaction,

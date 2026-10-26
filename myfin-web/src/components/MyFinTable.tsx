@@ -1,5 +1,10 @@
 import React, { memo } from 'react';
-import { DataGrid, GridSlots, GridSortModel } from '@mui/x-data-grid';
+import {
+  DataGrid,
+  GridRowSelectionModel,
+  GridSlots,
+  GridSortModel,
+} from '@mui/x-data-grid';
 import Box from '@mui/material/Box';
 import LinearProgress from '@mui/material/LinearProgress';
 import { styled } from '@mui/material/styles';
@@ -17,6 +22,8 @@ type Props = {
   paginationModel: { pageSize: number; page: number };
   sortModel?: GridSortModel;
   onSortModelChange?: (model: GridSortModel) => void;
+  rowSelectionModel?: GridRowSelectionModel;
+  onRowSelectionModelChange?: (model: GridRowSelectionModel) => void;
   setPaginationModel: React.Dispatch<
     React.SetStateAction<{ pageSize: number; page: number }>
   >;
@@ -101,7 +108,15 @@ const MyFinTable = (props: Props) => {
           sortModel={props.sortModel}
           onSortModelChange={props.onSortModelChange}
           disableRowSelectionOnClick
-          onRowClick={(row) => props.onRowClicked?.(BigInt(row.id))}
+          checkboxSelection={!!props.onRowSelectionModelChange}
+          rowSelectionModel={props.rowSelectionModel}
+          onRowSelectionModelChange={props.onRowSelectionModelChange}
+          onRowClick={(row, event) => {
+            // ticking a row's checkbox must not open the row
+            if ((event.target as HTMLElement).closest('.MuiDataGrid-cellCheckbox'))
+              return;
+            props.onRowClicked?.(BigInt(row.id));
+          }}
           getRowHeight={() => 'auto'}
           getRowClassName={(params) =>
             params.row.highlight == true ? 'highlighted-row' : 'regular-row'

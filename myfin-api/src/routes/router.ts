@@ -121,6 +121,7 @@ const router = (app: Express) => {
   trxRoutes.post("/step1", TransactionController.createTransaction);
   trxRoutes.delete("/", TransactionController.deleteTransaction);
   trxRoutes.put("/", TransactionController.updateTransaction);
+  trxRoutes.put("/bulk", TransactionController.bulkUpdateTransactions);
   trxRoutes.get(
     "/inMonthAndCategory",
     TransactionController.getAllTransactionsForUserInCategoryAndInMonth

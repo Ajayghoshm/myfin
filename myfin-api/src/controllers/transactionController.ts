@@ -356,7 +356,48 @@ const importPhonePeCategorize = async (req: Request, res: Response, next: NextFu
   }
 };
 
+const bulkUpdateTransactionsSchema = joi
+  .object({
+    transaction_ids: joi.array().items(joi.number().integer().positive()).min(1).max(5000),
+    filter: joi.object({
+      query: joi.string().allow('').default(''),
+      type: joi
+        .string()
+        .valid(MYFIN.TRX_TYPES.EXPENSE, MYFIN.TRX_TYPES.INCOME, MYFIN.TRX_TYPES.TRANSFER)
+        .empty(''),
+    }),
+    category_id: joi.number().integer().positive().allow(null),
+    entity_id: joi.number().integer().positive().allow(null),
+    is_essential: joi.boolean(),
+  })
+  .xor('transaction_ids', 'filter');
+
+const bulkUpdateTransactions = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    const input = await bulkUpdateTransactionsSchema.validateAsync(req.body);
+    const toBigIntOrNull = (value?: number | null) =>
+      value === undefined ? undefined : value === null ? null : BigInt(value);
+    const updated = await TransactionService.bulkUpdateTransactions(
+      sessionData.userId,
+      input.filter
+        ? { filter: input.filter }
+        : { transaction_ids: input.transaction_ids.map((id: number) => BigInt(id)) },
+      {
+        category_id: toBigIntOrNull(input.category_id),
+        entity_id: toBigIntOrNull(input.entity_id),
+        is_essential: input.is_essential,
+      }
+    );
+    res.json({ updated });
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
 export default {
+  bulkUpdateTransactions,
   getTransactionsForUser,
   getFilteredTrxByPage,
   createTransactionStep0,

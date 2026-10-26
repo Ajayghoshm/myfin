@@ -13,10 +13,20 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { GridColDef, GridSortModel } from '@mui/x-data-grid';
+import {
+  GridColDef,
+  GridRowSelectionModel,
+  GridSortModel,
+} from '@mui/x-data-grid';
+import Alert from '@mui/material/Alert';
+import BulkEditTransactionsDialog from './BulkEditTransactionsDialog.tsx';
 import PageHeader from '../../components/PageHeader.tsx';
 import { useLoading } from '../../providers/LoadingProvider.tsx';
-import { useGetTransactions, useRemoveTransaction } from '../../services/trx/trxHooks.ts';
+import {
+  useBulkUpdateTransactions,
+  useGetTransactions,
+  useRemoveTransaction,
+} from '../../services/trx/trxHooks.ts';
 import {
   Tag,
   Transaction,
@@ -97,6 +107,30 @@ const Transactions = () => {
   useEffect(() => {
     setPaginationModel((model) => ({ ...model, page: 0 }));
   }, [sortModel, typeFilter]);
+
+  const emptySelection: GridRowSelectionModel = { type: 'include', ids: new Set() };
+  const [rowSelection, setRowSelection] =
+    useState<GridRowSelectionModel>(emptySelection);
+  // true when "select all matching" covers every page of the current search/filter
+  const [allMatchingSelected, setAllMatchingSelected] = useState(false);
+  const [isBulkEditOpen, setBulkEditOpen] = useState(false);
+  const bulkUpdateRequest = useBulkUpdateTransactions();
+
+  const clearSelection = () => {
+    setRowSelection(emptySelection);
+    setAllMatchingSelected(false);
+  };
+
+  // a selection only ever refers to what is currently listed
+  useEffect(() => {
+    clearSelection();
+  }, [
+    paginationModel.page,
+    paginationModel.pageSize,
+    searchQuery,
+    sortModel,
+    typeFilter,
+  ]);
   const removeTransactionRequest = useRemoveTransaction();
   const debouncedSearchQuery = useMemo(() => debounce(setSearchQuery, 300), []);
 
@@ -332,6 +366,50 @@ const Transactions = () => {
     return null;
   }
 
+  const pageIds = getTransactionsRequest.data.results.map(
+    (trx) => trx.transaction_id,
+  );
+  // row ids are bigints, the grid types them as GridRowId, so compare as strings
+  const selectedIdKeys = new Set([...rowSelection.ids].map(String));
+  const selectedIdsOnPage = pageIds.filter(
+    (id) => selectedIdKeys.has(String(id)) === (rowSelection.type === 'include'),
+  );
+  const matchingCount = Number(getTransactionsRequest.data.filtered_count);
+  const selectedCount = allMatchingSelected
+    ? matchingCount
+    : selectedIdsOnPage.length;
+  const isWholePageSelected =
+    pageIds.length > 0 && selectedIdsOnPage.length === pageIds.length;
+
+  const applyBulkEdit = (
+    changes: Parameters<typeof bulkUpdateRequest.mutate>[0],
+  ) => {
+    bulkUpdateRequest.mutate(
+      {
+        ...changes,
+        ...(allMatchingSelected
+          ? { filter: { query: searchQuery, type: typeFilter ?? undefined } }
+          : { transaction_ids: selectedIdsOnPage }),
+      },
+      {
+        onSuccess: (result) => {
+          snackbar.showSnackbar(
+            t('transactions.bulkEditSuccess', { count: result.updated }),
+            AlertSeverity.SUCCESS,
+          );
+          setBulkEditOpen(false);
+          clearSelection();
+        },
+        onError: () => {
+          snackbar.showSnackbar(
+            t('common.somethingWentWrongTryAgain'),
+            AlertSeverity.ERROR,
+          );
+        },
+      },
+    );
+  };
+
   function getChipColorForAmount(trx: Transaction): string {
     switch (inferTrxType(trx)) {
       case TransactionType.Expense:
@@ -493,11 +571,63 @@ const Transactions = () => {
             </ToggleButton>
           </ToggleButtonGroup>
         </Grid>
+        {selectedCount > 0 && (
+          <Grid size={12}>
+            <Alert
+              severity="info"
+              action={
+                <Stack direction="row" gap={1}>
+                  {isWholePageSelected &&
+                    !allMatchingSelected &&
+                    matchingCount > pageIds.length && (
+                      <Button
+                        size="small"
+                        onClick={() => setAllMatchingSelected(true)}
+                      >
+                        {t('transactions.selectAllMatching', {
+                          count: matchingCount,
+                        })}
+                      </Button>
+                    )}
+                  <Button size="small" onClick={clearSelection}>
+                    {t('transactions.clearSelection')}
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    onClick={() => setBulkEditOpen(true)}
+                  >
+                    {t('transactions.editSelected', { count: selectedCount })}
+                  </Button>
+                </Stack>
+              }
+            >
+              {allMatchingSelected
+                ? t('transactions.allMatchingSelected', {
+                    count: matchingCount,
+                  })
+                : t('transactions.selectedCount', { count: selectedCount })}
+            </Alert>
+          </Grid>
+        )}
+        {isBulkEditOpen && (
+          <BulkEditTransactionsDialog
+            isOpen={isBulkEditOpen}
+            selectedCount={selectedCount}
+            onClose={() => setBulkEditOpen(false)}
+            onApply={applyBulkEdit}
+          />
+        )}
         <Grid size={12}>
           <MyFinTable
             isRefetching={getTransactionsRequest.isRefetching}
             sortModel={sortModel}
             onSortModelChange={setSortModel}
+            rowSelectionModel={rowSelection}
+            onRowSelectionModelChange={(model) => {
+              setRowSelection(model);
+              setAllMatchingSelected(false);
+            }}
             rows={rows}
             columns={columns}
             itemCount={getTransactionsRequest.data.filtered_count}

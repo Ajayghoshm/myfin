@@ -3,6 +3,7 @@ import { queryClient } from '../../data/react-query.ts';
 import TrxServices, {
   AddTransactionRequest,
   AutoCategorizeTransactionRequest,
+  BulkUpdateTransactionsRequest,
   EditTransactionRequest,
   ImportTransactionsStep1Request,
   PhonePeCategorizeRequest,
@@ -229,5 +230,19 @@ export function useImportPhonePeCategorize() {
   return useMutation({
     mutationKey: [MUTATION_KEY_IMPORT_PHONEPE_CATEGORIZE],
     mutationFn: importPhonePeCategorize,
+  });
+}
+
+export function useBulkUpdateTransactions() {
+  async function bulkUpdateTransactions(request: BulkUpdateTransactionsRequest) {
+    const data = await TrxServices.bulkUpdateTransactions(request);
+    void queryClient.invalidateQueries({
+      queryKey: [QUERY_KEY_GET_TRANSACTIONS],
+    });
+    return data.data;
+  }
+
+  return useMutation({
+    mutationFn: bulkUpdateTransactions,
   });
 }

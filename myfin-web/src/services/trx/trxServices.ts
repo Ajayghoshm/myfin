@@ -252,7 +252,20 @@ const importPhonePeCategorize = (request: PhonePeCategorizeRequest) => {
   );
 };
 
+export type BulkUpdateTransactionsRequest = {
+  transaction_ids?: bigint[];
+  filter?: { query: string; type?: TransactionType };
+  category_id?: bigint | null;
+  entity_id?: bigint | null;
+  is_essential?: boolean;
+};
+
+const bulkUpdateTransactions = (request: BulkUpdateTransactionsRequest) => {
+  return axios.put<{ updated: number }>('/trxs/bulk', request);
+};
+
 export default {
+  bulkUpdateTransactions,
   getTransactions,
   removeTransaction,
   addTransactionStep0,
