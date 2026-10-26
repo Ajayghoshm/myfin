@@ -176,7 +176,7 @@ export type ImportTransactionsStep1Response = {
   accounts: Account[];
   categories: Category[];
   entities: Entity[];
-  fillData: RuleInstructions[];
+  fillData: (RuleInstructions & { external_id?: string })[];
 };
 
 const importTransactionsStep1 = (request: ImportTransactionsStep1Request) => {

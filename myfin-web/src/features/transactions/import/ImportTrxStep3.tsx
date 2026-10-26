@@ -34,10 +34,14 @@ const ImportTrxStep3 = (props: Props) => {
         {t('importTransactions.step3Label')}
       </Typography>
       <Typography variant="body1" component="div">
-        {t('importTransactions.step3Text', {
-          count: props.nrOfTrxImported,
-          accountName: props.accountName,
-        })}
+        {props.accountName
+          ? t('importTransactions.step3Text', {
+              count: props.nrOfTrxImported,
+              accountName: props.accountName,
+            })
+          : t('importTransactions.step3TextMulti', {
+              count: props.nrOfTrxImported,
+            })}
       </Typography>
       <Button
         variant="contained"

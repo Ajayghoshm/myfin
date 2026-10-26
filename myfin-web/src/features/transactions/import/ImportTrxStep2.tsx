@@ -49,6 +49,7 @@ type ImportedTrx = {
   accountFrom?: IdLabelPair;
   accountTo?: IdLabelPair;
   essential: boolean;
+  externalId?: string;
 };
 
 export type ImportTrxStep2Result = {
@@ -172,7 +173,7 @@ const ImportTrxStep2 = (props: Props) => {
   useEffect(() => {
     if (importTrxStep2Request.data) {
       props.onNext({
-        nrOfTrxImported: filteredTransactions.length,
+        nrOfTrxImported: importTrxStep2Request.data.imported,
         accountName:
           accounts.find((acc) => acc.id == props.data.selectedAccountId)
             ?.label || '',
@@ -199,6 +200,7 @@ const ImportTrxStep2 = (props: Props) => {
         (account) => account.id == item.selectedAccountToID,
       ),
       essential: item.isEssential == true,
+      externalId: item.external_id,
     }));
 
     setTransactions(trx);
@@ -476,6 +478,7 @@ const ImportTrxStep2 = (props: Props) => {
           TransactionType.Transfer,
         account_from_id: trx.accountFrom?.id,
         account_to_id: trx.accountTo?.id,
+        external_id: trx.externalId,
       })),
     );
   };
@@ -492,12 +495,16 @@ const ImportTrxStep2 = (props: Props) => {
           descriptionText={t('transactions.importedTransactionsCnt', {
             count: filteredTransactions.length,
           })}
-          alert={t('transactions.newBalanceForAccountValue', {
-            account: accounts.find(
-              (acc) => props.data.selectedAccountId == acc.id,
-            )?.label,
-            value: formatNumberAsCurrency.invoke(newAccountBalance),
-          })}
+          alert={
+            props.data.selectedAccountId === undefined
+              ? ''
+              : t('transactions.newBalanceForAccountValue', {
+                  account: accounts.find(
+                    (acc) => props.data.selectedAccountId == acc.id,
+                  )?.label,
+                  value: formatNumberAsCurrency.invoke(newAccountBalance),
+                })
+          }
           positiveText={t('transactions.import')}
         />
       )}
@@ -507,6 +514,15 @@ const ImportTrxStep2 = (props: Props) => {
             <Trans i18nKey="importTransactions.step2Text" />
           </Typography>
         </Grid>
+        {(props.data.duplicateRows ?? 0) > 0 && (
+          <Grid>
+            <Typography variant="body2" component="div">
+              {t('importTransactions.skippedDuplicates', {
+                count: props.data.duplicateRows,
+              })}
+            </Typography>
+          </Grid>
+        )}
         <Grid size={12}>
           <MyFinStaticTable
             isRefetching={false}
