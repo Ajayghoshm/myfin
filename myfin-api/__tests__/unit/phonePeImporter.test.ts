@@ -77,11 +77,36 @@ describe("parsePhonePeCsv", () => {
   });
 
   test("handles a leading BOM", () => {
-    expect(parsePhonePeCsv("﻿" + fixture)).toHaveLength(18);
+    expect(parsePhonePeCsv("\uFEFF" + fixture)).toHaveLength(18);
   });
 
   test("throws a 400 when the header row is missing", () => {
     expect(() => parsePhonePeCsv("foo,bar\n1,2")).toThrowError(expect.objectContaining({ code: 400 }));
+  });
+
+  test("throws 400 naming the line for a bad date mid-file", () => {
+    const csv =
+      HEADER +
+      csvRow("Oct 26, 2026", "01:46 pm", "Paid to A", "T1", "DEBIT", "Paid by X1", "1") +
+      csvRow("Foo 99, 2026", "01:46 pm", "Paid to B", "T2", "DEBIT", "Paid by X1", "1") +
+      csvRow("Oct 26, 2026", "01:46 pm", "Paid to C", "T3", "DEBIT", "Paid by X1", "1");
+    expect(() => parsePhonePeCsv(csv)).toThrowError(
+      expect.objectContaining({ code: 400, message: expect.stringContaining("line 3") }),
+    );
+  });
+
+  test("throws 400 for an amount like 1,234", () => {
+    const csv = HEADER + csvRow("Oct 26, 2026", "01:46 pm", "Paid to A", "T1", "DEBIT", "Paid by X1", "1,234");
+    expect(() => parsePhonePeCsv(csv)).toThrowError(expect.objectContaining({ code: 400 }));
+  });
+
+  test("throws 400 for a zero amount or unknown direction", () => {
+    expect(() =>
+      parsePhonePeCsv(HEADER + csvRow("Oct 26, 2026", "01:46 pm", "x", "T1", "DEBIT", "Paid by X1", "0")),
+    ).toThrowError(expect.objectContaining({ code: 400 }));
+    expect(() =>
+      parsePhonePeCsv(HEADER + csvRow("Oct 26, 2026", "01:46 pm", "x", "T1", "REFUND", "Paid by X1", "5")),
+    ).toThrowError(expect.objectContaining({ code: 400 }));
   });
 
   test("handles CRLF line endings", () => {
@@ -115,7 +140,7 @@ describe("classifyPhonePeRow", () => {
   });
 
   test("Requested by DEBIT is an expense", () => {
-    const c = classifyPhonePeRow({ ...base, description: "Requested by Utthara M" });
+    const c = classifyPhonePeRow({ ...base, description: "Requested by PERSON A" });
     expect(c).toMatchObject({ type: "E", fromKey: "XXXXXXXXXXX3300", toKey: null });
   });
 });

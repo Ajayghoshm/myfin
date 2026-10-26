@@ -59,18 +59,24 @@ const splitCsvLine = (line: string): string[] => {
   return fields;
 };
 
-const parseDataRow = (line: string): PhonePeRow | null => {
+/** Returns null when the line is not an 8-field row; throws when it is one but is malformed. */
+const parseDataRow = (line: string, lineNo: number): PhonePeRow | null => {
   const f = splitCsvLine(line);
   if (f.length !== 8) return null;
+  const invalid = (what: string) =>
+    APIError.badRequest(`Invalid PhonePe statement: ${what} on line ${lineNo}`);
   const [dateStr, timeStr, details, txnId, , type, instrument, amountStr] = f.map((s) => s.trim());
 
-  const parsed = dayjs.tz(`${dateStr.replace(/^Sept\b/, "Sep")} ${timeStr}`, "MMM DD, YYYY hh:mm a", TIMEZONE);
-  if (!parsed.isValid()) return null;
+  // Parse in UTC first (non-throwing, strict), then re-interpret the wall-clock time as IST.
+  const wall = dayjs.utc(`${dateStr.replace(/^Sept\b/, "Sep")} ${timeStr}`, "MMM DD, YYYY hh:mm a", true);
+  if (!wall.isValid()) throw invalid("unparseable date/time");
+  const parsed = dayjs.tz(wall.format("YYYY-MM-DD HH:mm"), TIMEZONE);
 
   const direction = type.toUpperCase();
-  if (direction !== "DEBIT" && direction !== "CREDIT") return null;
+  if (direction !== "DEBIT" && direction !== "CREDIT") throw invalid("unknown transaction type");
   const amount = Number(amountStr);
-  if (!txnId || !Number.isFinite(amount)) return null;
+  if (amountStr === "" || !Number.isFinite(amount) || amount <= 0) throw invalid("invalid amount");
+  if (!txnId) throw invalid("missing transaction id");
 
   return {
     externalId: `phonepe:${txnId}:${direction}`,
@@ -83,16 +89,17 @@ const parseDataRow = (line: string): PhonePeRow | null => {
 };
 
 export function parsePhonePeCsv(text: string): PhonePeRow[] {
-  const lines = text.replace(/^﻿/, "").split(/\r?\n/);
+  const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/);
   const headerIdx = lines.findIndex((l) => l.trim().startsWith(HEADER_PREFIX));
   if (headerIdx < 0) {
     throw APIError.badRequest("Invalid PhonePe statement: header row not found");
   }
 
   const rows: PhonePeRow[] = [];
-  for (const line of lines.slice(headerIdx + 1)) {
+  for (let i = headerIdx + 1; i < lines.length; i++) {
+    const line = lines[i];
     if (line.trim() === "") continue;
-    const row = parseDataRow(line);
+    const row = parseDataRow(line, i + 1);
     if (!row) break; // footer / disclaimer
     rows.push(row);
   }
