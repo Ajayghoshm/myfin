@@ -28,7 +28,7 @@ const SummaryCards = ({ ym, data }: Props) => {
   const cards: Array<{
     metric: Metric;
     title: string;
-    link: string;
+    link: string | null;
     higherIsBetter: boolean;
   }> = [
     {
@@ -46,13 +46,14 @@ const SummaryCards = ({ ym, data }: Props) => {
     {
       metric: 'savings',
       title: t('insights.savings'),
-      link: buildTransactionsLink({ month: ym }),
+      // Not a transaction set: no drill-down (a month-only link would include transfers).
+      link: null,
       higherIsBetter: true,
     },
     {
       metric: 'savings_rate',
       title: t('insights.savingsRate'),
-      link: buildTransactionsLink({ month: ym }),
+      link: null,
       higherIsBetter: true,
     },
   ];

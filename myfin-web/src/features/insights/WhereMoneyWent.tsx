@@ -287,7 +287,8 @@ const ByPerson = ({ ym, data }: Props) => {
                       : theme.palette.success.main,
                 }}
               >
-                <FigureLink to={payeeLink(ym, row.payee_key)}>
+                {/* Net mixes E and I rows: no single drill-down matches it. */}
+                <FigureLink to={null}>
                   {formatCurrency.invoke(row.net)}
                 </FigureLink>
               </TableCell>
