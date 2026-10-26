@@ -253,7 +253,10 @@
     "feesDeductedInUnits": "Unités déduites pour frais/taxes",
     "fillAmountOrUnits": "Renseignez soit le montant, soit les unités, pas les deux",
     "addATagPlaceholder": "Ajouter une étiquette",
-    "addAnotherTagPlaceholder": "Ajouter une autre étiquette"
+    "addAnotherTagPlaceholder": "Ajouter une autre étiquette",
+    "filterUncategorised": "Sans catégorie",
+    "filterCategoryFallback": "Catégorie {{id}}",
+    "filterAccountFallback": "Compte {{id}}"
   },
   "importTransactions": {
     "importTransactions": "Importer des transactions",

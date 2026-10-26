@@ -64,20 +64,55 @@ import GenericConfirmationDialog from '../../components/GenericConfirmationDialo
 import AddEditTransactionDialog from './AddEditTransactionDialog.tsx';
 import IconButton from '@mui/material/IconButton';
 import { inferTrxType } from '../../utils/transactionUtils.ts';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { debounce } from 'lodash';
 import { ROUTE_IMPORT_TRX } from '../../providers/RoutesProvider.tsx';
 import { CategoryIcon } from '../../services/category/categoryIcons.tsx';
 import AccountIconBadge from '../../services/account/AccountIconBadge.tsx';
 import { useUserData } from '../../providers/UserProvider.tsx';
+import { useGetCategories } from '../../services/category/CategoryHooks.tsx';
+import { isYearMonth, istMonthRange, parseYearMonth } from '../../utils/istMonth.ts';
+import { formatMonthLabel } from '../insights/insightsFormat.ts';
+
+const ID_REGEX = /^\d+$/;
+const TRX_TYPES: string[] = Object.values(TransactionType);
+
+/** Drill-down filters read from the URL; invalid values are ignored. */
+function readUrlFilters(searchParams: URLSearchParams) {
+  const month = searchParams.get('month');
+  const type = searchParams.get('type');
+  const category = searchParams.get('category');
+  const payee = searchParams.get('payee');
+  const account = searchParams.get('account');
+  return {
+    month: isYearMonth(month) ? month : null,
+    type: type && TRX_TYPES.includes(type) ? (type as TransactionType) : null,
+    category:
+      category && (category === 'none' || ID_REGEX.test(category))
+        ? category
+        : null,
+    payee: payee ? payee : null,
+    account: account && ID_REGEX.test(account) ? account : null,
+  };
+}
+
+type UrlFilterParam = 'month' | 'type' | 'category' | 'payee' | 'account';
 
 const Transactions = () => {
   const theme = useTheme();
   const { userAccounts } = useUserData();
   const loader = useLoading();
   const snackbar = useSnackbar();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  // the URL is the single source of truth for drill-down filters
+  const urlFilters = useMemo(
+    () => readUrlFilters(searchParams),
+    [searchParams],
+  );
+  const typeFilter = urlFilters.type;
+  const getCategoriesRequest = useGetCategories();
   const [paginationModel, setPaginationModel] = useState({
     pageSize: 20,
     page: 0,
@@ -88,7 +123,33 @@ const Transactions = () => {
   const [isAddEditDialogOpen, setEditDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortModel, setSortModel] = useState<GridSortModel>([]);
-  const [typeFilter, setTypeFilter] = useState<TransactionType | null>(null);
+  const setUrlFilter = (param: UrlFilterParam, value: string | null) => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (value === null) next.delete(param);
+        else next.set(param, value);
+        return next;
+      },
+      { replace: true },
+    );
+  };
+  // structured filters shared by the list request and "select all matching"
+  const structuredFilter = useMemo(() => {
+    const range = urlFilters.month ? istMonthRange(urlFilters.month) : null;
+    return {
+      dateFrom: range?.from,
+      dateTo: range?.to,
+      categoryId: urlFilters.category ?? undefined,
+      payeeKey: urlFilters.payee ?? undefined,
+      accountId: urlFilters.account ?? undefined,
+    };
+  }, [
+    urlFilters.month,
+    urlFilters.category,
+    urlFilters.payee,
+    urlFilters.account,
+  ]);
   const listOptions: TransactionListOptions = useMemo(() => {
     const sort = sortModel[0];
     return {
@@ -101,8 +162,9 @@ const Transactions = () => {
         : undefined,
       sortDir: sort?.sort ?? undefined,
       type: typeFilter ?? undefined,
+      ...structuredFilter,
     };
-  }, [sortModel, typeFilter]);
+  }, [sortModel, typeFilter, structuredFilter]);
   const getTransactionsRequest = useGetTransactions(
     paginationModel.page,
     paginationModel.pageSize,
@@ -113,7 +175,7 @@ const Transactions = () => {
   // a new sort or filter starts from the first page
   useEffect(() => {
     setPaginationModel((model) => ({ ...model, page: 0 }));
-  }, [sortModel, typeFilter]);
+  }, [sortModel, typeFilter, structuredFilter]);
 
   const emptySelection: GridRowSelectionModel = { type: 'include', ids: new Set() };
   const [rowSelection, setRowSelection] =
@@ -137,6 +199,7 @@ const Transactions = () => {
     searchQuery,
     sortModel,
     typeFilter,
+    structuredFilter,
   ]);
   const removeTransactionRequest = useRemoveTransaction();
   const debouncedSearchQuery = useMemo(() => debounce(setSearchQuery, 300), []);
@@ -421,7 +484,19 @@ const Transactions = () => {
       {
         ...changes,
         ...(allMatchingSelected
-          ? { filter: { query: searchQuery, type: typeFilter ?? undefined } }
+          ? {
+              // every active list filter, so the update covers exactly
+              // the rows the list matches
+              filter: {
+                query: searchQuery,
+                type: typeFilter ?? undefined,
+                date_from: structuredFilter.dateFrom,
+                date_to: structuredFilter.dateTo,
+                category_id: structuredFilter.categoryId,
+                payee_key: structuredFilter.payeeKey,
+                account_id: structuredFilter.accountId,
+              },
+            }
           : { transaction_ids: selectedIdsOnPage }),
       },
       {
@@ -453,6 +528,40 @@ const Transactions = () => {
       default:
         return 'default';
     }
+  }
+
+  const filterChips: { param: UrlFilterParam; label: string }[] = [];
+  if (urlFilters.month) {
+    const { year, month } = parseYearMonth(urlFilters.month);
+    filterChips.push({
+      param: 'month',
+      label: formatMonthLabel(year, month, i18n.language),
+    });
+  }
+  if (urlFilters.category) {
+    const categoryId = urlFilters.category;
+    filterChips.push({
+      param: 'category',
+      label:
+        categoryId === 'none'
+          ? t('transactions.filterUncategorised')
+          : (getCategoriesRequest.data?.find(
+              (cat) => String(cat.category_id) === categoryId,
+            )?.name ??
+            t('transactions.filterCategoryFallback', { id: categoryId })),
+    });
+  }
+  if (urlFilters.payee) {
+    filterChips.push({ param: 'payee', label: urlFilters.payee });
+  }
+  if (urlFilters.account) {
+    const accountId = urlFilters.account;
+    filterChips.push({
+      param: 'account',
+      label:
+        userAccounts?.find((acc) => String(acc.account_id) === accountId)
+          ?.name ?? t('transactions.filterAccountFallback', { id: accountId }),
+    });
   }
 
   const rows = (() => {
@@ -598,7 +707,7 @@ const Transactions = () => {
             value={typeFilter ?? 'all'}
             onChange={(_event, value: TransactionType | 'all' | null) => {
               if (value === null) return;
-              setTypeFilter(value === 'all' ? null : value);
+              setUrlFilter('type', value === 'all' ? null : value);
             }}
           >
             <ToggleButton value="all">{t('transactions.filterAll')}</ToggleButton>
@@ -613,6 +722,21 @@ const Transactions = () => {
             </ToggleButton>
           </ToggleButtonGroup>
         </Grid>
+        {filterChips.length > 0 && (
+          <Grid size={12}>
+            <Stack direction="row" gap={1} flexWrap="wrap">
+              {filterChips.map((chip) => (
+                <Chip
+                  key={chip.param}
+                  label={chip.label}
+                  color="primary"
+                  variant="outlined"
+                  onDelete={() => setUrlFilter(chip.param, null)}
+                />
+              ))}
+            </Stack>
+          </Grid>
+        )}
         {selectedCount > 0 && (
           <Grid size={12}>
             <Alert

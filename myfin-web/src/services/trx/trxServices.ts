@@ -47,6 +47,15 @@ export type TransactionListOptions = {
   sortBy?: TransactionSortField;
   sortDir?: 'asc' | 'desc';
   type?: TransactionType;
+  /** epoch seconds, inclusive */
+  dateFrom?: number;
+  /** epoch seconds, exclusive */
+  dateTo?: number;
+  /** category id or 'none' (uncategorised) */
+  categoryId?: string;
+  payeeKey?: string;
+  /** matches either side of a transaction */
+  accountId?: string;
 };
 
 const getTransactions = (
@@ -62,6 +71,11 @@ const getTransactions = (
       sort_by: options.sortBy,
       sort_dir: options.sortDir,
       type: options.type,
+      date_from: options.dateFrom,
+      date_to: options.dateTo,
+      category_id: options.categoryId,
+      payee_key: options.payeeKey,
+      account_id: options.accountId,
     },
   });
 };
@@ -255,7 +269,15 @@ const importPhonePeCategorize = (request: PhonePeCategorizeRequest) => {
 
 export type BulkUpdateTransactionsRequest = {
   transaction_ids?: bigint[];
-  filter?: { query: string; type?: TransactionType };
+  filter?: {
+    query: string;
+    type?: TransactionType;
+    date_from?: number;
+    date_to?: number;
+    category_id?: string;
+    payee_key?: string;
+    account_id?: string;
+  };
   category_id?: bigint | null;
   entity_id?: bigint | null;
   is_essential?: boolean;
