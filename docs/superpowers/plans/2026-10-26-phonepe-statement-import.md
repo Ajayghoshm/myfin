@@ -85,9 +85,9 @@
   - `"Sept 30, 2026","09:33 pm"` parses to 30 Sep 2026, 21:33 IST.
   - `"12:48 am"` → hour 0.
   - `"4837.55"` → `4837.55` exactly.
-  - `"Paid to AKSHATA  CHABBI"` → `'Paid to AKSHATA CHABBI'`.
+  - `"Paid to PERSON  B"` → `'Paid to PERSON B'`.
   - `"Paid to VEG BASKET "` → `'Paid to VEG BASKET'`.
-  - `"Paid to Ambili 🌛"` keeps the emoji.
+  - `"Paid to PERSON C 🌛"` keeps the emoji.
   - `"Paid by UPI Lite"` → `'UPI Lite'`.
   - `"Credited to XXXXXXXXXXX3300"` → `'XXXXXXXXXXX3300'`.
   - Text with a leading BOM still parses.
@@ -96,7 +96,7 @@
     - `Add money UPI Lite` / DEBIT / `XXXXXXXXXXX3300` → `{type:'T', fromKey:'XXXXXXXXXXX3300', toKey:'UPI Lite'}`.
     - `Credit card bill paid XXXXXXXXXXXX2001` → `{type:'T', fromKey:'XXXXXXXXXXX3300', toKey:'XXXXXXXXXXXX2001'}`.
     - CREDIT → `{type:'I', fromKey:null, toKey:instrument}`.
-    - `Requested by Utthara M` / DEBIT → `{type:'E', fromKey:instrument, toKey:null}`.
+    - `Requested by PERSON A` / DEBIT → `{type:'E', fromKey:instrument, toKey:null}`.
   - `instrumentKeysOf` returns distinct keys, including transfer targets.
 - [ ] **Step 2:** `npm run test:unit:run -- phonePeImporter`. Expected: FAIL (module not found).
 - [ ] **Step 3: Implement.** Use a small quote-aware line parser: fields are `"`-quoted and may contain commas. Use dayjs with the `utc`, `timezone` and `customParseFormat` plugins (already in the `dayjs` dependency). Before parsing, replace `Sept` with `Sep`, then use the format `MMM DD, YYYY hh:mm a`. A data row must have 8 fields and a parseable date. Stop collecting rows at the first non-blank line after the header that is not a data row.

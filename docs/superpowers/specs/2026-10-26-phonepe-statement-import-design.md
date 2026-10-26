@@ -39,14 +39,14 @@ The goal: upload the PhonePe CSV once a month, check a review screen, and have e
 A CSV exported from the PhonePe app. Structure:
 
 ```
-Transaction Statement for 99XXXXXXXX
+Transaction Statement for 9999999999
 Duration,"26 Sept, 2026 - 26 Oct, 2026"
 
 Date,Time,Transaction Details,Transaction ID,UTR,Transaction Type,Credit/debit instrument,Amount
-"Oct 26, 2026","01:46 pm","Paid to SWIGGY","T2610261346425001911421","111270645076","DEBIT","Paid by XXXXXXXXXXX3300","121"
-"Oct 14, 2026","02:42 pm","Received from Abishek E K","T2610141442574594348185","628771981784","CREDIT","Credited to XXXXXXXXXXX3300","190"
-"Oct 08, 2026","01:03 pm","Add money UPI Lite","W2610081303177861357192","326040619687","DEBIT","Paid by XXXXXXXXXXX3300","4998"
-"Oct 12, 2026","05:15 pm","Credit card bill paid XXXXXXXXXXXX2001","NB2610…","033361874285","DEBIT","Paid by XXXXXXXXXXX3300","354"
+"Oct 26, 2026","01:46 pm","Paid to SWIGGY","T2610261346000000000001","100000000001","DEBIT","Paid by XXXXXXXXXXX3300","121"
+"Oct 14, 2026","02:42 pm","Received from PERSON A","T2610141442000000000002","100000000002","CREDIT","Credited to XXXXXXXXXXX3300","190"
+"Oct 08, 2026","01:03 pm","Add money UPI Lite","W2610081303000000000003","100000000003","DEBIT","Paid by XXXXXXXXXXX3300","4998"
+"Oct 12, 2026","05:15 pm","Credit card bill paid XXXXXXXXXXXX2001","NB2610…","100000000004","DEBIT","Paid by XXXXXXXXXXX3300","354"
 ...
 
 This is an automatically generated statement. ...
@@ -58,7 +58,7 @@ Parsing notes:
 - Skip everything before the header row (`Date,Time,Transaction Details,…`) and every line after the data that doesn't parse as a data row (the footer and disclaimer).
 - Month names include `Sept` (four letters) as well as the usual three-letter forms.
 - Amounts are decimal rupees with no thousands separator (`4837.55`, `121`). Keep them as decimal numbers all the way to save. `createTransaction` already converts to the stored integer form (`convertFloatToBigInteger`), so converting in the parser would make amounts 100x too large.
-- Descriptions can have trailing or double spaces (`"VEG BASKET "`, `"AKSHATA  CHABBI"`) and emoji (`"Ambili 🌛"`). Trim the description and collapse repeated spaces; keep the emoji.
+- Descriptions can have trailing or double spaces (`"VEG BASKET "`, `"PERSON  B"`) and emoji (`"PERSON C 🌛"`). Trim the description and collapse repeated spaces; keep the emoji.
 - Instrument column: strip the `Paid by ` / `Credited to ` prefix. What remains (`XXXXXXXXXXX3300`, `UPI Lite`, `653001XXXXXXXX73`) is the **instrument key**.
 - Transaction IDs have several prefixes (`T`, `D`, `NB`, `W`, `OLEX`, `R…`). Treat them as opaque strings.
 - Date/time: combine Date and Time and interpret them in Asia/Kolkata (my call; PhonePe statements are IST).
