@@ -239,7 +239,11 @@
     "deductFeesFromTransaction": "Descontar taxas/impostos da transação",
     "generated_split_invest_trx_observations": "Taxas/impostos para transação de {{units}} {{ticker}}",
     "addATagPlaceholder": "Adicione uma tag",
-    "addAnotherTagPlaceholder": "Adicione outra tag"
+    "addAnotherTagPlaceholder": "Adicione outra tag",
+    "filterAll": "Todas",
+    "filterDebit": "Débito",
+    "filterCredit": "Crédito",
+    "filterTransfer": "Transferência"
   },
   "importTransactions": {
     "importTransactions": "Importar Transações",

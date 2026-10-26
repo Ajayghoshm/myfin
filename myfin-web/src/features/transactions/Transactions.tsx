@@ -1,4 +1,10 @@
-import { ListItem, Tooltip, useTheme } from '@mui/material';
+import {
+  ListItem,
+  ToggleButton,
+  ToggleButtonGroup,
+  Tooltip,
+  useTheme,
+} from '@mui/material';
 import Grid from '@mui/material/Grid';
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
@@ -7,11 +13,16 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { GridColDef } from '@mui/x-data-grid';
+import { GridColDef, GridSortModel } from '@mui/x-data-grid';
 import PageHeader from '../../components/PageHeader.tsx';
 import { useLoading } from '../../providers/LoadingProvider.tsx';
 import { useGetTransactions, useRemoveTransaction } from '../../services/trx/trxHooks.ts';
-import { Tag, Transaction, TransactionType } from '../../services/trx/trxServices.ts';
+import {
+  Tag,
+  Transaction,
+  TransactionListOptions,
+  TransactionType,
+} from '../../services/trx/trxServices.ts';
 import React, { memo, useEffect, useMemo, useState } from 'react';
 import {
   AddCircleOutline,
@@ -59,11 +70,33 @@ const Transactions = () => {
   const [isRemoveDialogOpen, setRemoveDialogOpen] = useState(false);
   const [isAddEditDialogOpen, setEditDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortModel, setSortModel] = useState<GridSortModel>([]);
+  const [typeFilter, setTypeFilter] = useState<TransactionType | null>(null);
+  const listOptions: TransactionListOptions = useMemo(() => {
+    const sort = sortModel[0];
+    return {
+      sortBy: sort
+        ? sort.field === 'value'
+          ? 'amount'
+          : sort.field === 'flow'
+            ? 'type'
+            : undefined
+        : undefined,
+      sortDir: sort?.sort ?? undefined,
+      type: typeFilter ?? undefined,
+    };
+  }, [sortModel, typeFilter]);
   const getTransactionsRequest = useGetTransactions(
     paginationModel.page,
     paginationModel.pageSize,
     searchQuery,
+    listOptions,
   );
+
+  // a new sort or filter starts from the first page
+  useEffect(() => {
+    setPaginationModel((model) => ({ ...model, page: 0 }));
+  }, [sortModel, typeFilter]);
   const removeTransactionRequest = useRemoveTransaction();
   const debouncedSearchQuery = useMemo(() => debounce(setSearchQuery, 300), []);
 
@@ -171,7 +204,8 @@ const Transactions = () => {
       flex: 200,
       minWidth: 200,
       editable: false,
-      sortable: false,
+      sortable: true,
+      sortingOrder: ['desc', 'asc', null],
       renderCell: (params) => (
         <Stack>
           <Stack direction="row" alignItems="center" gap={0.5}>
@@ -250,7 +284,8 @@ const Transactions = () => {
       flex: 170,
       minWidth: 100,
       editable: false,
-      sortable: false,
+      sortable: true,
+      sortingOrder: ['desc', 'asc', null],
       renderCell: (params) => (
         <Chip
           color={params.value.chipColor}
@@ -437,8 +472,32 @@ const Transactions = () => {
           />
         </Grid>
         <Grid size={12}>
+          <ToggleButtonGroup
+            size="small"
+            exclusive
+            value={typeFilter ?? 'all'}
+            onChange={(_event, value: TransactionType | 'all' | null) => {
+              if (value === null) return;
+              setTypeFilter(value === 'all' ? null : value);
+            }}
+          >
+            <ToggleButton value="all">{t('transactions.filterAll')}</ToggleButton>
+            <ToggleButton value={TransactionType.Expense}>
+              {t('transactions.filterDebit')}
+            </ToggleButton>
+            <ToggleButton value={TransactionType.Income}>
+              {t('transactions.filterCredit')}
+            </ToggleButton>
+            <ToggleButton value={TransactionType.Transfer}>
+              {t('transactions.filterTransfer')}
+            </ToggleButton>
+          </ToggleButtonGroup>
+        </Grid>
+        <Grid size={12}>
           <MyFinTable
             isRefetching={getTransactionsRequest.isRefetching}
+            sortModel={sortModel}
+            onSortModelChange={setSortModel}
             rows={rows}
             columns={columns}
             itemCount={getTransactionsRequest.data.filtered_count}

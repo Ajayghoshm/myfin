@@ -40,11 +40,27 @@ export type Tag = {
   description?: string;
 };
 
-const getTransactions = (page: number, page_size?: number, query?: string) => {
+export type TransactionSortField = 'date' | 'amount' | 'type';
+
+export type TransactionListOptions = {
+  sortBy?: TransactionSortField;
+  sortDir?: 'asc' | 'desc';
+  type?: TransactionType;
+};
+
+const getTransactions = (
+  page: number,
+  page_size?: number,
+  query?: string,
+  options: TransactionListOptions = {},
+) => {
   return axios.get<TransactionsPageResponse>(`/trxs/filteredByPage/${page}`, {
     params: {
       page_size,
       query,
+      sort_by: options.sortBy,
+      sort_dir: options.sortDir,
+      type: options.type,
     },
   });
 };

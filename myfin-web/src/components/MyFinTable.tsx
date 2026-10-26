@@ -1,5 +1,5 @@
 import React, { memo } from 'react';
-import { DataGrid, GridSlots } from '@mui/x-data-grid';
+import { DataGrid, GridSlots, GridSortModel } from '@mui/x-data-grid';
 import Box from '@mui/material/Box';
 import LinearProgress from '@mui/material/LinearProgress';
 import { styled } from '@mui/material/styles';
@@ -15,6 +15,8 @@ type Props = {
   columns: GridColDef[];
   itemCount: number;
   paginationModel: { pageSize: number; page: number };
+  sortModel?: GridSortModel;
+  onSortModelChange?: (model: GridSortModel) => void;
   setPaginationModel: React.Dispatch<
     React.SetStateAction<{ pageSize: number; page: number }>
   >;
@@ -95,6 +97,9 @@ const MyFinTable = (props: Props) => {
           paginationModel={paginationModel}
           pageSizeOptions={[5, 10, 15, 20, 50, 100]}
           onPaginationModelChange={setPaginationModel}
+          sortingMode={props.onSortModelChange ? 'server' : 'client'}
+          sortModel={props.sortModel}
+          onSortModelChange={props.onSortModelChange}
           disableRowSelectionOnClick
           onRowClick={(row) => props.onRowClicked?.(BigInt(row.id))}
           getRowHeight={() => 'auto'}

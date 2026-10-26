@@ -38,6 +38,12 @@ const getFilteredTrxByPageSchema = joi
   .object({
     page_size: joi.number().default(MYFIN.DEFAULT_TRANSACTIONS_FETCH_LIMIT).min(1).max(300),
     query: joi.string().empty('').default(''),
+    sort_by: joi.string().valid('date', 'amount', 'type').empty('').default('date'),
+    sort_dir: joi.string().valid('asc', 'desc').empty('').default('desc'),
+    type: joi
+      .string()
+      .valid(MYFIN.TRX_TYPES.EXPENSE, MYFIN.TRX_TYPES.INCOME, MYFIN.TRX_TYPES.TRANSFER)
+      .empty(''),
   })
   .unknown(true);
 
@@ -49,7 +55,8 @@ const getFilteredTrxByPage = async (req, res, next) => {
       sessionData.userId,
       req.params.page,
       trx.page_size,
-      trx.query
+      trx.query,
+      { sortBy: trx.sort_by, sortDir: trx.sort_dir, type: trx.type }
     );
     res.send(trxList);
   } catch (err) {

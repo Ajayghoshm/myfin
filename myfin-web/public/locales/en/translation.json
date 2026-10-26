@@ -239,7 +239,11 @@
     "deductFeesFromTransaction": "Deduct fees/taxes from transaction",
     "generated_split_invest_trx_observations": "Fees/taxes for {{units}} {{ticker}} transaction",
     "addATagPlaceholder": "Add a tag",
-    "addAnotherTagPlaceholder": "Add another tag"
+    "addAnotherTagPlaceholder": "Add another tag",
+    "filterAll": "All",
+    "filterDebit": "Debit",
+    "filterCredit": "Credit",
+    "filterTransfer": "Transfer"
   },
   "importTransactions": {
     "importTransactions": "Import Transactions",

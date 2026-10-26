@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { performDatabaseRequest, prisma } from '../config/prisma.js';
 import EntityService from './entityService.js';
 import CategoryService from './categoryService.js';
@@ -101,14 +102,36 @@ const getAllTagsForTransaction = async (
     return tagsData;
   }, dbClient);
 
+export type TransactionListOptions = {
+  sortBy?: 'date' | 'amount' | 'type';
+  sortDir?: 'asc' | 'desc';
+  type?: string;
+};
+
 const getFilteredTransactionsByForUser = async (
   userId: bigint,
   page: number,
   pageSize: number,
-  searchQuery: string
+  searchQuery: string,
+  options: TransactionListOptions = {}
 ) => {
   const query = `%${searchQuery}%`;
   const offsetValue = page * pageSize;
+  const typeFilter = options.type ?? null;
+  // ORDER BY can't be parameterised, so only whitelisted fragments are interpolated
+  const sortDir = Prisma.raw(options.sortDir === 'asc' ? 'ASC' : 'DESC');
+  const newestFirst = Prisma.sql`transactions.date_timestamp DESC, transactions.transaction_id DESC`;
+  let orderBy: Prisma.Sql;
+  switch (options.sortBy) {
+    case 'amount':
+      orderBy = Prisma.sql`transactions.amount ${sortDir}, ${newestFirst}`;
+      break;
+    case 'type':
+      orderBy = Prisma.sql`transactions.type ${sortDir}, ${newestFirst}`;
+      break;
+    default:
+      orderBy = newestFirst;
+  }
 
   // main query for list of results (limited by pageSize and offsetValue)
   const mainQuery = prisma.$queryRaw`SELECT transaction_id,
@@ -146,8 +169,9 @@ const getFilteredTransactionsByForUser = async (
                                        OR entities.name LIKE ${query}
                                        OR categories.name LIKE ${query}
                                        OR tags.name LIKE ${query})
+                                       AND (${typeFilter} IS NULL OR transactions.type = ${typeFilter})
                                      GROUP BY transaction_id
-                                     ORDER BY transactions.date_timestamp DESC, transactions.transaction_id DESC
+                                     ORDER BY ${orderBy}
                                      LIMIT ${pageSize} OFFSET ${offsetValue}`;
 
   // count of total of filtered results
@@ -174,6 +198,7 @@ const getFilteredTransactionsByForUser = async (
                                               OR categories.name LIKE
                                                  ${query}
                                               OR tags.name LIKE ${query})
+                                              AND (${typeFilter} IS NULL OR transactions.type = ${typeFilter})
                                             GROUP BY transaction_id) trx`;
 
   const totalCountQuery = prisma.$queryRaw`SELECT count(*) as 'count'
