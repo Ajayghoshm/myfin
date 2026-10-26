@@ -6,6 +6,14 @@ export type TransactionsLinkParams = {
   account?: string; // account id
 };
 
+/** API limit for payee keys in filters and classifications (joi max 255). */
+export const MAX_PAYEE_KEY_LENGTH = 255;
+
+/** Whether a payee key can be filtered on or classified: non-empty and within the API limit. */
+export function isActionablePayeeKey(payeeKey: string): boolean {
+  return payeeKey !== '' && payeeKey.length <= MAX_PAYEE_KEY_LENGTH;
+}
+
 /** Link to the Transactions page with drill-down filters in the URL. */
 export function buildTransactionsLink(params: TransactionsLinkParams): string {
   const search = new URLSearchParams();

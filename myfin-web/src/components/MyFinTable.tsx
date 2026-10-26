@@ -24,6 +24,8 @@ type Props = {
   onSortModelChange?: (model: GridSortModel) => void;
   rowSelectionModel?: GridRowSelectionModel;
   onRowSelectionModelChange?: (model: GridRowSelectionModel) => void;
+  /** When true, no row (and not the header checkbox) can be selected. */
+  isSelectionDisabled?: boolean;
   setPaginationModel: React.Dispatch<
     React.SetStateAction<{ pageSize: number; page: number }>
   >;
@@ -113,6 +115,7 @@ const MyFinTable = (props: Props) => {
           checkboxSelection={!!props.onRowSelectionModelChange}
           rowSelectionModel={props.rowSelectionModel}
           onRowSelectionModelChange={props.onRowSelectionModelChange}
+          isRowSelectable={props.isSelectionDisabled ? () => false : undefined}
           onRowClick={(row, event) => {
             // ticking a row's checkbox must not open the row
             if ((event.target as HTMLElement).closest('.MuiDataGrid-cellCheckbox'))

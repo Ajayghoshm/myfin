@@ -17,14 +17,17 @@ import Typography from '@mui/material/Typography';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import EmptyView from '../../components/EmptyView.tsx';
-import { AlertSeverity, useSnackbar } from '../../providers/SnackbarProvider.tsx';
+import {
+  AlertSeverity,
+  useSnackbar,
+} from '../../providers/SnackbarProvider.tsx';
 import { useSetPayeeClassification } from '../../services/insights/insightsHooks.ts';
 import {
   MonthInsights,
   PayeeKind,
 } from '../../services/insights/insightsServices.ts';
 import { useFormatNumberAsCurrency } from '../../utils/textHooks.ts';
-import { buildTransactionsLink } from './drillDown.ts';
+import { buildTransactionsLink, isActionablePayeeKey } from './drillDown.ts';
 import FigureLink from './FigureLink.tsx';
 
 type Props = {
@@ -57,8 +60,12 @@ const WhereMoneyWent = ({ ym, data }: Props) => {
             value={view}
             onChange={(_, value: View | null) => value && setView(value)}
           >
-            <ToggleButton value="category">{t('insights.byCategory')}</ToggleButton>
-            <ToggleButton value="merchant">{t('insights.byMerchant')}</ToggleButton>
+            <ToggleButton value="category">
+              {t('insights.byCategory')}
+            </ToggleButton>
+            <ToggleButton value="merchant">
+              {t('insights.byMerchant')}
+            </ToggleButton>
             <ToggleButton value="person">{t('insights.byPerson')}</ToggleButton>
           </ToggleButtonGroup>
         </Stack>
@@ -76,11 +83,11 @@ const Empty = () => (
   </Box>
 );
 
-/** Link for a payee figure; an empty key is never linked. */
+/** Link for a payee figure; an empty or over-long key is never linked. */
 const payeeLink = (ym: string, payeeKey: string, type?: 'E' | 'I') =>
-  payeeKey === ''
-    ? null
-    : buildTransactionsLink({ month: ym, payee: payeeKey, type });
+  isActionablePayeeKey(payeeKey)
+    ? buildTransactionsLink({ month: ym, payee: payeeKey, type })
+    : null;
 
 const ByCategory = ({ ym, data }: Props) => {
   const theme = useTheme();
@@ -112,7 +119,9 @@ const ByCategory = ({ ym, data }: Props) => {
                 <FigureLink to={link}>{label}</FigureLink>
               </Typography>
               <Typography variant="body2" fontWeight="bold" noWrap>
-                <FigureLink to={link}>{formatCurrency.invoke(row.amount)}</FigureLink>
+                <FigureLink to={link}>
+                  {formatCurrency.invoke(row.amount)}
+                </FigureLink>
               </Typography>
             </Stack>
             <Box
@@ -193,7 +202,9 @@ const ByMerchant = ({ ym, data }: Props) => {
                   <FigureLink to={link}>{row.payee_key}</FigureLink>
                 </TableCell>
                 <TableCell align="right">
-                  <FigureLink to={link}>{formatCurrency.invoke(row.amount)}</FigureLink>
+                  <FigureLink to={link}>
+                    {formatCurrency.invoke(row.amount)}
+                  </FigureLink>
                 </TableCell>
                 <TableCell align="right">
                   <FigureLink to={link}>{row.count}</FigureLink>
@@ -202,18 +213,20 @@ const ByMerchant = ({ ym, data }: Props) => {
                   {formatCurrency.invoke(row.average)}
                 </TableCell>
                 <TableCell align="right" padding="checkbox">
-                  <Tooltip title={t('insights.thisIsAPerson')}>
-                    <span>
-                      <IconButton
-                        size="small"
-                        disabled={isPending}
-                        aria-label={t('insights.thisIsAPerson')}
-                        onClick={() => classify(row.payee_key, 'person')}
-                      >
-                        <PersonOutlined fontSize="small" />
-                      </IconButton>
-                    </span>
-                  </Tooltip>
+                  {isActionablePayeeKey(row.payee_key) && (
+                    <Tooltip title={t('insights.thisIsAPerson')}>
+                      <span>
+                        <IconButton
+                          size="small"
+                          disabled={isPending}
+                          aria-label={t('insights.thisIsAPerson')}
+                          onClick={() => classify(row.payee_key, 'person')}
+                        >
+                          <PersonOutlined fontSize="small" />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                  )}
                 </TableCell>
               </TableRow>
             );
@@ -293,34 +306,36 @@ const ByPerson = ({ ym, data }: Props) => {
                 </FigureLink>
               </TableCell>
               <TableCell align="right" padding="checkbox">
-                <Stack direction="row" justifyContent="flex-end">
-                  {row.source === 'user' && (
-                    <Tooltip title={t('insights.resetClassification')}>
+                {isActionablePayeeKey(row.payee_key) && (
+                  <Stack direction="row" justifyContent="flex-end">
+                    {row.source === 'user' && (
+                      <Tooltip title={t('insights.resetClassification')}>
+                        <span>
+                          <IconButton
+                            size="small"
+                            disabled={isPending}
+                            aria-label={t('insights.resetClassification')}
+                            onClick={() => classify(row.payee_key, null)}
+                          >
+                            <Undo fontSize="small" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                    )}
+                    <Tooltip title={t('insights.notAPerson')}>
                       <span>
                         <IconButton
                           size="small"
                           disabled={isPending}
-                          aria-label={t('insights.resetClassification')}
-                          onClick={() => classify(row.payee_key, null)}
+                          aria-label={t('insights.notAPerson')}
+                          onClick={() => classify(row.payee_key, 'merchant')}
                         >
-                          <Undo fontSize="small" />
+                          <PersonOffOutlined fontSize="small" />
                         </IconButton>
                       </span>
                     </Tooltip>
-                  )}
-                  <Tooltip title={t('insights.notAPerson')}>
-                    <span>
-                      <IconButton
-                        size="small"
-                        disabled={isPending}
-                        aria-label={t('insights.notAPerson')}
-                        onClick={() => classify(row.payee_key, 'merchant')}
-                      >
-                        <PersonOffOutlined fontSize="small" />
-                      </IconButton>
-                    </span>
-                  </Tooltip>
-                </Stack>
+                  </Stack>
+                )}
               </TableCell>
             </TableRow>
           ))}

@@ -8,7 +8,7 @@ import { useTranslation } from 'react-i18next';
 import EmptyView from '../../components/EmptyView.tsx';
 import { MonthInsights } from '../../services/insights/insightsServices.ts';
 import { useFormatNumberAsCurrency } from '../../utils/textHooks.ts';
-import { buildTransactionsLink } from './drillDown.ts';
+import { buildTransactionsLink, isActionablePayeeKey } from './drillDown.ts';
 import FigureLink from './FigureLink.tsx';
 import { formatSignedPercent } from './insightsFormat.ts';
 
@@ -26,9 +26,13 @@ const BiggestChanges = ({ ym, data }: Props) => {
 
   const linkFor = (change: Change): string | null => {
     if (change.kind === 'category') {
-      return buildTransactionsLink({ month: ym, type: 'E', category: change.key });
+      return buildTransactionsLink({
+        month: ym,
+        type: 'E',
+        category: change.key,
+      });
     }
-    if (change.key === '') return null;
+    if (!isActionablePayeeKey(change.key)) return null;
     return buildTransactionsLink({ month: ym, type: 'E', payee: change.key });
   };
 

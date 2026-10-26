@@ -476,6 +476,9 @@ const Transactions = () => {
     : selectedIdsOnPage.length;
   const isWholePageSelected =
     pageIds.length > 0 && selectedIdsOnPage.length === pageIds.length;
+  // while a new page/filter loads the list still shows the previous result,
+  // so counts and ids on screen may be stale: block selecting and editing
+  const isShowingStaleList = getTransactionsRequest.isPlaceholderData;
 
   const applyBulkEdit = (
     changes: Parameters<typeof bulkUpdateRequest.mutate>[0],
@@ -748,6 +751,7 @@ const Transactions = () => {
                     matchingCount > pageIds.length && (
                       <Button
                         size="small"
+                        disabled={isShowingStaleList}
                         onClick={() => setAllMatchingSelected(true)}
                       >
                         {t('transactions.selectAllMatching', {
@@ -761,6 +765,7 @@ const Transactions = () => {
                   <Button
                     size="small"
                     variant="contained"
+                    disabled={isShowingStaleList}
                     onClick={() => setBulkEditOpen(true)}
                   >
                     {t('transactions.editSelected', { count: selectedCount })}
@@ -790,6 +795,7 @@ const Transactions = () => {
             sortModel={sortModel}
             onSortModelChange={setSortModel}
             rowSelectionModel={rowSelection}
+            isSelectionDisabled={isShowingStaleList}
             onRowSelectionModelChange={(model) => {
               setRowSelection(model);
               setAllMatchingSelected(false);
