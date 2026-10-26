@@ -1,11 +1,10 @@
 generator client {
-  provider      = "prisma-client-js"
-  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "linux-musl-arm64-openssl-3.0.x"]
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "mysql"
-  url      = env("DATABASE_URL")
 }
 
 model accounts {
@@ -24,6 +23,7 @@ model accounts {
   balances_snapshot                                            balances_snapshot[]
   transactions_transactions_accounts_account_to_idToaccounts   transactions[]      @relation("transactions_accounts_account_to_idToaccounts")
   transactions_transactions_accounts_account_from_idToaccounts transactions[]      @relation("transactions_accounts_account_from_idToaccounts")
+  goal_has_account                                             goal_has_account[]
   import_instrument_mappings                                   import_instrument_mappings[]
 
   @@unique([name, users_user_id], map: "name_UNIQUE")
@@ -59,7 +59,27 @@ model budgets {
   @@index([users_user_id], map: "fk_budgets_users1_idx")
 }
 
+enum budget_item_direction {
+  EXPENSE
+  INCOME
+}
+
+model budget_category_items {
+  item_id BigInt @id @default(autoincrement())
+  budgets_budget_id BigInt
+  budgets_users_user_id BigInt
+  categories_category_id BigInt
+  direction budget_item_direction
+  label String @db.VarChar(255)
+  amount BigInt
+  sort_order Int
+  allocation budgets_has_categories @relation(fields: [budgets_budget_id, budgets_users_user_id, categories_category_id], references: [budgets_budget_id, budgets_users_user_id, categories_category_id], onDelete: Cascade, map: "budget_items_allocation_fk")
+
+  @@index([budgets_budget_id, budgets_users_user_id, categories_category_id, direction, sort_order], map: "budget_items_parent_direction_order_idx")
+}
+
 model budgets_has_categories {
+  breakdown_items        budget_category_items[]
   budgets_budget_id      BigInt
   budgets_users_user_id  BigInt
   categories_category_id BigInt
@@ -83,6 +103,7 @@ model categories {
   users_user_id          BigInt
   description            String?                  @db.LongText
   color_gradient         String?                  @db.VarChar(45)
+  icon_key               String                   @default("category") @db.VarChar(45)
   status                 String                   @default("Ativa") @db.VarChar(45)
   exclude_from_budgets   Int                      @default(0) @db.TinyInt
   budgets_has_categories budgets_has_categories[]
@@ -115,6 +136,10 @@ model invest_asset_evo_snapshot {
   created_at             BigInt
   updated_at             BigInt
   withdrawn_amount       BigInt
+  income_amount          BigInt        @default(0)
+  cost_amount            BigInt        @default(0)
+  fees_taxes             BigInt        @default(0)
+  valuation_source       String        @default("legacy") @db.VarChar(20)
   invest_assets          invest_assets @relation(fields: [invest_assets_asset_id], references: [asset_id], onDelete: NoAction, onUpdate: NoAction, map: "invest_asset_evo_snapshot_invest_assets_asset_id_fk")
 
   @@id([month, year, invest_assets_asset_id])
@@ -157,7 +182,8 @@ model invest_transactions {
   note                   String?                  @db.VarChar(100)
   total_price            BigInt
   units                  Decimal                  @db.Decimal(16, 6)
-  fees_taxes             BigInt?                  @default(0)
+  fees_taxes_amount      BigInt?                  @default(0)
+  fees_taxes_units       Decimal?                 @db.Decimal(16, 6)
   invest_assets_asset_id BigInt
   created_at             BigInt
   updated_at             BigInt
@@ -211,6 +237,7 @@ model transactions {
 
   @@index([accounts_account_from_id, accounts_account_to_id], map: "fk_transactions_accounts1_idx")
   @@index([categories_category_id], map: "fk_transactions_categories1_idx")
+  @@index([categories_category_id, date_timestamp], map: "transactions_category_date_idx")
   @@index([entities_entity_id], map: "fk_transactions_entities2_idx")
   @@index([accounts_account_to_id], map: "transactions_accounts_account_to_id_index")
   @@index([external_id])
@@ -221,6 +248,7 @@ model users {
   username                   String                       @unique(map: "username_UNIQUE") @db.VarChar(45)
   password                   String                       @db.MediumText
   email                      String                       @unique(map: "email_UNIQUE") @db.VarChar(45)
+  is_demo                    Boolean                      @default(false)
   sessionkey                 String?                      @db.MediumText
   sessionkey_mobile          String?                      @db.MediumText
   trustlimit                 Int?
@@ -235,6 +263,7 @@ model users {
   otp_codes                  otp_codes[]
   rules                      rules[]
   tags                       tags[]
+  goals                      goals[]
   import_instrument_mappings import_instrument_mappings[]
   currency                   String                       @default("EUR")
 }
@@ -276,6 +305,39 @@ model otp_codes {
 enum invest_transactions_type {
   B
   S
+  I
+  C
+}
+
+model goals {
+  goal_id          BigInt             @id @unique(map: "goal_id_UNIQUE") @default(autoincrement())
+  name             String             @db.VarChar(255)
+  description      String?            @db.LongText
+  priority         Int
+  amount           BigInt
+  due_date         BigInt?
+  is_archived      Boolean            @default(false)
+  created_at       BigInt
+  updated_at       BigInt?
+  users_user_id    BigInt
+  users            users              @relation(fields: [users_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction, map: "goals_users_user_id_fk")
+  goal_has_account goal_has_account[]
+
+  @@unique([name, users_user_id], map: "uq_name_user_id")
+  @@index([users_user_id], map: "fk_goals_users1_idx")
+}
+
+model goal_has_account {
+  goals_goal_id      BigInt
+  accounts_account_id BigInt
+  match_type         String  @db.VarChar(45)
+  match_value        Decimal @db.Decimal(16, 6)
+  goals              goals   @relation(fields: [goals_goal_id], references: [goal_id], onDelete: NoAction, onUpdate: NoAction, map: "goal_has_account_goals_goal_id_fk")
+  accounts           accounts @relation(fields: [accounts_account_id], references: [account_id], onDelete: NoAction, onUpdate: NoAction, map: "goal_has_account_accounts_account_id_fk")
+
+  @@id([goals_goal_id, accounts_account_id])
+  @@index([goals_goal_id], map: "fk_goal_has_account_goals1_idx")
+  @@index([accounts_account_id], map: "fk_goal_has_account_accounts1_idx")
 }
 
 model import_instrument_mappings {
@@ -289,3 +351,4 @@ model import_instrument_mappings {
 
   @@unique([users_user_id, source, instrument_key])
 }
+

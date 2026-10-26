@@ -1,10 +1,20 @@
+import { Decimal } from '@prisma/client/runtime/client';
 import { performDatabaseRequest, prisma } from '../config/prisma.js';
-import { Prisma } from '@prisma/client';
-import DateTimeUtils from '../utils/DateTimeUtils.js';
-import ConvertUtils from '../utils/convertUtils.js';
-import APIError from '../errorHandling/apiError.js';
 import { MYFIN } from '../consts.js';
+import APIError from '../errorHandling/apiError.js';
+import type { Prisma } from '../generated/prisma/client.js';
+import DateTimeUtils from '../utils/DateTimeUtils.js';
 import Logger from '../utils/Logger.js';
+import ROICalculator, { type TransactionFlowData } from '../utils/ROICalculator.js';
+import {
+  type PeriodReturnMetrics,
+  type ReturnDataIssue,
+  buildPortfolioValueByMonth,
+  calculatePeriodReturnMetrics,
+  createEmptyReturnMetrics,
+} from '../utils/ReturnMetricsCalculator.js';
+import ConvertUtils from '../utils/convertUtils.js';
+import InvestTransactionsService from './investTransactionsService.js';
 
 interface CalculatedAssetAmounts {
   invested_value?: number;
@@ -15,146 +25,132 @@ interface CalculatedAssetAmounts {
   relative_roi_percentage?: number | string;
   price_per_unit?: number;
   fees_taxes?: number;
+  income_amount?: number;
+  cost_amount?: number;
 }
 
-type InvestAssetWithCalculatedAmounts = CalculatedAssetAmounts & {
+export type InvestAssetWithCalculatedAmounts = CalculatedAssetAmounts & {
   asset_id?: bigint;
   name?: string;
   ticker?: string;
   type?: string;
   units?: number | Prisma.Decimal;
   broker?: string;
+  return_metrics?: AssetReturnMetrics;
 };
 
-interface CalculatedAssetStats extends CalculatedAssetAmounts {
-  total_invested_value?: number;
-  total_current_value?: number;
-  global_roi_value?: number;
-  global_roi_percentage?: number | string;
-  current_year_roi_value?: number;
-  current_year_roi_percentage?: number;
-  monthly_snapshots?: Array<any>;
-  current_value_distribution?: Array<any>;
-  top_performing_assets?: Array<any>;
-  combined_roi_by_year?: number;
+interface AssetReturnMetrics {
+  by_year?: Record<number, YearlyAssetReturn>;
+  current_year: PeriodReturnMetrics;
+  global: PeriodReturnMetrics;
+}
+
+interface YearlyAssetReturn {
+  beginning_value: number;
+  ending_value: number;
+  return_metrics: PeriodReturnMetrics;
+}
+
+interface AssetClassReturnStats {
+  type: string;
+  asset_count: number;
+  invested_value: number;
+  fees_taxes: number;
+  current_value: number;
+  allocation_percentage: number;
+  return_metrics: Pick<AssetReturnMetrics, 'current_year' | 'global'>;
+}
+
+interface CalculatedAssetStats {
+  // Global portfolio metrics
+  global_roi_value: number;
+  global_roi_percentage: number | string;
+  total_current_value: number;
+  total_currently_invested_value: number;
+
+  // Current year metrics (using simple ROI)
+  current_year_roi_value: number;
+  current_year_roi_percentage: number;
+
+  // Historical data
+  monthly_snapshots: Array<MonthlySnapshot>;
+  current_value_distribution: Array<AssetTypeDistribution>;
+  combined_roi_by_year: Record<number, YearlyROI>;
+  return_metrics: {
+    by_year: Record<number, PeriodReturnMetrics>;
+    current_year: PeriodReturnMetrics;
+    global: PeriodReturnMetrics;
+  };
+  returns_by_asset_class: Array<AssetClassReturnStats>;
+  top_performing_assets: Array<InvestAssetWithCalculatedAmounts>;
+}
+
+interface MonthlySnapshot {
+  month: number;
+  year: number;
+  units: number;
+  invested_amount: number;
+  current_value: number;
+  withdrawn_amount: number;
+  income_amount: number;
+  cost_amount: number;
+  fees_taxes: number;
+  asset_id: bigint;
+  asset_name: string;
+  asset_ticker: string;
+  asset_broker: string;
+  valuation_source: ValuationSource;
+  validation_status: SnapshotValidationStatus;
+  validation_reasons: SnapshotValidationReason[];
+}
+
+type ValuationSource = 'observed' | 'carried' | 'generated' | 'legacy';
+type SnapshotValidationStatus = 'valid' | 'invalid' | 'needs_valuation' | 'suspicious';
+type SnapshotValidationReason = Exclude<
+  ReturnDataIssue['code'],
+  'cash_flow_timing_sensitivity' | 'missing_opening_valuation'
+>;
+
+type RawMonthlySnapshot = Omit<MonthlySnapshot, 'validation_status' | 'validation_reasons'> & {
+  asset_created_at: bigint | number;
+  first_transaction_timestamp: bigint | number | null;
+};
+
+interface AssetTypeDistribution {
+  type: string;
+  percentage: number | string;
+  value: number;
+}
+
+interface YearlyROI {
+  roi_percentage: number;
+  roi_value: number;
+  beginning_value: number;
+  ending_value: number;
+  total_net_flows: number;
+  total_inflow: number;
+  total_outflow: number;
+  value_total_amount: number;
+  contributions: number;
+  withdrawals: number;
+  return_metrics: PeriodReturnMetrics;
 }
 
 interface InvestAssetEvoSnapshot {
-    month: number;
-    year: number;
-    units: number | string;
-    invested_amount: bigint | number;
-    current_value: bigint | number;
-    invest_assets_asset_id: bigint | number;
-    created_at: bigint | number;
-    updated_at: bigint | number;
-    withdrawn_amount: bigint | number;
+  month: number;
+  year: number;
+  units: Decimal;
+  invested_amount: bigint | number;
+  current_value: bigint | number;
+  invest_assets_asset_id: bigint | number;
+  created_at: bigint | number;
+  updated_at: bigint | number;
+  withdrawn_amount: bigint | number;
+  income_amount: bigint | number;
+  cost_amount: bigint | number;
+  fees_taxes?: bigint | number;
+  valuation_source?: ValuationSource;
 }
-
-const getLatestSnapshotForAsset = async (
-  assetId: bigint,
-  maxMonth = DateTimeUtils.getMonthNumberFromTimestamp(),
-  maxYear = DateTimeUtils.getYearFromTimestamp(),
-  dbClient = prisma
-): Promise<InvestAssetEvoSnapshot> => {
-  const result = await dbClient.$queryRaw`SELECT *
-                                            FROM invest_asset_evo_snapshot
-                                            WHERE invest_assets_asset_id = ${assetId}
-                                              AND (year < ${maxYear} OR (year = ${maxYear} AND month <= ${maxMonth}))
-                                            ORDER BY YEAR DESC, MONTH DESC
-                                            LIMIT 1`;
-
-  if (!result || !Array.isArray(result) || (result as Array<any>).length < 1) return null;
-  return result[0];
-};
-
-const getTotalFessAndTaxesForAsset = async (assetId: bigint, dbClient = prisma) => {
-  const result = await dbClient.$queryRaw`SELECT sum(fees_taxes / 100) as fees_taxes
-                                            FROM invest_transactions
-                                            WHERE invest_assets_asset_id = ${assetId}`;
-
-  return result[0].fees_taxes;
-};
-
-const getAverageBuyingPriceForAsset = async (assetId: bigint, dbClient = prisma) => {
-  const result = await dbClient.$queryRaw`SELECT total_price / units as avg_price
-                                            FROM (SELECT sum(total_price / 100) as total_price, sum(units) as units
-                                                  FROM invest_transactions
-                                                  WHERE invest_assets_asset_id = ${assetId}
-                                                    AND type = 'B') dataset `;
-  return result[0].avg_price;
-};
-
-const calculateAssetAmounts = async (
-  asset: Prisma.invest_assetsCreateInput,
-  dbClient = prisma
-): Promise<InvestAssetWithCalculatedAmounts> => {
-  const snapshot = await getLatestSnapshotForAsset(
-    asset.asset_id as bigint,
-    undefined,
-    undefined,
-    dbClient
-  );
-  const investedValue = ConvertUtils.convertBigIntegerToFloat(
-    BigInt(snapshot?.invested_amount ?? 0)
-  );
-  const withdrawnAmount = ConvertUtils.convertBigIntegerToFloat(
-    BigInt(snapshot?.withdrawn_amount ?? 0)
-  );
-  const currentValue = ConvertUtils.convertBigIntegerToFloat(BigInt(snapshot?.current_value ?? 0));
-  const feesAndTaxes = parseFloat(
-    await getTotalFessAndTaxesForAsset(asset.asset_id as bigint, dbClient)
-  );
-
-  let currentlyInvestedValue = investedValue - withdrawnAmount;
-  if (currentlyInvestedValue < 0) currentlyInvestedValue = 0;
-  const roiValue = currentValue + withdrawnAmount - (investedValue + feesAndTaxes);
-  const roiPercentage =
-    investedValue == 0 ? '∞' : (roiValue / (investedValue + feesAndTaxes)) * 100;
-  const pricePerUnit = await getAverageBuyingPriceForAsset(asset.asset_id as bigint, dbClient);
-  /*Logger.addLog(
-                        `ASSET: (${asset.asset_id}) ${asset.name} | investedValue: ${investedValue} | withdrawnAmount: ${withdrawnAmount} | currentValue: ${currentValue} | feesAndTaxes: ${feesAndTaxes} | roiValue: ${roiValue} | roiPercentage: ${roiPercentage} | pricePerUnit: ${pricePerUnit}`
-                    );*/
-  return {
-    asset_id: asset.asset_id as bigint,
-    name: asset.name,
-    ticker: asset.ticker,
-    type: asset.type,
-    units: asset.units as number,
-    broker: asset.broker,
-    invested_value: investedValue,
-    currently_invested_value: currentlyInvestedValue,
-    withdrawn_amount: withdrawnAmount,
-    current_value: currentValue,
-    absolute_roi_value: roiValue,
-    relative_roi_percentage: roiPercentage,
-    price_per_unit: pricePerUnit,
-    fees_taxes: feesAndTaxes,
-  };
-};
-
-const getAllAssetsForUser = async (
-  userId: bigint,
-  dbClient = prisma
-): Promise<Array<InvestAssetWithCalculatedAmounts>> => {
-  const assets = await dbClient.invest_assets.findMany({
-    where: {
-      users_user_id: userId,
-    },
-  });
-
-  const calculatedAmountPromises = [];
-  for (const asset of assets) {
-    calculatedAmountPromises.push(calculateAssetAmounts(asset, dbClient));
-  }
-  return (
-    ((await Promise.all(calculatedAmountPromises)) as Array<InvestAssetWithCalculatedAmounts>)
-      // Sort assets array by current value (DESC)
-      .sort((a, b) => {
-        return b.current_value - a.current_value;
-      })
-  );
-};
 
 interface Asset {
   assetId?: bigint;
@@ -165,694 +161,1633 @@ interface Asset {
   broker: string;
 }
 
-const createAsset = async (userId: bigint, asset: Asset, dbClient = prisma) =>
-  dbClient.invest_assets.create({
-    data: {
-      name: asset.name,
-      ticker: asset.ticker,
-      units: asset.units ?? 0,
-      type: asset.type,
-      broker: asset.broker,
-      created_at: DateTimeUtils.getCurrentUnixTimestamp(),
-      updated_at: DateTimeUtils.getCurrentUnixTimestamp(),
-      users_user_id: userId,
-    },
-  });
+const getMonthIndex = (year: number, month: number) => year * 12 + month;
 
-const updateAsset = async (userId: bigint, asset: Asset, dbClient = prisma) =>
-  dbClient.invest_assets.update({
-    where: {
-      users_user_id: userId,
-      asset_id: asset.assetId,
-    },
-    data: {
-      name: asset.name,
-      ticker: asset.ticker,
-      units: asset.units,
-      type: asset.type,
-      broker: asset.broker,
-      updated_at: DateTimeUtils.getCurrentUnixTimestamp(),
-    },
-  });
-
-const doesAssetBelongToUser = async (userId: bigint, assetId: bigint, dbClient = prisma) => {
-  const result = await dbClient.invest_assets.findFirst({
-    where: {
-      users_user_id: userId,
-      asset_id: assetId,
-    },
-  });
-
-  return result !== null;
-};
-
-const performUpdateAssetValue = async (
-  month: number,
-  year: number,
-  assetId: bigint,
-  units: number | Prisma.Decimal,
-  withdrawnAmount: number,
-  newValue: number,
-  dbClient = prisma
-) => {
-  const latestSnapshot = await getLatestSnapshotForAsset(assetId, month, year, dbClient);
-  return dbClient.$queryRaw`INSERT INTO invest_asset_evo_snapshot (month, year, units, invested_amount, current_value,
-                                                                     invest_assets_asset_id, created_at, updated_at,
-                                                                     withdrawn_amount)
-                              VALUES (${month}, ${year}, ${units}, ${
-                                latestSnapshot?.invested_amount ?? 0
-                              },
-                                      ${ConvertUtils.convertFloatToBigInteger(
-                                        newValue
-                                      )}, ${assetId},
-                                      ${DateTimeUtils.getCurrentUnixTimestamp()},
-                                      ${DateTimeUtils.getCurrentUnixTimestamp()},
-                                      ${
-                                        withdrawnAmount
-                                          ? ConvertUtils.convertFloatToBigInteger(
-                                              Number(withdrawnAmount)
-                                            )
-                                          : 0
-                                      })
-                              ON DUPLICATE KEY UPDATE current_value = ${ConvertUtils.convertFloatToBigInteger(
-                                newValue
-                              )},
-                                                      updated_at    = ${DateTimeUtils.getCurrentUnixTimestamp()}`;
-};
-
-const updateAssetValue = async (
-  userId: bigint,
-  assetId: bigint,
-  newValue: number,
-  month: number,
-  year: number,
-  createBuffer = true,
-  dbClient = prisma
-) => {
-  const units = (
-    await dbClient.invest_assets.findFirst({
-      where: { users_user_id: userId, asset_id: assetId },
-      select: { units: true },
-    })
-  ).units;
-  const withdrawnAmount =
-    (await getLatestSnapshotForAsset(assetId, month, year, dbClient))?.withdrawn_amount ?? 0;
-
-  await performUpdateAssetValue(
-    month,
-    year,
-    assetId,
-    units,
-    withdrawnAmount as number,
-    newValue,
-    dbClient
+const getMonthIndexFromTimestamp = (timestamp: bigint | number) =>
+  getMonthIndex(
+    DateTimeUtils.getYearFromTimestamp(Number(timestamp)),
+    DateTimeUtils.getMonthNumberFromTimestamp(Number(timestamp))
   );
+class InvestAssetService {
+  private static getSnapshotDataIssues(
+    snapshots: MonthlySnapshot[],
+    year?: number
+  ): ReturnDataIssue[] {
+    const issues = new Map<string, ReturnDataIssue>();
 
-  const bufferPromises = [];
-  if (createBuffer) {
-    // Snapshot next 6 months also, to create a buffer (in case no more snapshots are added till then)
-    let nextMonth;
-    for (let i = 0; i < 6; i++) {
-      nextMonth = DateTimeUtils.incrementMonthByX(month, year, i + 1);
-      bufferPromises.push(
-        performUpdateAssetValue(
-          nextMonth.month,
-          nextMonth.year,
-          assetId,
-          units,
-          withdrawnAmount as number,
-          newValue,
-          dbClient
-        )
-      );
+    for (const snapshot of snapshots) {
+      if (year !== undefined && snapshot.year !== year) continue;
+      for (const code of snapshot.validation_reasons ?? []) {
+        const issue: ReturnDataIssue = {
+          asset_id: Number(snapshot.asset_id),
+          asset_name: snapshot.asset_name,
+          code,
+          month: snapshot.month,
+          year: snapshot.year,
+        };
+        issues.set(`${issue.asset_id}-${issue.year}-${issue.month}-${issue.code}`, issue);
+      }
     }
+
+    return [...issues.values()];
   }
 
-  await Promise.all(bufferPromises);
-};
-
-const updateCurrentAssetValue = async (
-  userId: bigint,
-  assetId: bigint,
-  newValue: number,
-  dbClient = undefined
-) =>
-  performDatabaseRequest(async (prismaTx) => {
-    if (!(await doesAssetBelongToUser(userId, assetId, prismaTx))) {
-      throw APIError.notAuthorized();
-    }
-    await updateAssetValue(
-      userId,
-      assetId,
-      newValue,
-      DateTimeUtils.getMonthNumberFromTimestamp(),
-      DateTimeUtils.getYearFromTimestamp(),
-      true,
-      prismaTx
+  private static withInvalidPortfolioReturn(
+    metrics: PeriodReturnMetrics,
+    issues: ReturnDataIssue[],
+    status: 'invalid_data' | 'insufficient_data' = 'invalid_data'
+  ): PeriodReturnMetrics {
+    if (issues.length === 0) return metrics;
+    const dataIssues = [...(metrics.portfolio_return.data_issues ?? []), ...issues].filter(
+      (issue, index, allIssues) =>
+        allIssues.findIndex(
+          (candidate) =>
+            candidate.asset_id === issue.asset_id &&
+            candidate.code === issue.code &&
+            candidate.month === issue.month &&
+            candidate.year === issue.year
+        ) === index
     );
-  }, dbClient);
-
-const getCombinedInvestedBalanceBetweenDatesForUser = async (
-  userId: bigint,
-  beginTimestamp: bigint,
-  endTimestamp: bigint,
-  dbClient = prisma
-) => {
-  const result = await dbClient.$queryRaw`SELECT (SUM(CASE
-                                                            WHEN invest_transactions.type = 'S' THEN total_price * -1
-                                                            ELSE total_price END) / 100) as 'invested_balance'
-                                            FROM invest_transactions
-                                                     INNER JOIN invest_assets ON invest_assets_asset_id = asset_id
-                                            WHERE users_user_id = ${userId}
-                                              AND date_timestamp BETWEEN ${beginTimestamp} and ${endTimestamp}`;
-
-  if (!result || !Array.isArray(result) || (result as Array<any>).length < 1) return null;
-  return parseFloat(result[0].invested_balance);
-};
-
-const getAllAssetSnapshotsForUser = async (
-  userId: bigint,
-  dbClient = prisma
-): Promise<Array<any>> =>
-  dbClient.$queryRaw`SELECT month,
-                              year,
-                              invest_asset_evo_snapshot.units,
-                              (invested_amount / 100) as 'invested_amount',
-                              (current_value / 100)   as 'current_value',
-                              invest_assets_asset_id  as 'asset_id',
-                              name                    as 'asset_name',
-                              ticker                  as 'asset_ticker',
-                              broker                  as 'asset_broker'
-                       FROM invest_asset_evo_snapshot
-                                INNER JOIN invest_assets ON invest_assets.asset_id = invest_assets_asset_id
-                       WHERE users_user_id = ${userId}
-                         AND (year < ${DateTimeUtils.getYearFromTimestamp()} OR (year = ${DateTimeUtils.getYearFromTimestamp()} AND month <= ${DateTimeUtils.getMonthNumberFromTimestamp()}))
-                       ORDER BY year ASC, month ASC;`;
-
-const getTotalInvestmentValueAtDate = async (
-  userId: bigint,
-  maxMonth = DateTimeUtils.getMonthNumberFromTimestamp(),
-  maxYear = DateTimeUtils.getYearFromTimestamp(),
-  dbClient = prisma
-) => {
-  const result =
-    await dbClient.$queryRaw`SELECT month, year, SUM(current_value) as 'current_value' FROM invest_asset_evo_snapshot
-            INNER JOIN invest_assets ON invest_assets.asset_id = invest_assets_asset_id
-            WHERE users_user_id = ${userId}
-            AND (year < ${maxYear} or (year = ${maxYear} and month <= ${maxMonth}))
-            GROUP BY month, year
-            ORDER BY YEAR DESC, MONTH DESC LIMIT 1`;
-
-  if (!result || !Array.isArray(result) || (result as Array<any>).length < 1) return null;
-  return result[0].current_value;
-};
-
-const getCombinedFeesAndTaxesBetweenDates = async (
-  userId: bigint,
-  beginTimestamp: bigint,
-  endTimestamp: bigint,
-  dbClient = prisma
-) => {
-  const result = await dbClient.$queryRaw`SELECT (SUM(fees_taxes)/100) as 'invested_fees'
-            FROM invest_transactions
-            INNER JOIN invest_assets ON invest_assets_asset_id = asset_id
-            WHERE users_user_id = ${userId} AND date_timestamp BETWEEN ${beginTimestamp} and ${endTimestamp}`;
-
-  if (!result || !Array.isArray(result) || (result as Array<any>).length < 1) return null;
-  return parseFloat(result[0].invested_fees);
-};
-
-const getCombinedRoiByYear = async (userId: bigint, initialYear: number, dbClient = undefined) => {
-  return performDatabaseRequest(async (prismaTx) => {
-    const roiByYear = {}; //ex: ["2021" => ["invested_in_year"=>"123.23", "value_total_amount"=>"123.23", "roi_amount"=> "123.12", "roi_percentage"=> "12.34 % "]
-    const currentYear = DateTimeUtils.getYearFromTimestamp();
-
-    // 2 - loop through each year
-    let yearInLoop = initialYear;
-    let lastYearsTotalValue = 0;
-    while (yearInLoop <= currentYear) {
-      // 3 - if current year, limit by current month
-      const fromDate = DateTimeUtils.getUnixTimestampFromDate(new Date(yearInLoop, 0, 1));
-      let toDate = -1n;
-      let maxDate = -1;
-      if (yearInLoop == currentYear) {
-        toDate = DateTimeUtils.getCurrentUnixTimestamp();
-        maxDate = DateTimeUtils.getMonthNumberFromTimestamp();
-      } else {
-        toDate = DateTimeUtils.getUnixTimestampFromDate(new Date(yearInLoop, 11, 31));
-        maxDate = 12;
-      }
-
-      // 4 - extract data
-      const investedInYearAmount = await getCombinedInvestedBalanceBetweenDatesForUser(
-        userId,
-        fromDate,
-        toDate,
-        prismaTx
-      );
-      const fullCurrentValue = ConvertUtils.convertBigIntegerToFloat(
-        await getTotalInvestmentValueAtDate(userId, maxDate, yearInLoop, prismaTx)
-      );
-      const feesAndTaxes = await getCombinedFeesAndTaxesBetweenDates(
-        userId,
-        fromDate,
-        toDate,
-        prismaTx
-      );
-
-      const expectedBreakEvenValue = lastYearsTotalValue + investedInYearAmount + feesAndTaxes; // If the user had a 0% profit, this would be the current portfolio value
-
-      const roiAmount = fullCurrentValue - expectedBreakEvenValue;
-      const roiPercentage =
-        expectedBreakEvenValue != 0 ? (roiAmount / expectedBreakEvenValue) * 100 : '-';
-
-      roiByYear[yearInLoop] = {
-        invested_in_year_amount: investedInYearAmount,
-        value_total_amount: fullCurrentValue,
-        roi_amount: roiAmount,
-        roi_percentage: roiPercentage,
-        fees_taxes: feesAndTaxes,
-        LAST_YEARS_TOTAL_VALUE: lastYearsTotalValue,
-        EXPECTED_BREAKEVEN_VALUE: expectedBreakEvenValue,
-      };
-      lastYearsTotalValue = fullCurrentValue;
-      yearInLoop++;
-    }
-    return roiByYear;
-  }, dbClient);
-};
-
-const getAssetStatsForUser = async (
-  userId: bigint,
-  dbClient = undefined
-): Promise<CalculatedAssetStats> =>
-  performDatabaseRequest(async (prismaTx) => {
-    const userAssets = await getAllAssetsForUser(userId, prismaTx);
-
-    const currentValuesByAssetType = new Map<string, number>();
-    let fullInvestedValue = 0;
-    let fullCurrentValue = 0;
-    let fullWithdrawnAmount = 0;
-    let lastYearsValue = 0; // the value of all assets combined at last day of previous year
-
-    for (const asset of userAssets) {
-      fullInvestedValue += asset.invested_value;
-      fullCurrentValue += asset.current_value;
-      fullWithdrawnAmount += asset.withdrawn_amount;
-
-      const lastYearsSnapshot = await getLatestSnapshotForAsset(
-        asset.asset_id,
-        12,
-        DateTimeUtils.getYearFromTimestamp() - 1,
-        prismaTx
-      );
-      if (lastYearsSnapshot) {
-        lastYearsValue += Number(lastYearsSnapshot.current_value);
-      }
-      // Add key and value to array (if already exists, accumulate value for specific type
-      currentValuesByAssetType.set(
-        asset.type,
-        (currentValuesByAssetType.get(asset.type) ?? 0) + asset.current_value
-      );
-    }
-
-    const totalInvestedValue = fullInvestedValue - fullWithdrawnAmount;
-    const totalCurrentValue = fullCurrentValue;
-    const globalRoiValue = fullCurrentValue - fullInvestedValue + fullWithdrawnAmount;
-    const globalRoiPercentage =
-      fullInvestedValue != 0 ? (globalRoiValue / totalInvestedValue) * 100 : '-';
-
-    const yearStart = DateTimeUtils.getUnixTimestampFromDate(
-      new Date(DateTimeUtils.getYearFromTimestamp(), 0, 1)
-    );
-    // the amount invested in the current year
-    const currentYearInvestedBalance = await getCombinedInvestedBalanceBetweenDatesForUser(
-      userId,
-      yearStart,
-      DateTimeUtils.getCurrentUnixTimestamp(),
-      prismaTx
-    );
-    const feesAndTaxes = await getCombinedFeesAndTaxesBetweenDates(
-      userId,
-      yearStart,
-      DateTimeUtils.getCurrentUnixTimestamp(),
-      prismaTx
-    );
-    // If the user had a 0% profit, this would be the current portfolio value
-    const expectedBreakEvenValue =
-      ConvertUtils.convertBigIntegerToFloat(BigInt(lastYearsValue)) + currentYearInvestedBalance + feesAndTaxes;
-    const currentYearRoiValue = fullCurrentValue - expectedBreakEvenValue;
-    const currentYearRoiPercentage =
-      expectedBreakEvenValue != 0
-        ? (currentYearRoiValue / expectedBreakEvenValue) * 100
-        : globalRoiPercentage;
-    const monthlySnapshots = await getAllAssetSnapshotsForUser(userId, prismaTx);
-    const currentValueDistribution = {};
-    for (const [assetType, assetValue] of currentValuesByAssetType) {
-      const totalValue = totalCurrentValue;
-      const percentage = totalValue != 0 ? (assetValue / totalValue) * 100 : '-';
-      const data = {};
-      data[`${assetType}`] = percentage;
-      currentValueDistribution[assetType] = data;
-    }
-
-    // Sort assets array by absolute roi value (DESC)
-    userAssets.sort((a, b) => {
-      return b.absolute_roi_value - a.absolute_roi_value;
-    });
-    const topPerformingAssets = userAssets;
-    let yearOfFirstSnapshotForUser = DateTimeUtils.getYearFromTimestamp();
-    if (monthlySnapshots.length > 0) {
-      yearOfFirstSnapshotForUser = monthlySnapshots[0].year;
-    }
-
-    const roiByYear = await getCombinedRoiByYear(userId, yearOfFirstSnapshotForUser, prismaTx);
-    const combinedRoiByYear = roiByYear;
-
     return {
-      total_invested_value: totalInvestedValue,
-      total_current_value: totalCurrentValue,
-      global_roi_value: globalRoiValue,
-      global_roi_percentage: globalRoiPercentage,
-      current_year_roi_value: currentYearRoiValue,
-      current_year_roi_percentage: currentYearRoiPercentage,
-      monthly_snapshots: monthlySnapshots,
-      current_value_distribution: Object.values(currentValueDistribution),
-      top_performing_assets: topPerformingAssets,
-      combined_roi_by_year: combinedRoiByYear,
+      ...metrics,
+      portfolio_return: {
+        ...metrics.portfolio_return,
+        cumulative_percentage: null,
+        annualized_percentage: null,
+        status,
+        data_issues: dataIssues,
+      },
     };
-  }, dbClient);
+  }
 
-const getAllAssetsSummaryForUser = async (userId: bigint, dbClient = prisma) =>
-  performDatabaseRequest(async (prismaTx) => {
-    return prismaTx.invest_assets.findMany({
-      where: {
-        users_user_id: userId,
-      },
-      select: {
-        asset_id: true,
-        name: true,
-        ticker: true,
-        type: true,
-      },
-    });
-  }, dbClient);
+  static async getLatestSnapshotForAsset(
+    assetId: bigint,
+    maxMonth = DateTimeUtils.getMonthNumberFromTimestamp(),
+    maxYear = DateTimeUtils.getYearFromTimestamp(),
+    dbClient = prisma
+  ): Promise<InvestAssetEvoSnapshot> {
+    const result = await dbClient.$queryRaw`SELECT *
+                                              FROM invest_asset_evo_snapshot
+                                              WHERE invest_assets_asset_id = ${assetId}
+                                                AND (year < ${maxYear} OR (year = ${maxYear} AND month <= ${maxMonth}))
+                                              ORDER BY YEAR DESC, MONTH DESC
+                                              LIMIT 1`;
 
-const deleteAsset = async (userId: bigint, assetId: bigint, dbClient = undefined) =>
-  performDatabaseRequest(async (prismaTx) => {
-    if (!(await doesAssetBelongToUser(userId, assetId, prismaTx))) {
-      throw APIError.notAuthorized();
-    }
+    const snapshots = result as Array<InvestAssetEvoSnapshot>;
+    if (!result || !Array.isArray(result) || snapshots.length < 1) return null;
+    return snapshots[0];
+  }
 
-    // delete transactions
-    await prismaTx.invest_transactions.deleteMany({
-      where: {
-        invest_assets_asset_id: assetId,
-      },
-    });
+  static async getTotalFeesAndTaxesForAsset(assetId: bigint, dbClient = prisma) {
+    const result = await dbClient.$queryRaw`SELECT sum(
+                                              (COALESCE(fees_taxes_amount, 0) + 
+                                              (CASE WHEN type = ${MYFIN.INVEST.TRX_TYPE.COST} THEN total_price ELSE 0 END)) / 100
+                                              ) as fees_taxes
+                                              FROM invest_transactions
+                                              WHERE invest_assets_asset_id = ${assetId}`;
 
-    // delete snapshot references
-    await prismaTx.invest_asset_evo_snapshot.deleteMany({
-      where: {
-        invest_assets_asset_id: assetId,
-      },
-    });
+    return result[0].fees_taxes ?? 0;
+  }
 
-    // delete asset
-    await prismaTx.invest_assets.delete({
-      where: { asset_id: assetId },
-    });
-  }, dbClient);
+  /**
+   * Get external fees on income transactions for an asset
+   * External fees are those where fees_taxes_units <= 0 (not deducted from units)
+   */
+  static async getExternalFeesOnIncomeForAsset(assetId: bigint, dbClient = prisma) {
+    const result =
+      await dbClient.$queryRaw`SELECT COALESCE(sum(fees_taxes_amount / 100), 0) as fees_taxes
+                                              FROM invest_transactions
+                                              WHERE invest_assets_asset_id = ${assetId}
+                                                AND type = 'I'
+                                                AND (fees_taxes_units <= 0 OR fees_taxes_units IS NULL)`;
 
-const getAssetDetailsForUser = async (
-  userId: bigint,
-  assetId: bigint,
-  dbClient = undefined
-): Promise<InvestAssetWithCalculatedAmounts> =>
-  performDatabaseRequest(async (prismaTx) => {
-    if (!(await doesAssetBelongToUser(userId, assetId, prismaTx))) {
-      throw APIError.notAuthorized();
-    }
+    if (!result || !Array.isArray(result) || result.length < 1) return 0;
+    return Number(result[0].fees_taxes) || 0;
+  }
 
-    /*const asset = (await getAllAssetsForUser(userId, prismaTx)).find(
-      (assetItem) => assetItem.asset_id == assetId
-    );*/
+  static async getAverageBuyingPriceForAsset(assetId: bigint, dbClient = prisma) {
+    const result = await dbClient.$queryRaw`SELECT total_price / units as avg_price
+                                              FROM (SELECT sum(total_price / 100) as total_price, sum(units) as units
+                                                    FROM invest_transactions
+                                                    WHERE invest_assets_asset_id = ${assetId}
+                                                      AND type = 'B') dataset `;
+    return result[0].avg_price;
+  }
 
-    const asset = await prismaTx.invest_assets.findUniqueOrThrow({
-      where: {
-        users_user_id: userId,
-        asset_id: assetId,
-      },
-    });
+  /**
+   * Calculate asset amounts with ROI using transaction data
+   * This matches the calculation used in getAssetStatsForUser
+   *
+   * @param asset Asset to calculate amounts for
+   * @param allSnapshots All snapshots for the user (for filtering by asset)
+   * @param allTransactions All transactions for the user (for filtering by asset)
+   * @param dbClient Database client
+   * @returns Asset with calculated amounts including ROI
+   */
+  private static async calculateAssetAmountsWithROI(
+    asset: Prisma.invest_assetsCreateInput,
+    allSnapshots: Array<MonthlySnapshot>,
+    allTransactions: TransactionFlowData[],
+    includeYearly: boolean,
+    dbClient = prisma
+  ): Promise<InvestAssetWithCalculatedAmounts> {
+    const assetId = asset.asset_id as bigint;
+    const enableLogging = false;
+    // Get latest snapshot for basic amounts
+    const snapshot = await InvestAssetService.getLatestSnapshotForAsset(
+      assetId,
+      undefined,
+      undefined,
+      dbClient
+    );
 
-    return calculateAssetAmounts(asset, prismaTx);
-    /*const month = DateTimeUtils.getMonthNumberFromTimestamp();
-    const year = DateTimeUtils.getYearFromTimestamp();
-    const snapshot = await getLatestSnapshotForAsset(assetId, null, null, prismaTx);
     const investedValue = ConvertUtils.convertBigIntegerToFloat(
       BigInt(snapshot?.invested_amount ?? 0)
     );
     const withdrawnAmount = ConvertUtils.convertBigIntegerToFloat(
       BigInt(snapshot?.withdrawn_amount ?? 0)
     );
-    const currentValue = ConvertUtils.convertBigIntegerToFloat(BigInt(snapshot?.current_value ?? 0));
-    const feesAndTaxes = parseFloat(
-      await getTotalFessAndTaxesForAsset(asset.asset_id as bigint, dbClient)
+    const currentValue = ConvertUtils.convertBigIntegerToFloat(
+      BigInt(snapshot?.current_value ?? 0)
     );
+    const incomeAmount = ConvertUtils.convertBigIntegerToFloat(
+      BigInt(snapshot?.income_amount ?? 0)
+    );
+    const costAmount = ConvertUtils.convertBigIntegerToFloat(BigInt(snapshot?.cost_amount ?? 0));
+    const feesAndTaxes = Number.parseFloat(
+      await InvestAssetService.getTotalFeesAndTaxesForAsset(assetId, dbClient)
+    );
+    if (enableLogging) Logger.addLog(`invested value = ${investedValue}`);
+    if (enableLogging) Logger.addLog(`withdrawn value = ${withdrawnAmount}`);
+    if (enableLogging) Logger.addLog(`current value = ${currentValue}`);
+    if (enableLogging) Logger.addLog(`income value = ${incomeAmount}`);
+    if (enableLogging) Logger.addLog(`cost value = ${costAmount}`);
+    if (enableLogging) Logger.addLog(`fees/taxes value = ${feesAndTaxes}`);
 
-    let currentlyInvestedValue = investedValue - withdrawnAmount;
+    // Get external fees on income to calculate net income
+    // Net income = gross income - external fees on income
+    const externalFeesOnIncome = await InvestAssetService.getExternalFeesOnIncomeForAsset(
+      assetId,
+      dbClient
+    );
+    const netIncome = incomeAmount - externalFeesOnIncome;
+
+    // Currently invested = invested - withdrawn - net income received
+    let currentlyInvestedValue = investedValue - withdrawnAmount - netIncome;
     if (currentlyInvestedValue < 0) currentlyInvestedValue = 0;
-    const roiValue = currentValue + withdrawnAmount - (investedValue + feesAndTaxes);
-    const roiPercentage =
-      investedValue == 0 ? '∞' : (roiValue / (investedValue + feesAndTaxes)) * 100;*/
-  }, dbClient);
 
-const addCustomBalanceSnapshot = async (
-  assetId: bigint,
-  month: number,
-  year: number,
-  units: number,
-  investedAmount: number,
-  currentAmount: number,
-  withdrawnAmount: number,
-  dbClient = prisma
-) => {
-  const currentTimestamp = DateTimeUtils.getCurrentUnixTimestamp();
-  return dbClient.$queryRaw`INSERT INTO invest_asset_evo_snapshot (month, year, units, invested_amount, current_value, invest_assets_asset_id, created_at, updated_at, withdrawn_amount)
-                                  VALUES (${month}, ${year}, ${units}, ${investedAmount}, ${currentAmount}, ${assetId}, ${currentTimestamp}, ${currentTimestamp}, ${withdrawnAmount})
-                                  ON DUPLICATE KEY UPDATE units = ${units}, invested_amount = ${investedAmount}, updated_at = ${currentTimestamp}, withdrawn_amount = ${withdrawnAmount};`;
-};
+    const pricePerUnit = await InvestAssetService.getAverageBuyingPriceForAsset(assetId, dbClient);
 
-const getAllTransactionsForAssetBetweenDates = async (
-  assetId: bigint,
-  fromDate: bigint | number,
-  toDate: bigint | number,
-  dbClient = prisma
-) =>
-  performDatabaseRequest(async (prismaTx) => {
-    return prismaTx.$queryRaw`SELECT * FROM invest_transactions 
-            WHERE date_timestamp BETWEEN ${fromDate} AND ${toDate}
-            AND invest_assets_asset_id = ${assetId}
-            ORDER BY date_timestamp ASC`;
-  }, dbClient);
+    if (enableLogging) Logger.addLog(`external fees on income = ${externalFeesOnIncome}`);
+    if (enableLogging) Logger.addLog(`net income: ${netIncome}`);
+    if (enableLogging) Logger.addLog(`currently Invested Value: ${currentlyInvestedValue}`);
+    if (enableLogging) Logger.addLog(`price per unit: ${pricePerUnit}`);
 
-const recalculateSnapshotForAssetsIncrementally = async (
-  assetId: bigint,
-  originalFromDate: number | bigint,
-  originalToDate: number | bigint,
-  dbClient = undefined
-) =>
-  performDatabaseRequest(async (prismaTx) => {
-    /* Logger.addLog(`account: ${accountId} | fromDate: ${fromDate} | toDate: ${toDate}`); */
-    /*
-     * Given that I'm unable to know the invested/current amounts of an asset at any specific time (only at the end of each month),
-     * I will need to recalculate from the beginning of the month relative to $fromDate all the way to the end of
-     * month associated with $toDate.
-     *
-     * Will update units, current_amount & invested_amount
-     */
-
-    let beginMonth = DateTimeUtils.getMonthNumberFromTimestamp(originalFromDate);
-    let beginYear = DateTimeUtils.getYearFromTimestamp(originalFromDate);
-    Logger.addLog(`Begin month: ${beginMonth} | original from date: ${originalFromDate}`);
-    // Get snapshot from 2 months prior of begin date
-    let priorMonthsSnapshot = await getLatestSnapshotForAsset(
-      assetId,
-      beginMonth > 2 ? beginMonth - 2 : 12 - 2 + beginMonth,
-      beginMonth > 2 ? beginYear : beginYear - 1,
-      prismaTx
+    // Filter transactions for this asset
+    const assetTransactions = allTransactions.filter(
+      (t) =>
+        (t as TransactionFlowData & { asset_id?: bigint }).asset_id?.toString() ===
+        assetId.toString()
     );
 
-    if (!priorMonthsSnapshot) {
-      priorMonthsSnapshot = {
-        units: 0,
-        current_value: 0,
-        invested_amount: 0,
-        year: -1,
-        month: -1,
-        invest_assets_asset_id: assetId,
-        withdrawn_amount: 0,
-        updated_at: -1,
-        created_at: -1,
+    // Calculate ROI
+    const roi = InvestAssetService.calculateSingleAssetROI(assetTransactions, currentValue);
+    const returnMetrics = InvestAssetService.calculateAssetReturnMetrics(
+      assetId,
+      assetTransactions,
+      allSnapshots,
+      currentValue,
+      includeYearly
+    );
+    if (enableLogging) Logger.addLog(`roi result: ${JSON.stringify(roi)}`);
+
+    return {
+      asset_id: assetId,
+      name: asset.name,
+      ticker: asset.ticker,
+      type: asset.type,
+      units: asset.units as number,
+      broker: asset.broker,
+      invested_value: investedValue,
+      currently_invested_value: currentlyInvestedValue,
+      withdrawn_amount: withdrawnAmount,
+      current_value: currentValue,
+      absolute_roi_value: roi.value,
+      relative_roi_percentage: roi.percentage,
+      price_per_unit: pricePerUnit,
+      fees_taxes: feesAndTaxes,
+      income_amount: incomeAmount,
+      cost_amount: costAmount,
+      return_metrics: returnMetrics,
+    };
+  }
+
+  private static getSnapshotValueAtOrBefore(
+    snapshots: Array<MonthlySnapshot>,
+    maxMonth: number,
+    maxYear: number
+  ) {
+    const latestByAsset = new Map<string, MonthlySnapshot>();
+
+    for (const snapshot of snapshots) {
+      if (snapshot.year < maxYear || (snapshot.year === maxYear && snapshot.month <= maxMonth)) {
+        const assetId = snapshot.asset_id.toString();
+        const latest = latestByAsset.get(assetId);
+        if (
+          !latest ||
+          snapshot.year > latest.year ||
+          (snapshot.year === latest.year && snapshot.month > latest.month)
+        ) {
+          latestByAsset.set(assetId, snapshot);
+        }
+      }
+    }
+
+    return [...latestByAsset.values()].reduce(
+      (total, snapshot) => total + Number(snapshot.current_value ?? 0),
+      0
+    );
+  }
+
+  private static calculateScopeReturnMetrics(
+    scopeTransactions: TransactionFlowData[],
+    scopeSnapshots: Array<MonthlySnapshot>,
+    currentValue: number,
+    includeYearly = true
+  ): AssetReturnMetrics {
+    const currentYear = DateTimeUtils.getYearFromTimestamp();
+    const currentMonth = DateTimeUtils.getMonthNumberFromTimestamp();
+    const currentTimestamp = DateTimeUtils.getCurrentUnixTimestamp();
+    const portfolioValueByMonth = buildPortfolioValueByMonth(scopeSnapshots);
+    const currentYearStartTimestamp = DateTimeUtils.getUnixTimestampFromDate(
+      new Date(currentYear, 0, 1)
+    );
+    const currentYearBeginningValue = InvestAssetService.getSnapshotValueAtOrBefore(
+      scopeSnapshots,
+      12,
+      currentYear - 1
+    );
+    const currentYearTransactions = scopeTransactions.filter(
+      (transaction) => Number(transaction.date_timestamp) >= currentYearStartTimestamp
+    );
+    const currentYearMetrics = InvestAssetService.withInvalidPortfolioReturn(
+      calculatePeriodReturnMetrics({
+        beginningValue: currentYearBeginningValue,
+        endingValue: currentValue,
+        transactions: currentYearTransactions,
+        periodStartTimestamp: currentYearStartTimestamp,
+        periodEndTimestamp: currentTimestamp,
+        portfolioValueByMonth,
+      }),
+      InvestAssetService.getSnapshotDataIssues(scopeSnapshots, currentYear)
+    );
+
+    if (scopeSnapshots.length === 0 && scopeTransactions.length === 0 && currentValue <= 0) {
+      return {
+        ...(includeYearly ? { by_year: {} } : {}),
+        current_year: currentYearMetrics,
+        global: createEmptyReturnMetrics(),
       };
     }
 
-    await addCustomBalanceSnapshot(
-      assetId,
-      beginMonth,
-      beginYear,
-      Number(priorMonthsSnapshot.units),
-      Number(priorMonthsSnapshot.invested_amount),
-      Number(priorMonthsSnapshot.current_value),
-      Number(priorMonthsSnapshot.withdrawn_amount),
-      prismaTx
+    const firstSnapshot = scopeSnapshots[0];
+    const periodStartFromSnapshots = firstSnapshot
+      ? DateTimeUtils.getUnixTimestampFromDate(
+          new Date(firstSnapshot.year, firstSnapshot.month - 1, 1)
+        )
+      : DateTimeUtils.getUnixTimestampFromDate(new Date(currentYear, currentMonth - 1, 1));
+    const firstTransactionTimestamp = scopeTransactions.reduce(
+      (earliestTimestamp, transaction) =>
+        Math.min(earliestTimestamp, Number(transaction.date_timestamp)),
+      periodStartFromSnapshots
     );
+    const globalStartTimestamp =
+      scopeTransactions.length > 0 ? firstTransactionTimestamp : periodStartFromSnapshots;
+    const firstActivityYear = DateTimeUtils.getYearFromTimestamp(globalStartTimestamp);
+    const byYear: Record<number, YearlyAssetReturn> = {};
 
-    // Reset snapshots for next 2 months (in case there are no transactions in these months and the balance doesn't get recalculated
-    let addCustomBalanceSnapshotsPromises = [];
-    addCustomBalanceSnapshotsPromises.push(
-      addCustomBalanceSnapshot(
-        assetId,
-        DateTimeUtils.incrementMonthByX(beginMonth, beginYear, 1).month, //beginMonth < 12 ? beginMonth + 1 : 1,
-        DateTimeUtils.incrementMonthByX(beginMonth, beginYear, 1).year, //beginMonth < 12 ? beginYear : beginYear + 1,
-        Number(priorMonthsSnapshot.units),
-        Number(priorMonthsSnapshot.invested_amount),
-        Number(priorMonthsSnapshot.current_value),
-        Number(priorMonthsSnapshot.withdrawn_amount),
-        prismaTx
-      )
-    );
+    for (let year = firstActivityYear; includeYearly && year <= currentYear; year++) {
+      const isCurrentYear = year === currentYear;
+      const periodStartTimestamp = DateTimeUtils.getUnixTimestampFromDate(new Date(year, 0, 1));
+      const periodEndTimestamp = isCurrentYear
+        ? currentTimestamp
+        : DateTimeUtils.getUnixTimestampFromDate(new Date(year, 11, 31, 23, 59, 59));
+      const beginningValue = InvestAssetService.getSnapshotValueAtOrBefore(
+        scopeSnapshots,
+        12,
+        year - 1
+      );
+      const endingValue = isCurrentYear
+        ? currentValue
+        : InvestAssetService.getSnapshotValueAtOrBefore(scopeSnapshots, 12, year);
+      const yearTransactions = scopeTransactions.filter((transaction) => {
+        const timestamp = Number(transaction.date_timestamp);
+        return timestamp >= periodStartTimestamp && timestamp <= periodEndTimestamp;
+      });
 
-    addCustomBalanceSnapshotsPromises.push(
-      addCustomBalanceSnapshot(
-        assetId,
-        DateTimeUtils.incrementMonthByX(beginMonth, beginYear, 2).month, //beginMonth < 11 ? beginMonth + 2 : 1,
-        DateTimeUtils.incrementMonthByX(beginMonth, beginYear, 2).year, //beginMonth < 11 ? beginYear : beginYear + 1,
-        Number(priorMonthsSnapshot.units),
-        Number(priorMonthsSnapshot.invested_amount),
-        Number(priorMonthsSnapshot.current_value),
-        Number(priorMonthsSnapshot.withdrawn_amount),
-        prismaTx
-      )
-    );
-
-    await Promise.all(addCustomBalanceSnapshotsPromises);
-
-    if (beginMonth > 1) beginMonth--;
-    else {
-      beginMonth = 12;
-      beginYear--;
-    }
-
-    let endMonth = DateTimeUtils.getMonthNumberFromTimestamp(originalToDate);
-    let endYear = DateTimeUtils.getYearFromTimestamp(originalToDate);
-
-    if (endMonth < 12) endMonth++;
-    else {
-      endMonth = 1;
-      endYear++;
-    }
-
-    const fromDate = DateTimeUtils.getUnixTimestampFromDate(new Date(beginYear, beginMonth - 1, 1));
-    const toDate = DateTimeUtils.getUnixTimestampFromDate(new Date(endYear, endMonth - 1, 1));
-
-    const trxList = await getAllTransactionsForAssetBetweenDates(
-      assetId,
-      fromDate,
-      toDate,
-      prismaTx
-    );
-    Logger.addLog(`----- dates between ${fromDate} & ${toDate}`);
-    Logger.addStringifiedLog(trxList);
-    Logger.addLog('-----');
-    let initialSnapshot = priorMonthsSnapshot;
-    if (!initialSnapshot) {
-      initialSnapshot = {
-        units: 0,
-        current_value: 0,
-        invested_amount: 0,
-        year: -1,
-        month: -1,
-        invest_assets_asset_id: assetId,
-        withdrawn_amount: 0,
-        updated_at: -1,
-        created_at: -1,
+      byYear[year] = {
+        beginning_value: beginningValue,
+        ending_value: endingValue,
+        return_metrics: InvestAssetService.withInvalidPortfolioReturn(
+          calculatePeriodReturnMetrics({
+            beginningValue,
+            endingValue,
+            transactions: yearTransactions,
+            periodStartTimestamp,
+            periodEndTimestamp,
+            portfolioValueByMonth,
+          }),
+          InvestAssetService.getSnapshotDataIssues(scopeSnapshots, year)
+        ),
       };
     }
 
-    for (const trx of trxList) {
-      const trxDate = Number(trx.date_timestamp);
-      const month = DateTimeUtils.getMonthNumberFromTimestamp(trxDate);
-      const year = DateTimeUtils.getYearFromTimestamp(trxDate);
+    return {
+      ...(includeYearly ? { by_year: byYear } : {}),
+      current_year: currentYearMetrics,
+      global: InvestAssetService.withInvalidPortfolioReturn(
+        calculatePeriodReturnMetrics({
+          beginningValue: 0,
+          endingValue: currentValue,
+          transactions: scopeTransactions.filter(
+            (transaction) => Number(transaction.date_timestamp) >= globalStartTimestamp
+          ),
+          periodStartTimestamp: globalStartTimestamp,
+          periodEndTimestamp: currentTimestamp,
+          portfolioValueByMonth,
+        }),
+        InvestAssetService.getSnapshotDataIssues(scopeSnapshots)
+      ),
+    };
+  }
 
-      const trxType = trx.type;
-      const changeInAmounts = trx.total_price;
-      let changeInUnits = trx.units;
+  private static calculateAssetReturnMetrics(
+    assetId: bigint,
+    assetTransactions: TransactionFlowData[],
+    allSnapshots: Array<MonthlySnapshot>,
+    currentValue: number,
+    includeYearly: boolean
+  ): AssetReturnMetrics {
+    const assetSnapshots = allSnapshots.filter(
+      (snapshot) => snapshot.asset_id?.toString() === assetId.toString()
+    );
+    return InvestAssetService.calculateScopeReturnMetrics(
+      assetTransactions,
+      assetSnapshots,
+      currentValue,
+      includeYearly
+    );
+  }
 
-      if (trxType == MYFIN.INVEST.TRX_TYPE.SELL) {
-        changeInUnits *= -1;
-        initialSnapshot.withdrawn_amount =
-          Number(initialSnapshot.withdrawn_amount) + parseFloat(changeInAmounts);
-      } else {
-        initialSnapshot.invested_amount =
-          Number(initialSnapshot.invested_amount) + parseFloat(changeInAmounts);
+  private static async calculateAssetsWithROI(
+    assets: Prisma.invest_assetsCreateInput[],
+    monthlySnapshots: MonthlySnapshot[],
+    allTransactions: TransactionFlowData[],
+    includeYearly: boolean,
+    dbClient = prisma
+  ): Promise<InvestAssetWithCalculatedAmounts[]> {
+    const calculatedAssets = await Promise.all(
+      assets.map((asset) =>
+        InvestAssetService.calculateAssetAmountsWithROI(
+          asset,
+          monthlySnapshots,
+          allTransactions,
+          includeYearly,
+          dbClient
+        )
+      )
+    );
+
+    return calculatedAssets.sort(
+      (left, right) => (right.current_value ?? 0) - (left.current_value ?? 0)
+    );
+  }
+
+  static async getAllAssetsForUser(
+    userId: bigint,
+    dbClient = prisma
+  ): Promise<Array<InvestAssetWithCalculatedAmounts>> {
+    return performDatabaseRequest(async (prismaTx) => {
+      const assets = await prismaTx.invest_assets.findMany({
+        where: {
+          users_user_id: userId,
+        },
+      });
+
+      // Fetch snapshots and transactions once for all assets (performance optimization)
+      const monthlySnapshots = await InvestAssetService.getAllAssetSnapshotsForUser(
+        userId,
+        prismaTx
+      );
+
+      const periodEndTimestamp = DateTimeUtils.getCurrentUnixTimestamp();
+      const allTransactions =
+        (await InvestTransactionsService.getAllTransactionsForUserBetweenDates(
+          userId,
+          0,
+          periodEndTimestamp,
+          prismaTx
+        )) as TransactionFlowData[];
+
+      return InvestAssetService.calculateAssetsWithROI(
+        assets,
+        monthlySnapshots,
+        allTransactions,
+        false,
+        prismaTx
+      );
+    }, dbClient);
+  }
+
+  static async createAsset(userId: bigint, asset: Asset, dbClient = prisma) {
+    return dbClient.invest_assets.create({
+      data: {
+        name: asset.name,
+        ticker: asset.ticker,
+        units: asset.units ?? 0,
+        type: asset.type,
+        broker: asset.broker,
+        created_at: DateTimeUtils.getCurrentUnixTimestamp(),
+        updated_at: DateTimeUtils.getCurrentUnixTimestamp(),
+        users_user_id: userId,
+      },
+    });
+  }
+
+  static async updateAsset(userId: bigint, asset: Asset, dbClient = prisma) {
+    return dbClient.invest_assets.update({
+      where: {
+        users_user_id: userId,
+        asset_id: asset.assetId,
+      },
+      data: {
+        name: asset.name,
+        ticker: asset.ticker,
+        units: asset.units,
+        type: asset.type,
+        broker: asset.broker,
+        updated_at: DateTimeUtils.getCurrentUnixTimestamp(),
+      },
+    });
+  }
+
+  static async doesAssetBelongToUser(userId: bigint, assetId: bigint, dbClient = prisma) {
+    const result = await dbClient.invest_assets.findFirst({
+      where: {
+        users_user_id: userId,
+        asset_id: assetId,
+      },
+    });
+
+    return result !== null;
+  }
+
+  static async performUpdateAssetValue(
+    month: number,
+    year: number,
+    assetId: bigint,
+    units: number | Prisma.Decimal,
+    withdrawnAmount: number,
+    newValue: number,
+    valuationSource: 'observed' | 'carried',
+    dbClient = prisma
+  ) {
+    const latestSnapshot = await InvestAssetService.getLatestSnapshotForAsset(
+      assetId,
+      month,
+      year,
+      dbClient
+    );
+    return dbClient.$queryRaw`INSERT INTO invest_asset_evo_snapshot (month, year, units, invested_amount, current_value,
+                                                                       invest_assets_asset_id, created_at, updated_at,
+                                                                       withdrawn_amount, income_amount, cost_amount,
+                                                                       valuation_source)
+                                VALUES (${month}, ${year}, ${units}, ${
+                                  latestSnapshot?.invested_amount ?? 0
+                                },
+                                        ${ConvertUtils.convertFloatToBigInteger(
+                                          newValue
+                                        )}, ${assetId},
+                                        ${DateTimeUtils.getCurrentUnixTimestamp()},
+                                        ${DateTimeUtils.getCurrentUnixTimestamp()},
+                                        ${
+                                          withdrawnAmount
+                                            ? ConvertUtils.convertFloatToBigInteger(
+                                                Number(withdrawnAmount)
+                                              )
+                                            : 0
+                                        },
+                                        ${latestSnapshot?.income_amount ?? 0},
+                                        ${latestSnapshot?.cost_amount ?? 0},
+                                        ${valuationSource})
+                                ON DUPLICATE KEY UPDATE current_value = ${ConvertUtils.convertFloatToBigInteger(
+                                  newValue
+                                )},
+                                                        valuation_source = IF(valuation_source = 'observed' AND ${valuationSource} = 'carried', valuation_source, ${valuationSource}),
+                                                        updated_at    = ${DateTimeUtils.getCurrentUnixTimestamp()}`;
+  }
+
+  static async updateAssetValue(
+    userId: bigint,
+    assetId: bigint,
+    newValue: number,
+    month: number,
+    year: number,
+    createBuffer = true,
+    dbClient = prisma
+  ) {
+    const units = (
+      await dbClient.invest_assets.findFirst({
+        where: { users_user_id: userId, asset_id: assetId },
+        select: { units: true },
+      })
+    ).units;
+    const withdrawnAmountRaw =
+      (await InvestAssetService.getLatestSnapshotForAsset(assetId, month, year, dbClient))
+        ?.withdrawn_amount ?? 0;
+    const withdrawnAmount = ConvertUtils.convertBigIntegerToFloat(withdrawnAmountRaw as bigint);
+    await InvestAssetService.performUpdateAssetValue(
+      month,
+      year,
+      assetId,
+      units,
+      withdrawnAmount as number,
+      newValue,
+      'observed',
+      dbClient
+    );
+
+    const bufferPromises = [];
+    if (createBuffer) {
+      // Snapshot next 6 months also, to create a buffer (in case no more snapshots are added till then)
+      let nextMonth: { month: number; year: number };
+      for (let i = 0; i < 6; i++) {
+        nextMonth = DateTimeUtils.incrementMonthByX(month, year, i + 1);
+        bufferPromises.push(
+          InvestAssetService.performUpdateAssetValue(
+            nextMonth.month,
+            nextMonth.year,
+            assetId,
+            units,
+            withdrawnAmount as number,
+            newValue,
+            'carried',
+            dbClient
+          )
+        );
+      }
+    }
+
+    await Promise.all(bufferPromises);
+  }
+
+  static async updateCurrentAssetValue(
+    userId: bigint,
+    assetId: bigint,
+    newValue: number,
+    month = DateTimeUtils.getMonthNumberFromTimestamp(),
+    year = DateTimeUtils.getYearFromTimestamp(),
+    dbClient = undefined
+  ) {
+    return performDatabaseRequest(async (prismaTx) => {
+      if (!(await InvestAssetService.doesAssetBelongToUser(userId, assetId, prismaTx))) {
+        throw APIError.notAuthorized();
+      }
+      const isCurrentDate =
+        month === DateTimeUtils.getMonthNumberFromTimestamp() &&
+        year === DateTimeUtils.getYearFromTimestamp();
+
+      await InvestAssetService.updateAssetValue(
+        userId,
+        assetId,
+        newValue,
+        month,
+        year,
+        isCurrentDate,
+        prismaTx
+      );
+    }, dbClient);
+  }
+
+  static async deleteAssetValueSnapshot(
+    userId: bigint,
+    assetId: bigint,
+    month: number,
+    year: number,
+    dbClient = undefined
+  ) {
+    return performDatabaseRequest(async (prismaTx) => {
+      if (!(await InvestAssetService.doesAssetBelongToUser(userId, assetId, prismaTx))) {
+        throw APIError.notAuthorized();
       }
 
-      initialSnapshot.units = Number(initialSnapshot.units) + parseFloat(changeInUnits);
-
-      /* Automatically add snapshots for current & next 6 months in order to create a buffer*/
-      addCustomBalanceSnapshotsPromises = [];
-
-      addCustomBalanceSnapshotsPromises.push(
-        addCustomBalanceSnapshot(
-          assetId,
+      const deleted = await prismaTx.invest_asset_evo_snapshot.deleteMany({
+        where: {
+          invest_assets_asset_id: assetId,
           month,
           year,
-          Number(initialSnapshot.units),
-          Number(initialSnapshot.invested_amount),
-          Number(initialSnapshot.current_value),
-          Number(initialSnapshot.withdrawn_amount),
+        },
+      });
+
+      if (deleted.count === 0) {
+        throw APIError.notFound('Investment value snapshot not found.');
+      }
+    }, dbClient);
+  }
+
+  static async getAllAssetSnapshotsForUser(
+    userId: bigint,
+    dbClient = prisma
+  ): Promise<Array<MonthlySnapshot>> {
+    const rawSnapshots = (await dbClient.$queryRaw`SELECT invest_asset_evo_snapshot.month,
+                                invest_asset_evo_snapshot.year,
+                                invest_asset_evo_snapshot.units,
+                                (invested_amount / 100) as 'invested_amount',
+                                (current_value / 100)   as 'current_value',
+                                (withdrawn_amount / 100) as 'withdrawn_amount',
+                                (income_amount / 100) as 'income_amount',
+                                (cost_amount / 100) as 'cost_amount',
+                                (fees_taxes / 100) as 'fees_taxes',
+                                invest_asset_evo_snapshot.invest_assets_asset_id as 'asset_id',
+                                name                    as 'asset_name',
+                                ticker                  as 'asset_ticker',
+                                broker                  as 'asset_broker',
+                                invest_asset_evo_snapshot.valuation_source,
+                                invest_assets.created_at as 'asset_created_at',
+                                first_transaction.first_transaction_timestamp
+                         FROM invest_asset_evo_snapshot
+                                  INNER JOIN invest_assets ON invest_assets.asset_id = invest_assets_asset_id
+                                  LEFT JOIN (
+                                    SELECT invest_assets_asset_id, MIN(date_timestamp) as first_transaction_timestamp
+                                    FROM invest_transactions
+                                    GROUP BY invest_assets_asset_id
+                                  ) first_transaction ON first_transaction.invest_assets_asset_id = invest_assets.asset_id
+                         WHERE users_user_id = ${userId}
+                           AND (invest_asset_evo_snapshot.year < ${DateTimeUtils.getYearFromTimestamp()} OR (invest_asset_evo_snapshot.year = ${DateTimeUtils.getYearFromTimestamp()} AND invest_asset_evo_snapshot.month <= ${DateTimeUtils.getMonthNumberFromTimestamp()}))
+                         ORDER BY invest_asset_evo_snapshot.year ASC, invest_asset_evo_snapshot.month ASC;`) as Array<RawMonthlySnapshot>;
+
+    if (!rawSnapshots || rawSnapshots.length === 0) return [];
+
+    const snapshotsByKey = new Map(
+      rawSnapshots.map((snapshot) => [
+        `${snapshot.asset_id.toString()}-${snapshot.year}-${snapshot.month}`,
+        snapshot,
+      ])
+    );
+    const validatedSnapshots = rawSnapshots.map((rawSnapshot): MonthlySnapshot => {
+      const {
+        asset_created_at: assetCreatedAt,
+        first_transaction_timestamp: firstTransactionTimestamp,
+        ...snapshot
+      } = rawSnapshot;
+      const reasons: SnapshotValidationReason[] = [];
+      const firstActivityTimestamp = firstTransactionTimestamp ?? assetCreatedAt;
+      const snapshotMonthIndex = getMonthIndex(snapshot.year, snapshot.month);
+
+      if (snapshotMonthIndex < getMonthIndexFromTimestamp(firstActivityTimestamp)) {
+        reasons.push('before_first_activity');
+      }
+
+      if (
+        snapshot.valuation_source !== 'observed' &&
+        Number(snapshot.current_value) === 0 &&
+        Number(snapshot.units) > 0 &&
+        Number(snapshot.invested_amount) > 0
+      ) {
+        reasons.push('missing_valuation');
+      }
+
+      if (snapshot.valuation_source === 'legacy' && snapshot.month === 1) {
+        const decemberSnapshot = snapshotsByKey.get(
+          `${snapshot.asset_id.toString()}-${snapshot.year}-12`
+        );
+        if (
+          decemberSnapshot &&
+          Number(snapshot.current_value) === Number(decemberSnapshot.current_value) &&
+          (Number(snapshot.units) !== Number(decemberSnapshot.units) ||
+            Number(snapshot.invested_amount) !== Number(decemberSnapshot.invested_amount))
+        ) {
+          reasons.push('possible_rollover_corruption');
+        }
+      }
+
+      const validationStatus: SnapshotValidationStatus = reasons.includes('before_first_activity')
+        ? 'invalid'
+        : reasons.includes('missing_valuation')
+          ? 'needs_valuation'
+          : reasons.length > 0
+            ? 'suspicious'
+            : 'valid';
+
+      return {
+        ...snapshot,
+        valuation_source: snapshot.valuation_source ?? 'legacy',
+        validation_status: validationStatus,
+        validation_reasons: reasons,
+      };
+    });
+
+    const filledSnapshots: MonthlySnapshot[] = [];
+    const lastKnownAssetStates = new Map<string, MonthlySnapshot>();
+
+    const firstSnapshot = validatedSnapshots[0];
+    let loopMonth = firstSnapshot.month;
+    let loopYear = firstSnapshot.year;
+
+    const currentYear = DateTimeUtils.getYearFromTimestamp();
+    const currentMonth = DateTimeUtils.getMonthNumberFromTimestamp();
+
+    let rawIndex = 0;
+
+    // Loop through every month from first snapshot's date up to current date
+    while (loopYear < currentYear || (loopYear === currentYear && loopMonth <= currentMonth)) {
+      // 1. Update states with any actual snapshots for this month
+      while (
+        rawIndex < validatedSnapshots.length &&
+        validatedSnapshots[rawIndex].year === loopYear &&
+        validatedSnapshots[rawIndex].month === loopMonth
+      ) {
+        const snap = validatedSnapshots[rawIndex];
+        lastKnownAssetStates.set(snap.asset_id.toString(), snap);
+        rawIndex++;
+      }
+
+      // 2. Add carried-over (or fresh) states for this month
+      for (const snap of lastKnownAssetStates.values()) {
+        const isOriginalSnapshotMonth = snap.month === loopMonth && snap.year === loopYear;
+        if (snap.validation_reasons.includes('before_first_activity') && !isOriginalSnapshotMonth) {
+          continue;
+        }
+
+        const validationReasons = isOriginalSnapshotMonth
+          ? snap.validation_reasons
+          : snap.validation_reasons.filter((reason) => reason === 'missing_valuation');
+        const validationStatus: SnapshotValidationStatus = validationReasons.includes(
+          'missing_valuation'
+        )
+          ? 'needs_valuation'
+          : 'valid';
+
+        filledSnapshots.push({
+          ...snap,
+          month: loopMonth,
+          year: loopYear,
+          valuation_source: isOriginalSnapshotMonth ? snap.valuation_source : 'carried',
+          validation_status: isOriginalSnapshotMonth ? snap.validation_status : validationStatus,
+          validation_reasons: validationReasons,
+        });
+      }
+
+      // Move to next month
+      const nextDate = DateTimeUtils.incrementMonthByX(loopMonth, loopYear, 1);
+      loopMonth = nextDate.month;
+      loopYear = nextDate.year;
+    }
+
+    return filledSnapshots;
+  }
+
+  static async getTotalInvestmentValueAtDate(
+    userId: bigint,
+    maxMonth = DateTimeUtils.getMonthNumberFromTimestamp(),
+    maxYear = DateTimeUtils.getYearFromTimestamp(),
+    dbClient = prisma
+  ) {
+    const userAssets = await dbClient.invest_assets.findMany({
+      where: { users_user_id: userId },
+      select: { asset_id: true },
+    });
+
+    const snapshots = await Promise.all(
+      userAssets.map((asset) =>
+        InvestAssetService.getLatestSnapshotForAsset(asset.asset_id, maxMonth, maxYear, dbClient)
+      )
+    );
+
+    let totalValue = BigInt(0);
+    for (const snapshot of snapshots) {
+      if (snapshot?.current_value) {
+        totalValue += BigInt(snapshot.current_value);
+      }
+    }
+
+    return totalValue;
+  }
+  /**
+   * Calculate ROI by year using simple ROI formula
+   * ROI = (Current Value - Money Out + Money In) / Money Out
+   *
+   * @param userId User ID
+   * @param initialYear First year to calculate from
+   * @param dbClient Database client
+   * @returns Record of yearly ROI data
+   */
+  static async getCombinedROIByYear(
+    userId: bigint,
+    initialYear: number,
+    dbClient = undefined,
+    prefetchedTransactions?: TransactionFlowData[],
+    prefetchedSnapshots?: MonthlySnapshot[]
+  ): Promise<Record<number, YearlyROI>> {
+    return performDatabaseRequest(async (prismaTx) => {
+      const roiByYear: Record<number, YearlyROI> = {};
+      const currentYear = DateTimeUtils.getYearFromTimestamp();
+
+      // Fetch all transactions for the entire period once (more efficient than per-year queries)
+      const periodStartTimestamp = DateTimeUtils.getUnixTimestampFromDate(
+        new Date(initialYear, 0, 1)
+      );
+      const periodEndTimestamp = DateTimeUtils.getCurrentUnixTimestamp();
+      const allTransactions =
+        prefetchedTransactions ??
+        ((await InvestTransactionsService.getAllTransactionsForUserBetweenDates(
+          userId,
+          periodStartTimestamp,
+          periodEndTimestamp,
+          prismaTx
+        )) as TransactionFlowData[]);
+      const monthlySnapshots =
+        prefetchedSnapshots ??
+        (await InvestAssetService.getAllAssetSnapshotsForUser(userId, prismaTx));
+      const portfolioValueByMonth = buildPortfolioValueByMonth(monthlySnapshots);
+
+      let yearInLoop = initialYear;
+      while (yearInLoop <= currentYear) {
+        const isCurrentYear = yearInLoop === currentYear;
+        const maxMonth = isCurrentYear ? DateTimeUtils.getMonthNumberFromTimestamp() : 12;
+
+        const enableLogging = false;
+
+        // Get beginning value (end of previous year)
+        const beginningValue = InvestAssetService.getSnapshotValueAtOrBefore(
+          monthlySnapshots,
+          12,
+          yearInLoop - 1
+        );
+        if (enableLogging) Logger.addLog(`Beginning value 2026: ${beginningValue}`);
+        // Get ending value (end of current period)
+        const endingValue = InvestAssetService.getSnapshotValueAtOrBefore(
+          monthlySnapshots,
+          maxMonth,
+          yearInLoop
+        );
+        if (enableLogging) Logger.addLog(`Ending value ${maxMonth}/${yearInLoop}: ${endingValue}`);
+        // Calculate period timestamps for this year
+        const yearStartTimestamp = DateTimeUtils.getUnixTimestampFromDate(
+          new Date(yearInLoop, 0, 1)
+        );
+        const yearEndTimestamp = isCurrentYear
+          ? DateTimeUtils.getCurrentUnixTimestamp()
+          : DateTimeUtils.getUnixTimestampFromDate(new Date(yearInLoop, 11, 31, 23, 59, 59));
+
+        // Filter transactions for this year
+        const yearTransactions = allTransactions.filter((trx) => {
+          const timestamp = Number(trx.date_timestamp);
+          return timestamp >= yearStartTimestamp && timestamp <= yearEndTimestamp;
+        });
+
+        // Calculate simple ROI for this year
+        const yearlyROI = InvestAssetService.calculateYearlyROI(
+          beginningValue,
+          endingValue,
+          yearTransactions
+        );
+        let returnMetrics = calculatePeriodReturnMetrics({
+          beginningValue,
+          endingValue,
+          transactions: yearTransactions,
+          periodStartTimestamp: yearStartTimestamp,
+          periodEndTimestamp: yearEndTimestamp,
+          portfolioValueByMonth,
+        });
+        const snapshotIssues = InvestAssetService.getSnapshotDataIssues(
+          monthlySnapshots,
+          yearInLoop
+        );
+        returnMetrics = InvestAssetService.withInvalidPortfolioReturn(
+          returnMetrics,
+          snapshotIssues
+        );
+        if (beginningValue <= 0 && yearTransactions.length > 0) {
+          const openingIssue: ReturnDataIssue = {
+            code: 'missing_opening_valuation',
+            year: yearInLoop,
+          };
+          const combinedIssues = [
+            ...(returnMetrics.portfolio_return.data_issues ?? []),
+            openingIssue,
+          ];
+          returnMetrics = InvestAssetService.withInvalidPortfolioReturn(
+            returnMetrics,
+            combinedIssues,
+            snapshotIssues.length > 0 ? 'invalid_data' : 'insufficient_data'
+          );
+        }
+        if (enableLogging) Logger.addLog('Transactions in year:');
+        if (enableLogging) Logger.addStringifiedLog(yearTransactions);
+        if (enableLogging) Logger.addLog('roi result: ');
+        if (enableLogging) Logger.addStringifiedLog(yearlyROI);
+        roiByYear[yearInLoop] = {
+          roi_percentage: yearlyROI.roiPercentage * 100,
+          roi_value: yearlyROI.roiValue,
+          beginning_value: beginningValue,
+          ending_value: endingValue,
+          total_net_flows: yearlyROI.totalNetFlows,
+          total_inflow: yearlyROI.totalMoneyOut,
+          total_outflow: yearlyROI.totalMoneyIn,
+          value_total_amount: endingValue,
+          contributions: returnMetrics.cash_flows.contributions,
+          withdrawals: returnMetrics.cash_flows.withdrawals,
+          return_metrics: returnMetrics,
+        };
+
+        yearInLoop++;
+      }
+
+      return roiByYear;
+    }, dbClient);
+  }
+
+  /**
+   * Calculate yearly ROI considering beginning value, ending value, and transactions
+   * ROI Value = Ending Value + Income - Beginning Value - Net Flows
+   * ROI Percentage = ROI Value / (Beginning Value + Money Out)
+   */
+  private static calculateYearlyROI(
+    beginningValue: number,
+    endingValue: number,
+    transactions: TransactionFlowData[]
+  ): {
+    roiPercentage: number;
+    roiValue: number;
+    totalNetFlows: number;
+    totalMoneyOut: number;
+    totalMoneyIn: number;
+  } {
+    const { totalNetFlows, totalMoneyOut, totalMoneyIn, totalIncome } = ROICalculator.calculateROI(
+      0,
+      transactions
+    );
+
+    // ROI Value = Ending + Income - Beginning - Net Flows
+    // Income is added because it's a return that was received externally (not in endingValue)
+    const roiValue = endingValue + totalIncome - beginningValue - totalNetFlows;
+
+    // Cost basis for ROI percentage = Beginning Value + New Money Invested
+    const costBasis = beginningValue + totalMoneyOut;
+
+    // ROI Percentage = ROI Value / Cost Basis
+    const roiPercentage = costBasis > 0 ? roiValue / costBasis : 0;
+
+    return { roiPercentage, roiValue, totalNetFlows, totalMoneyOut, totalMoneyIn };
+  }
+
+  /**
+   * Get comprehensive investment statistics for a user
+   *
+   * @param userId User ID
+   * @param dbClient Database client
+   * @returns Calculated asset statistics
+   */
+  static async getAssetStatsForUser(
+    userId: bigint,
+    dbClient = undefined
+  ): Promise<CalculatedAssetStats> {
+    return performDatabaseRequest(async (prismaTx) => {
+      // Fetch all base data upfront
+      const assets = await prismaTx.invest_assets.findMany({
+        where: { users_user_id: userId },
+      });
+      const monthlySnapshots: Array<MonthlySnapshot> =
+        await InvestAssetService.getAllAssetSnapshotsForUser(userId, prismaTx);
+      const allTransactions =
+        (await InvestTransactionsService.getAllTransactionsForUserBetweenDates(
+          userId,
+          0,
+          DateTimeUtils.getCurrentUnixTimestamp(),
+          prismaTx
+        )) as TransactionFlowData[];
+      const userAssets = await InvestAssetService.calculateAssetsWithROI(
+        assets,
+        monthlySnapshots,
+        allTransactions,
+        true,
+        prismaTx
+      );
+
+      // Calculate totals and distribution
+      const { totalCurrentValue, totalCurrentlyInvestedValue, currentValueDistribution } =
+        InvestAssetService.calculatePortfolioTotals(userAssets);
+
+      // Determine first year of data
+      const currentYear = DateTimeUtils.getYearFromTimestamp();
+      const yearOfFirstSnapshot = monthlySnapshots[0]?.year ?? currentYear;
+      const yearOfFirstTransaction = allTransactions.reduce(
+        (earliestYear, transaction) =>
+          Math.min(
+            earliestYear,
+            DateTimeUtils.getYearFromTimestamp(Number(transaction.date_timestamp))
+          ),
+        currentYear
+      );
+      const yearOfFirstActivity = Math.min(yearOfFirstSnapshot, yearOfFirstTransaction);
+
+      // Calculate ROI by year (for historical chart data)
+      const combinedRoiByYear = await InvestAssetService.getCombinedROIByYear(
+        userId,
+        yearOfFirstActivity,
+        prismaTx,
+        allTransactions,
+        monthlySnapshots
+      );
+
+      // Extract current year metrics
+      const currentYearROI = combinedRoiByYear[currentYear];
+
+      // Calculate global ROI from yearly data
+      const globalROI = InvestAssetService.calculateGlobalROI(combinedRoiByYear);
+      const globalReturnMetrics = await InvestAssetService.calculateGlobalReturnMetrics(
+        userId,
+        monthlySnapshots,
+        totalCurrentValue,
+        prismaTx,
+        allTransactions
+      );
+      const returnMetricsByYear = Object.fromEntries(
+        Object.entries(combinedRoiByYear).map(([year, data]) => [year, data.return_metrics])
+      );
+
+      // Sort assets by absolute ROI value (descending) for top performers
+      // Note: userAssets already have ROI calculated by getAllAssetsForUser
+      const topPerformingAssets = [...userAssets].sort(
+        (a, b) => (b.absolute_roi_value ?? 0) - (a.absolute_roi_value ?? 0)
+      );
+      const returnsByAssetClass = InvestAssetService.calculateReturnsByAssetClass(
+        userAssets,
+        monthlySnapshots,
+        allTransactions,
+        totalCurrentValue
+      );
+
+      return {
+        // Global metrics
+        global_roi_value: globalROI.value,
+        global_roi_percentage: globalROI.percentage,
+        total_current_value: totalCurrentValue,
+        total_currently_invested_value: totalCurrentlyInvestedValue,
+
+        // Current year metrics
+        current_year_roi_value: currentYearROI?.roi_value ?? 0,
+        current_year_roi_percentage: currentYearROI?.roi_percentage ?? 0,
+
+        // Historical data
+        monthly_snapshots: monthlySnapshots,
+        current_value_distribution: currentValueDistribution,
+        combined_roi_by_year: combinedRoiByYear,
+        return_metrics: {
+          by_year: returnMetricsByYear,
+          current_year: currentYearROI?.return_metrics ?? createEmptyReturnMetrics(),
+          global: globalReturnMetrics,
+        },
+        returns_by_asset_class: returnsByAssetClass,
+        top_performing_assets: topPerformingAssets,
+      };
+    }, dbClient);
+  }
+
+  /**
+   * Calculate portfolio totals and distribution from user assets
+   */
+  private static calculatePortfolioTotals(userAssets: Array<InvestAssetWithCalculatedAmounts>): {
+    totalCurrentValue: number;
+    totalCurrentlyInvestedValue: number;
+    currentValueDistribution: Array<AssetTypeDistribution>;
+  } {
+    const valuesByType = new Map<string, number>();
+    let totalCurrentValue = 0;
+    let totalCurrentlyInvestedValue = 0;
+
+    for (const asset of userAssets) {
+      totalCurrentValue += asset.current_value ?? 0;
+      totalCurrentlyInvestedValue += asset.currently_invested_value ?? 0;
+
+      // Aggregate by asset type
+      const currentTypeValue = valuesByType.get(asset.type) ?? 0;
+      valuesByType.set(asset.type, currentTypeValue + (asset.current_value ?? 0));
+    }
+
+    // Build distribution array
+    const currentValueDistribution: Array<AssetTypeDistribution> = [];
+    for (const [type, value] of valuesByType) {
+      currentValueDistribution.push({
+        type,
+        value,
+        percentage: totalCurrentValue !== 0 ? (value / totalCurrentValue) * 100 : 0,
+      });
+    }
+
+    return { totalCurrentValue, totalCurrentlyInvestedValue, currentValueDistribution };
+  }
+
+  private static calculateReturnsByAssetClass(
+    userAssets: InvestAssetWithCalculatedAmounts[],
+    monthlySnapshots: MonthlySnapshot[],
+    allTransactions: TransactionFlowData[],
+    totalPortfolioValue: number
+  ): AssetClassReturnStats[] {
+    const assetsByType = new Map<string, InvestAssetWithCalculatedAmounts[]>();
+
+    for (const asset of userAssets) {
+      if (!asset.type) continue;
+      const assets = assetsByType.get(asset.type) ?? [];
+      assets.push(asset);
+      assetsByType.set(asset.type, assets);
+    }
+
+    return [...assetsByType.entries()]
+      .map(([type, assets]) => {
+        const assetIds = new Set(assets.map((asset) => asset.asset_id?.toString()));
+        const classSnapshots = monthlySnapshots.filter((snapshot) =>
+          assetIds.has(snapshot.asset_id.toString())
+        );
+        const classTransactions = allTransactions.filter((transaction) =>
+          assetIds.has(
+            (transaction as TransactionFlowData & { asset_id?: bigint }).asset_id?.toString()
+          )
+        );
+        const currentValue = assets.reduce(
+          (total, asset) => total + (asset.current_value ?? 0),
+          0
+        );
+        const metrics = InvestAssetService.calculateScopeReturnMetrics(
+          classTransactions,
+          classSnapshots,
+          currentValue,
+          false
+        );
+
+        return {
+          type,
+          asset_count: assets.length,
+          invested_value: assets.reduce(
+            (total, asset) => total + (asset.invested_value ?? 0),
+            0
+          ),
+          fees_taxes: assets.reduce((total, asset) => total + (asset.fees_taxes ?? 0), 0),
+          current_value: currentValue,
+          allocation_percentage:
+            totalPortfolioValue !== 0 ? (currentValue / totalPortfolioValue) * 100 : 0,
+          return_metrics: {
+            current_year: metrics.current_year,
+            global: metrics.global,
+          },
+        };
+      })
+      .sort((left, right) => right.current_value - left.current_value);
+  }
+
+  /**
+   * Calculate global (all-time) ROI from yearly ROI data
+   *
+   * Simple ROI = Total Gain / Total Money Invested (initial investment)
+   */
+  private static calculateGlobalROI(roiByYear: Record<number, YearlyROI>): {
+    value: number;
+    percentage: number | string;
+  } {
+    const years = Object.keys(roiByYear)
+      .map(Number)
+      .sort((a, b) => a - b);
+
+    if (years.length === 0) {
+      return { value: 0, percentage: 0 };
+    }
+
+    let totalNetFlows = 0;
+    let totalMoneyOut = 0;
+    let firstYearBeginningValue = 0;
+
+    for (let i = 0; i < years.length; i++) {
+      const yearData = roiByYear[years[i]];
+      totalNetFlows += yearData.total_net_flows;
+      totalMoneyOut += yearData.total_inflow; // total_inflow stores totalMoneyOut
+
+      if (i === 0) {
+        firstYearBeginningValue = yearData.beginning_value;
+      }
+    }
+
+    const lastYear = years[years.length - 1];
+    const endingValue = roiByYear[lastYear].ending_value;
+
+    // Global ROI value = ending value - beginning value - net flows
+    const globalRoiValue = endingValue - firstYearBeginningValue - totalNetFlows;
+
+    // Cost basis = beginning value + total money invested (not net flows)
+    const costBasis = firstYearBeginningValue + totalMoneyOut;
+    const globalRoiPercentage = costBasis > 0 ? (globalRoiValue / costBasis) * 100 : 0;
+
+    return {
+      value: globalRoiValue,
+      percentage: costBasis <= 0 ? '-' : globalRoiPercentage,
+    };
+  }
+
+  private static async calculateGlobalReturnMetrics(
+    userId: bigint,
+    monthlySnapshots: Array<MonthlySnapshot>,
+    totalCurrentValue: number,
+    dbClient = prisma,
+    prefetchedTransactions?: TransactionFlowData[]
+  ): Promise<PeriodReturnMetrics> {
+    if (monthlySnapshots.length === 0) return createEmptyReturnMetrics();
+
+    const firstSnapshot = monthlySnapshots[0];
+    const periodStartFromSnapshots = DateTimeUtils.getUnixTimestampFromDate(
+      new Date(firstSnapshot.year, firstSnapshot.month - 1, 1)
+    );
+    const periodEndTimestamp = DateTimeUtils.getCurrentUnixTimestamp();
+    const allTransactions =
+      prefetchedTransactions ??
+      ((await InvestTransactionsService.getAllTransactionsForUserBetweenDates(
+        userId,
+        periodStartFromSnapshots,
+        periodEndTimestamp,
+        dbClient
+      )) as TransactionFlowData[]);
+    const firstTransactionTimestamp = allTransactions.reduce(
+      (earliestTimestamp, transaction) =>
+        Math.min(earliestTimestamp, Number(transaction.date_timestamp)),
+      periodStartFromSnapshots
+    );
+    const periodStartTimestamp =
+      allTransactions.length > 0 ? firstTransactionTimestamp : periodStartFromSnapshots;
+    const portfolioValueByMonth = buildPortfolioValueByMonth(monthlySnapshots);
+
+    return InvestAssetService.withInvalidPortfolioReturn(
+      calculatePeriodReturnMetrics({
+        beginningValue: 0,
+        endingValue: totalCurrentValue,
+        transactions: allTransactions.filter(
+          (transaction) => Number(transaction.date_timestamp) >= periodStartTimestamp
+        ),
+        periodStartTimestamp,
+        periodEndTimestamp,
+        portfolioValueByMonth,
+      }),
+      InvestAssetService.getSnapshotDataIssues(monthlySnapshots)
+    );
+  }
+
+  /**
+   * Calculate simple ROI for a single asset
+   * ROI = Net Return / Total Money Invested (initial investment)
+   *
+   * @param assetTransactions All transactions for this asset
+   * @param currentValue Current value of the asset
+   * @returns ROI value and percentage
+   */
+  private static calculateSingleAssetROI(
+    assetTransactions: TransactionFlowData[],
+    currentValue: number
+  ): { value: number; percentage: number | string } {
+    if (assetTransactions.length === 0) {
+      return { value: 0, percentage: 0 };
+    }
+
+    // Calculate ROI using the centralized calculator
+    const { roiValue, totalMoneyOut } = ROICalculator.calculateROI(currentValue, assetTransactions);
+    const hasCapitalContribution = assetTransactions.some(
+      (transaction) => transaction.trx_type === 'B' && Number(transaction.total_price) > 0
+    );
+
+    return {
+      value: roiValue,
+      percentage:
+        hasCapitalContribution && totalMoneyOut > 0 ? (roiValue / totalMoneyOut) * 100 : '-',
+    };
+  }
+
+  static async getAllAssetsSummaryForUser(userId: bigint, dbClient = prisma) {
+    return performDatabaseRequest(async (prismaTx) => {
+      return prismaTx.invest_assets.findMany({
+        where: {
+          users_user_id: userId,
+        },
+        select: {
+          asset_id: true,
+          name: true,
+          ticker: true,
+          type: true,
+        },
+      });
+    }, dbClient);
+  }
+
+  static async deleteAsset(userId: bigint, assetId: bigint, dbClient = undefined) {
+    return performDatabaseRequest(async (prismaTx) => {
+      if (!(await InvestAssetService.doesAssetBelongToUser(userId, assetId, prismaTx))) {
+        throw APIError.notAuthorized();
+      }
+
+      // delete transactions
+      await prismaTx.invest_transactions.deleteMany({
+        where: {
+          invest_assets_asset_id: assetId,
+        },
+      });
+
+      // delete snapshot references
+      await prismaTx.invest_asset_evo_snapshot.deleteMany({
+        where: {
+          invest_assets_asset_id: assetId,
+        },
+      });
+
+      // delete asset
+      await prismaTx.invest_assets.delete({
+        where: { asset_id: assetId },
+      });
+    }, dbClient);
+  }
+
+  static async addCustomBalanceSnapshot(
+    assetId: bigint,
+    month: number,
+    year: number,
+    units: number,
+    investedAmount: number,
+    currentAmount: number,
+    withdrawnAmount: number,
+    incomeAmount: number,
+    costAmount: number,
+    feesTaxes: number,
+    valuationSource: ValuationSource,
+    dbClient = prisma
+  ) {
+    const currentTimestamp = DateTimeUtils.getCurrentUnixTimestamp();
+    return dbClient.$queryRaw`INSERT INTO invest_asset_evo_snapshot (month, year, units, invested_amount, current_value, invest_assets_asset_id, created_at, updated_at, withdrawn_amount, income_amount, cost_amount, fees_taxes, valuation_source)
+                                    VALUES (${month}, ${year}, ${units}, ${investedAmount}, ${currentAmount}, ${assetId}, ${currentTimestamp}, ${currentTimestamp}, ${withdrawnAmount}, ${incomeAmount}, ${costAmount}, ${feesTaxes}, ${valuationSource})
+                                    ON DUPLICATE KEY UPDATE units = ${units}, invested_amount = ${investedAmount}, updated_at = ${currentTimestamp}, withdrawn_amount = ${withdrawnAmount}, income_amount = ${incomeAmount}, cost_amount = ${costAmount}, fees_taxes = ${feesTaxes};`;
+  }
+
+  static async getAllTransactionsForAssetBetweenDates(
+    assetId: bigint,
+    fromDate: bigint | number,
+    toDate: bigint | number,
+    dbClient = prisma
+  ): Promise<Array<Prisma.Invest_transactionsMaxAggregateOutputType>> {
+    return performDatabaseRequest(async (prismaTx) => {
+      return prismaTx.$queryRaw`SELECT * FROM invest_transactions 
+              WHERE date_timestamp BETWEEN ${fromDate} AND ${toDate}
+              AND invest_assets_asset_id = ${assetId}
+              ORDER BY date_timestamp ASC`;
+    }, dbClient);
+  }
+
+  static async recalculateSnapshotForAssetsIncrementally(
+    assetId: bigint,
+    originalFromDate: number | bigint,
+    originalToDate: number | bigint,
+    dbClient = undefined
+  ) {
+    return performDatabaseRequest(async (prismaTx) => {
+      /* Logger.addLog(`account: ${accountId} | fromDate: ${fromDate} | toDate: ${toDate}`); */
+      /*
+       * Given that I'm unable to know the invested/current amounts of an asset at any specific time (only at the end of each month),
+       * I will need to recalculate from the beginning of the month relative to $fromDate all the way to the end of
+       * month associated with $toDate.
+       */
+
+      let beginMonth = DateTimeUtils.getMonthNumberFromTimestamp(originalFromDate);
+      let beginYear = DateTimeUtils.getYearFromTimestamp(originalFromDate);
+      Logger.addLog(`Begin month: ${beginMonth} | original from date: ${originalFromDate}`);
+      // Get snapshot from 2 months prior of begin date
+      let priorMonthsSnapshot = await InvestAssetService.getLatestSnapshotForAsset(
+        assetId,
+        beginMonth > 2 ? beginMonth - 2 : 12 - 2 + beginMonth,
+        beginMonth > 2 ? beginYear : beginYear - 1,
+        prismaTx
+      );
+
+      if (!priorMonthsSnapshot) {
+        priorMonthsSnapshot = {
+          units: Decimal(0),
+          current_value: 0,
+          invested_amount: 0,
+          year: -1,
+          month: -1,
+          invest_assets_asset_id: assetId,
+          withdrawn_amount: 0,
+          income_amount: 0,
+          cost_amount: 0,
+          fees_taxes: 0,
+          updated_at: -1,
+          created_at: -1,
+        };
+      }
+
+      await InvestAssetService.addCustomBalanceSnapshot(
+        assetId,
+        beginMonth,
+        beginYear,
+        Number(priorMonthsSnapshot.units),
+        Number(priorMonthsSnapshot.invested_amount),
+        Number(priorMonthsSnapshot.current_value),
+        Number(priorMonthsSnapshot.withdrawn_amount),
+        Number(priorMonthsSnapshot.income_amount ?? 0),
+        Number(priorMonthsSnapshot.cost_amount ?? 0),
+        Number(priorMonthsSnapshot.fees_taxes ?? 0),
+        'generated',
+        prismaTx
+      );
+
+      // Reset snapshots for next 2 months (in case there are no transactions in these months and the balance doesn't get recalculated
+      let addCustomBalanceSnapshotsPromises = [];
+      addCustomBalanceSnapshotsPromises.push(
+        InvestAssetService.addCustomBalanceSnapshot(
+          assetId,
+          DateTimeUtils.incrementMonthByX(beginMonth, beginYear, 1).month,
+          DateTimeUtils.incrementMonthByX(beginMonth, beginYear, 1).year,
+          Number(priorMonthsSnapshot.units),
+          Number(priorMonthsSnapshot.invested_amount),
+          Number(priorMonthsSnapshot.current_value),
+          Number(priorMonthsSnapshot.withdrawn_amount),
+          Number(priorMonthsSnapshot.income_amount ?? 0),
+          Number(priorMonthsSnapshot.cost_amount ?? 0),
+          Number(priorMonthsSnapshot.fees_taxes ?? 0),
+          'generated',
           prismaTx
         )
       );
 
-      for (let i = 1; i <= 6; i++) {
+      addCustomBalanceSnapshotsPromises.push(
+        InvestAssetService.addCustomBalanceSnapshot(
+          assetId,
+          DateTimeUtils.incrementMonthByX(beginMonth, beginYear, 2).month,
+          DateTimeUtils.incrementMonthByX(beginMonth, beginYear, 2).year,
+          Number(priorMonthsSnapshot.units),
+          Number(priorMonthsSnapshot.invested_amount),
+          Number(priorMonthsSnapshot.current_value),
+          Number(priorMonthsSnapshot.withdrawn_amount),
+          Number(priorMonthsSnapshot.income_amount ?? 0),
+          Number(priorMonthsSnapshot.cost_amount ?? 0),
+          Number(priorMonthsSnapshot.fees_taxes ?? 0),
+          'generated',
+          prismaTx
+        )
+      );
+
+      await Promise.all(addCustomBalanceSnapshotsPromises);
+
+      if (beginMonth > 1) beginMonth--;
+      else {
+        beginMonth = 12;
+        beginYear--;
+      }
+
+      let endMonth = DateTimeUtils.getMonthNumberFromTimestamp(originalToDate);
+      let endYear = DateTimeUtils.getYearFromTimestamp(originalToDate);
+
+      if (endMonth < 12) endMonth++;
+      else {
+        endMonth = 1;
+        endYear++;
+      }
+
+      const fromDate = DateTimeUtils.getUnixTimestampFromDate(
+        new Date(beginYear, beginMonth - 1, 1)
+      );
+      const toDate = DateTimeUtils.getUnixTimestampFromDate(new Date(endYear, endMonth - 1, 1));
+
+      const trxList = await InvestAssetService.getAllTransactionsForAssetBetweenDates(
+        assetId,
+        fromDate,
+        toDate,
+        prismaTx
+      );
+      /*Logger.addLog(`----- dates between ${fromDate} & ${toDate}`);
+      Logger.addStringifiedLog(trxList);
+      Logger.addLog('-----');*/
+      let initialSnapshot = priorMonthsSnapshot;
+      if (!initialSnapshot) {
+        initialSnapshot = {
+          units: Decimal(0),
+          current_value: 0,
+          invested_amount: 0,
+          year: -1,
+          month: -1,
+          invest_assets_asset_id: assetId,
+          withdrawn_amount: 0,
+          income_amount: 0,
+          cost_amount: 0,
+          updated_at: -1,
+          created_at: -1,
+        };
+      }
+
+      for (const trx of trxList) {
+        const trxDate = Number(trx.date_timestamp);
+        const month = DateTimeUtils.getMonthNumberFromTimestamp(trxDate);
+        const year = DateTimeUtils.getYearFromTimestamp(trxDate);
+
+        const trxType = trx.type;
+        const changeInAmounts = trx.total_price;
+        const changeInUnits = trx.units;
+        if (trx.fees_taxes_amount > 0 && trx.fees_taxes_units <= Decimal(0)) {
+          initialSnapshot.fees_taxes =
+            BigInt(initialSnapshot.fees_taxes) + BigInt(trx.fees_taxes_amount);
+        } else if (trx.fees_taxes_units > Decimal(0)) {
+          initialSnapshot.units = Decimal(initialSnapshot.units).minus(trx.fees_taxes_units);
+        }
+        switch (trxType) {
+          case MYFIN.INVEST.TRX_TYPE.BUY:
+            // BUY: +units, +invested_amount, +fees_taxes
+            initialSnapshot.invested_amount =
+              BigInt(initialSnapshot.invested_amount) + BigInt(changeInAmounts);
+            initialSnapshot.units = Decimal(initialSnapshot.units).add(changeInUnits);
+            break;
+
+          case MYFIN.INVEST.TRX_TYPE.SELL:
+            // SELL: -units, +withdrawn_amount, +fees_taxes
+            initialSnapshot.withdrawn_amount =
+              BigInt(initialSnapshot.withdrawn_amount) + BigInt(changeInAmounts);
+            initialSnapshot.units = Decimal(initialSnapshot.units).minus(changeInUnits);
+            break;
+
+          case MYFIN.INVEST.TRX_TYPE.INCOME:
+            // INCOME: +units (if > 0), +income_amount (if total_price > 0)
+            if (changeInUnits > Decimal(0)) {
+              initialSnapshot.units = Decimal(initialSnapshot.units).add(changeInUnits);
+            }
+            if (BigInt(changeInAmounts) > 0) {
+              initialSnapshot.income_amount =
+                BigInt(initialSnapshot.income_amount ?? 0) + BigInt(changeInAmounts);
+            }
+            break;
+
+          case MYFIN.INVEST.TRX_TYPE.COST:
+            // COST: -units (if > 0), +cost_amount (if total_price > 0)
+            if (changeInUnits > Decimal(0)) {
+              initialSnapshot.units = Decimal(initialSnapshot.units).minus(changeInUnits);
+            } else if (BigInt(changeInAmounts) > 0) {
+              initialSnapshot.cost_amount =
+                BigInt(initialSnapshot.cost_amount ?? 0) + BigInt(changeInAmounts);
+            }
+            break;
+        }
+
+        /* Automatically add snapshots for current & next 6 months in order to create a buffer*/
+        addCustomBalanceSnapshotsPromises = [];
+
         addCustomBalanceSnapshotsPromises.push(
-          addCustomBalanceSnapshot(
+          InvestAssetService.addCustomBalanceSnapshot(
             assetId,
-            DateTimeUtils.incrementMonthByX(month, year, i).month,
-            DateTimeUtils.incrementMonthByX(month, year, i).year,
+            month,
+            year,
             Number(initialSnapshot.units),
             Number(initialSnapshot.invested_amount),
             Number(initialSnapshot.current_value),
             Number(initialSnapshot.withdrawn_amount),
+            Number(initialSnapshot.income_amount ?? 0),
+            Number(initialSnapshot.cost_amount ?? 0),
+            Number(initialSnapshot.fees_taxes ?? 0),
+            'generated',
             prismaTx
           )
         );
+
+        for (let i = 1; i <= 6; i++) {
+          addCustomBalanceSnapshotsPromises.push(
+            InvestAssetService.addCustomBalanceSnapshot(
+              assetId,
+              DateTimeUtils.incrementMonthByX(month, year, i).month,
+              DateTimeUtils.incrementMonthByX(month, year, i).year,
+              Number(initialSnapshot.units),
+              Number(initialSnapshot.invested_amount),
+              Number(initialSnapshot.current_value),
+              Number(initialSnapshot.withdrawn_amount),
+              Number(initialSnapshot.income_amount ?? 0),
+              Number(initialSnapshot.cost_amount ?? 0),
+              Number(initialSnapshot.fees_taxes ?? 0),
+              'generated',
+              prismaTx
+            )
+          );
+        }
+
+        await Promise.all(addCustomBalanceSnapshotsPromises);
       }
 
-      await Promise.all(addCustomBalanceSnapshotsPromises);
-    }
+      return initialSnapshot;
+    }, dbClient);
+  }
 
-    return initialSnapshot;
-  }, dbClient);
+  static async deleteAllAssetEvoSnapshotsForUser(userId: bigint, dbClient = prisma) {
+    return dbClient.$queryRaw`DELETE invest_asset_evo_snapshot FROM invest_asset_evo_snapshot 
+      LEFT JOIN invest_assets ON invest_assets.asset_id = invest_asset_evo_snapshot.invest_assets_asset_id 
+      WHERE users_user_id = ${userId} `;
+  }
+}
 
-const deleteAllAssetEvoSnapshotsForUser = async (userId: bigint, dbClient = prisma) => {
-  return dbClient.$queryRaw`DELETE invest_asset_evo_snapshot FROM invest_asset_evo_snapshot 
-    LEFT JOIN invest_assets ON invest_assets.asset_id = invest_asset_evo_snapshot.invest_assets_asset_id 
-    WHERE users_user_id = ${userId} `;
-};
-
-export default {
-  getAllAssetsForUser,
-  createAsset,
-  updateAsset,
-  updateCurrentAssetValue,
-  getAssetStatsForUser,
-  getAllAssetsSummaryForUser,
-  deleteAsset,
-  getAssetDetailsForUser,
-  doesAssetBelongToUser,
-  recalculateSnapshotForAssetsIncrementally,
-  deleteAllAssetEvoSnapshotsForUser,
-};
+export default InvestAssetService;

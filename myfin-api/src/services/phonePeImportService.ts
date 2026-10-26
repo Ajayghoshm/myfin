@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import type { Prisma } from "../generated/prisma/client.js";
 import { performDatabaseRequest, prisma } from "../config/prisma.js";
 import APIError from "../errorHandling/apiError.js";
 import ConvertUtils from "../utils/convertUtils.js";

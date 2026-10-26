@@ -1,37 +1,41 @@
-import { prisma } from '../config/prisma.js';
-import { Prisma } from '@prisma/client';
+import { normalizeItems, validateCents } from '../services/budgetAllocationService.js';
 import { createRequire } from 'node:module';
-import { isSameMajorVersion } from './textUtils.js';
-import APIError from '../errorHandling/apiError.js';
+import { prisma } from '../config/prisma.js';
+import { MYFIN } from '../consts.js';
 import { RestoreUserErrorCodes } from '../controllers/userController.js';
-import UserService from '../services/userService.js';
+import APIError from '../errorHandling/apiError.js';
+import type { Prisma } from '../generated/prisma/client.js';
 import AccountService from '../services/accountService.js';
 import CategoryService from '../services/categoryService.js';
 import EntityService from '../services/entityService.js';
-import TagService from '../services/tagService.js';
 import RuleService from '../services/ruleService.js';
+import TagService from '../services/tagService.js';
+import UserService from '../services/userService.js';
 import Logger from './Logger.js';
-import { MYFIN } from '../consts.js';
 import ConvertUtils from './convertUtils.js';
+import { isSameMajorVersion } from './textUtils.js';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../../package.json');
 
 export interface BackupData {
   apiVersion: string;
-  accounts?: Prisma.accountsGetPayload<{}>[];
-  balances_snapshot?: Prisma.balances_snapshotGetPayload<{}>[];
-  budgets?: Prisma.budgetsGetPayload<{}>[];
-  budgets_has_categories?: Prisma.budgets_has_categoriesGetPayload<{}>[];
-  categories?: Prisma.categoriesGetPayload<{}>[];
-  entities?: Prisma.entitiesGetPayload<{}>[];
-  tags?: Prisma.tagsGetPayload<{}>[];
-  invest_asset_evo_snapshot?: Prisma.invest_asset_evo_snapshotGetPayload<{}>[];
-  invest_assets?: Prisma.invest_assetsGetPayload<{}>[];
-  invest_desired_allocations?: Prisma.invest_desired_allocationsGetPayload<{}>[];
-  invest_transactions?: Prisma.invest_transactionsGetPayload<{}>[];
-  rules?: Prisma.rulesGetPayload<{}>[];
-  transactions?: Prisma.transactionsGetPayload<{}>[];
+  accounts?: Prisma.accountsGetPayload<object>[];
+  balances_snapshot?: Prisma.balances_snapshotGetPayload<object>[];
+  budgets?: Prisma.budgetsGetPayload<object>[];
+  budgets_has_categories?: Prisma.budgets_has_categoriesGetPayload<object>[];
+  budget_category_items?: Prisma.budget_category_itemsGetPayload<object>[];
+  categories?: Prisma.categoriesGetPayload<object>[];
+  entities?: Prisma.entitiesGetPayload<object>[];
+  tags?: Prisma.tagsGetPayload<object>[];
+  invest_asset_evo_snapshot?: Prisma.invest_asset_evo_snapshotGetPayload<object>[];
+  invest_assets?: Prisma.invest_assetsGetPayload<object>[];
+  invest_desired_allocations?: Prisma.invest_desired_allocationsGetPayload<object>[];
+  invest_transactions?: Prisma.invest_transactionsGetPayload<object>[];
+  rules?: Prisma.rulesGetPayload<object>[];
+  goals?: Prisma.goalsGetPayload<object>[];
+  goal_has_accounts?: Prisma.goal_has_accountGetPayload<object>[];
+  transactions?: Prisma.transactionsGetPayload<object>[];
 }
 
 class BackupManager {
@@ -49,6 +53,8 @@ class BackupManager {
       investDesiredAllocations,
       investTransactions,
       rules,
+      goals,
+      goalHasAccounts,
       transactions,
     ] = await Promise.all([
       // Accounts
@@ -117,6 +123,15 @@ class BackupManager {
         where: { users_user_id: userId },
       }),
 
+      // Goals
+      dbClient.goals.findMany({
+        where: { users_user_id: userId },
+      }),
+
+      dbClient.goal_has_account.findMany({
+        where: { goals: { users_user_id: userId } },
+      }),
+
       // Transactions
       dbClient.transactions.findMany({
         where: {
@@ -134,6 +149,10 @@ class BackupManager {
       balances_snapshot: balancesSnapshot,
       budgets,
       budgets_has_categories: budgetsHasCategories,
+      budget_category_items: await dbClient.budget_category_items.findMany({
+        where: { budgets_users_user_id: userId },
+        orderBy: [{ sort_order: 'asc' }, { item_id: 'asc' }],
+      }),
       categories,
       entities,
       tags,
@@ -142,6 +161,8 @@ class BackupManager {
       invest_desired_allocations: investDesiredAllocations,
       invest_transactions: investTransactions,
       rules,
+      goals,
+      goal_has_accounts: goalHasAccounts,
       transactions,
     };
   }
@@ -161,11 +182,62 @@ class BackupManager {
     const tagIdMap: Map<bigint, bigint> = new Map(); // <old id, new id>
     const assetIdMap: Map<bigint, bigint> = new Map(); // <old id, new id>
     const budgetIdMap: Map<bigint, bigint> = new Map(); // <old id, new id>
+    const goalIdMap: Map<bigint, bigint> = new Map(); // <old id, new id>
+
+    const restoredItems = data.budget_category_items ?? [];
+    const parentKey = (row: {
+      budgets_budget_id: unknown;
+      budgets_users_user_id: unknown;
+      categories_category_id: unknown;
+    }) => `${row.budgets_budget_id}:${row.budgets_users_user_id}:${row.categories_category_id}`;
+    const parents = new Map(
+      (data.budgets_has_categories ?? []).map((row) => [parentKey(row), row])
+    );
+    const totals = new Map<string, bigint>();
+    for (const item of restoredItems) {
+      if (
+        !parents.has(parentKey(item)) ||
+        !['EXPENSE', 'INCOME'].includes(item.direction) ||
+        !/^\d+$/.test(String(item.amount))
+      )
+        throw APIError.badRequest(
+          'Invalid budget breakdown in backup.',
+          'BUDGET_BREAKDOWN_INVALID'
+        );
+      const cents = BigInt(item.amount);
+      normalizeItems([
+        {
+          label: item.label,
+          amount: `${cents / 100n}.${String(cents % 100n).padStart(2, '0')}`,
+          sort_order: item.sort_order,
+        },
+      ]);
+      const key = `${parentKey(item)}:${item.direction}`;
+      totals.set(key, (totals.get(key) ?? 0n) + cents);
+    }
+    for (const [key, parent] of parents) {
+      for (const direction of ['EXPENSE', 'INCOME']) {
+        const sum = totals.get(`${key}:${direction}`);
+        if (sum !== undefined) validateCents(sum);
+        if (
+          sum !== undefined &&
+          (sum > BigInt(Number.MAX_SAFE_INTEGER) ||
+            sum !==
+              BigInt(
+                direction === 'EXPENSE' ? parent.planned_amount_debit : parent.planned_amount_credit
+              ))
+        )
+          throw APIError.badRequest(
+            'Budget breakdown totals in backup do not match their allocation.',
+            'BUDGET_BREAKDOWN_CONFLICT'
+          );
+      }
+    }
 
     // Delete all previous records
-    Logger.addLog(`BackupManager > Restore | Deleting all user data...`);
+    Logger.addLog('BackupManager > Restore | Deleting all user data...');
     await UserService.deleteAllUserData(userId, dbClient);
-    Logger.addLog(`BackupManager > Restore | Data successfully deleted!`);
+    Logger.addLog('BackupManager > Restore | Data successfully deleted!');
 
     // region Accounts
     const accountPromises = data.accounts.map(async (account) => {
@@ -233,6 +305,7 @@ class BackupManager {
           name: category.name,
           description: category.description,
           color_gradient: category.color_gradient,
+          icon_key: category.icon_key,
           status: category.status,
           exclude_from_budgets: category.exclude_from_budgets,
         },
@@ -318,7 +391,28 @@ class BackupManager {
       return newBudget;
     });
     // endregion
-    Logger.addLog(`BackupManager > Restore | Importing core entities...`);
+    //region Goals
+    const goalPromises = data.goals.map(async (goal) => {
+      const newGoal = await dbClient.goals.create({
+        data: {
+          name: goal.name,
+          description: goal.description,
+          amount: goal.amount,
+          created_at: goal.created_at,
+          updated_at: goal.updated_at,
+          users_user_id: userId,
+          due_date: goal.due_date,
+          priority: goal.priority,
+          is_archived: goal.is_archived,
+        },
+      });
+
+      // Map old ID to new ID
+      goalIdMap.set(goal.goal_id, newGoal.goal_id);
+      return newGoal;
+    });
+    //endregion
+    Logger.addLog('BackupManager > Restore | Importing core entities...');
     await Promise.all([
       ...accountPromises,
       ...categoryPromises,
@@ -326,8 +420,9 @@ class BackupManager {
       ...tagPromises,
       ...assetPromises,
       ...budgetPromises,
+      ...goalPromises,
     ]);
-    Logger.addLog(`BackupManager > Restore | Core entities successfully imported!`);
+    Logger.addLog('BackupManager > Restore | Core entities successfully imported!');
 
     // region Rules
     // check if all values are valid
@@ -421,7 +516,8 @@ class BackupManager {
         data: {
           date_timestamp: trx.date_timestamp,
           units: trx.units,
-          fees_taxes: trx.fees_taxes,
+          fees_taxes_amount: trx.fees_taxes_amount,
+          fees_taxes_units: trx.fees_taxes_units,
           total_price: trx.total_price,
           note: trx.note,
           type: trx.type,
@@ -434,9 +530,9 @@ class BackupManager {
     });
     // endregion
 
-    Logger.addLog(`BackupManager > Restore | Importing transactions...`);
+    Logger.addLog('BackupManager > Restore | Importing transactions...');
     await Promise.all([...rulePromises, ...trxPromises, ...assetTrxPromises]);
-    Logger.addLog(`BackupManager > Restore | Transactions successfully imported!`);
+    Logger.addLog('BackupManager > Restore | Transactions successfully imported!');
 
     // region Asset Evolution Snapshots
     const assetEvoSnapshots = data.invest_asset_evo_snapshot.map(async (snapshot) => {
@@ -451,6 +547,8 @@ class BackupManager {
           created_at: snapshot.created_at,
           updated_at: snapshot.updated_at,
           withdrawn_amount: snapshot.withdrawn_amount,
+          income_amount: snapshot.income_amount ?? 0,
+          cost_amount: snapshot.cost_amount ?? 0,
         },
       });
       return newSnapshot;
@@ -458,7 +556,7 @@ class BackupManager {
     // endregion
 
     // region Budget Categories
-    const budgetCategoriesPromises = data.budgets_has_categories.map(async (category) => {
+    const budgetCategoriesPromises = (data.budgets_has_categories ?? []).map(async (category) => {
       const newBudgetCategory = await dbClient.budgets_has_categories.create({
         data: {
           budgets_budget_id: budgetIdMap.get(category.budgets_budget_id),
@@ -473,13 +571,46 @@ class BackupManager {
       return newBudgetCategory;
     });
     // endregion
-    Logger.addLog(`BackupManager > Restore | Recalculating balances...`);
+
+    await Promise.all(budgetCategoriesPromises);
+    for (const item of restoredItems) {
+      const parent = parents.get(parentKey(item));
+      await dbClient.budget_category_items.create({
+        data: {
+          budgets_budget_id: budgetIdMap.get(parent.budgets_budget_id),
+          budgets_users_user_id: userId,
+          categories_category_id: categoryIdMap.get(parent.categories_category_id),
+          direction: item.direction,
+          label: item.label.trim(),
+          amount: BigInt(item.amount),
+          sort_order: item.sort_order,
+        },
+      });
+    }
+
+    // region Goal Accounts
+    const goalAccountsPromises = data.goal_has_accounts.map(async (account) => {
+      const newGoalAccount = await dbClient.goal_has_account.create({
+        data: {
+          accounts_account_id: accountIdMap.get(account.accounts_account_id),
+          goals_goal_id: goalIdMap.get(account.goals_goal_id),
+          match_type: account.match_type,
+          match_value: account.match_value,
+        },
+      });
+
+      return newGoalAccount;
+    });
+    // endregion
+
+    Logger.addLog('BackupManager > Restore | Recalculating balances...');
     await Promise.all([
       AccountService.recalculateAllUserAccountsBalances(userId, dbClient),
       ...budgetCategoriesPromises,
       ...assetEvoSnapshots,
+      ...goalAccountsPromises,
     ]);
-    Logger.addLog(`BackupManager > Restore | Balances successfully recalculated!`);
+    Logger.addLog('BackupManager > Restore | Balances successfully recalculated!');
 
     return Promise.resolve('ok');
   }

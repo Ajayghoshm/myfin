@@ -1,15 +1,20 @@
-import { performDatabaseRequest, prisma } from "../config/prisma.js";
-import { MYFIN } from "../consts.js";
-import ConvertUtils from "../utils/convertUtils.js";
-import CategoryService from "./categoryService.js";
-import AccountService from "./accountService.js";
-import DateTimeUtils from "../utils/DateTimeUtils.js";
-import Logger from "../utils/Logger.js";
-import { Prisma, PrismaClient } from "@prisma/client";
+import BudgetAllocationService, {
+  type BreakdownInput,
+  serializeItems,
+} from './budgetAllocationService.js';
+import { performDatabaseRequest, prisma } from '../config/prisma.js';
+import { MYFIN } from '../consts.js';
+import { type Prisma, PrismaClient } from '../generated/prisma/client.js';
+import APIError from '../errorHandling/apiError.js';
+import DateTimeUtils from '../utils/DateTimeUtils.js';
+import Logger from '../utils/Logger.js';
+import ConvertUtils from '../utils/convertUtils.js';
+import AccountService from './accountService.js';
+import CategoryService from './categoryService.js';
 
 export enum BudgetListOrder {
-  DESCENDING = "DESC",
-  ASCENDING = "ASC",
+  DESCENDING = 'DESC',
+  ASCENDING = 'ASC',
 }
 
 type BudgetWithAmounts = {
@@ -21,14 +26,25 @@ type BudgetWithAmounts = {
   initial_balance: bigint;
   users_user_id: bigint;
   balance_value?: number;
-  balance_change_percentage?: number | "NaN";
+  balance_change_percentage?: number | 'NaN';
   credit_amount?: number;
   debit_amount?: number;
   savings_rate_percentage?: number;
-}
+};
+
+type BudgetAmountTotals = {
+  balance_credit: number;
+  balance_debit: number;
+};
+
+type BalanceSnapshotRow = {
+  accounts_account_id: bigint;
+  month: number;
+  year: number;
+  balance: bigint;
+};
 
 class BudgetService {
-
   static async getAllCategoriesForUser(
     userId: number | bigint,
     budgetId: number | bigint,
@@ -42,6 +58,7 @@ class BudgetService {
              type,
              description,
              color_gradient,
+             icon_key,
              budgets_budget_id,
              exclude_from_budgets,
              truncate((coalesce(planned_amount_credit, 0) / 100), 2) as planned_amount_credit,
@@ -74,8 +91,12 @@ class BudgetService {
         let amountDebit = 0;
 
         if (isOpen) {
-          amountCredit = Math.abs(ConvertUtils.convertFloatToBigInteger(category.planned_amount_credit));
-          amountDebit = Math.abs(ConvertUtils.convertFloatToBigInteger(category.planned_amount_debit));
+          amountCredit = Math.abs(
+            ConvertUtils.convertFloatToBigInteger(category.planned_amount_credit)
+          );
+          amountDebit = Math.abs(
+            ConvertUtils.convertFloatToBigInteger(category.planned_amount_debit)
+          );
         } else {
           const calculatedAmounts = await CategoryService.getAmountForCategoryInMonth(
             category.category_id,
@@ -84,18 +105,23 @@ class BudgetService {
             true,
             prismaTx
           );
-          const calculatedAmountsFromInvestmentAccounts = await AccountService.getAmountForInvestmentAccountsInMonth(
-            category.category_id,
-            month as number,
-            year as number,
-            prismaTx
-          );
+          const calculatedAmountsFromInvestmentAccounts =
+            await AccountService.getAmountForInvestmentAccountsInMonth(
+              category.category_id,
+              month as number,
+              year as number,
+              prismaTx
+            );
 
-          const creditFromInvestmentAccounts = calculatedAmountsFromInvestmentAccounts.account_balance_credit;
-          const expensesFromInvestmentAccounts = calculatedAmountsFromInvestmentAccounts.account_balance_debit;
+          const creditFromInvestmentAccounts =
+            calculatedAmountsFromInvestmentAccounts.account_balance_credit;
+          const expensesFromInvestmentAccounts =
+            calculatedAmountsFromInvestmentAccounts.account_balance_debit;
 
-          amountCredit = Math.abs(calculatedAmounts.category_balance_credit) - creditFromInvestmentAccounts;
-          amountDebit = Math.abs(calculatedAmounts.category_balance_debit) - expensesFromInvestmentAccounts;
+          amountCredit =
+            Math.abs(calculatedAmounts.category_balance_credit) - creditFromInvestmentAccounts;
+          amountDebit =
+            Math.abs(calculatedAmounts.category_balance_debit) - expensesFromInvestmentAccounts;
         }
 
         if (!category.exclude_from_budgets) {
@@ -107,14 +133,22 @@ class BudgetService {
     }, dbClient);
   }
 
-  private static async getSumAmountsForBudget(userId: bigint, budget: Prisma.budgetsUpdateInput, dbClient = undefined) {
+  private static async getSumAmountsForBudget(
+    userId: bigint,
+    budget: Prisma.budgetsUpdateInput,
+    dbClient = undefined
+  ) {
     return performDatabaseRequest(async (prismaTx) => {
       const budgetId = budget.budget_id;
-      const month = parseInt(budget.month as any, 10);
-      const year = parseInt(budget.year as any, 10);
+      const month = Number.parseInt(budget.month as any, 10);
+      const year = Number.parseInt(budget.year as any, 10);
       const isOpen = budget.is_open;
 
-      const categories: any = await this.getAllCategoriesForUser(userId, budgetId as bigint, prismaTx);
+      const categories: any = await this.getAllCategoriesForUser(
+        userId,
+        budgetId as bigint,
+        prismaTx
+      );
       let balanceCredit = 0;
       let balanceDebit = 0;
 
@@ -124,8 +158,12 @@ class BudgetService {
 
         // @ts-ignore
         if (isOpen === 1) {
-          amountCredit = Math.abs(ConvertUtils.convertFloatToBigInteger(category.planned_amount_credit));
-          amountDebit = Math.abs(ConvertUtils.convertFloatToBigInteger(category.planned_amount_debit));
+          amountCredit = Math.abs(
+            ConvertUtils.convertFloatToBigInteger(category.planned_amount_credit)
+          );
+          amountDebit = Math.abs(
+            ConvertUtils.convertFloatToBigInteger(category.planned_amount_debit)
+          );
         } else {
           const calculatedAmounts = await CategoryService.getAmountForCategoryInMonth(
             category.category_id,
@@ -135,34 +173,37 @@ class BudgetService {
             prismaTx
           );
 
-          const calculatedAmountsFromInvestmentAccounts = await AccountService.getAmountForInvestmentAccountsInMonth(
-            category.category_id,
-            month,
-            year,
-            prismaTx
-          );
+          const calculatedAmountsFromInvestmentAccounts =
+            await AccountService.getAmountForInvestmentAccountsInMonth(
+              category.category_id,
+              month,
+              year,
+              prismaTx
+            );
 
-      /* Logger.addLog(
+          /* Logger.addLog(
               `Category: ${category.category_id} | calculatedAmounts: ${JSON.stringify(
                 calculatedAmounts
               )} | calculatedAmountsFromInvestmentAccounts: ${JSON.stringify(
                 calculatedAmountsFromInvestmentAccounts
               )}`
             ); */
-      // Unrealized gains
-      const creditFromInvestmentAccounts =
-        calculatedAmountsFromInvestmentAccounts?.account_balance_credit;
-      // Unrealized losses
-          const expensesFromInvestmentAccounts = calculatedAmountsFromInvestmentAccounts?.account_balance_debit;
+          // Unrealized gains
+          const creditFromInvestmentAccounts =
+            calculatedAmountsFromInvestmentAccounts?.account_balance_credit;
+          // Unrealized losses
+          const expensesFromInvestmentAccounts =
+            calculatedAmountsFromInvestmentAccounts?.account_balance_debit;
 
-      // remove unrealized gains from budget calcs
-      amountCredit =
-        Math.abs(calculatedAmounts?.category_balance_credit) - creditFromInvestmentAccounts;
-      // remove unrealized losses from budget calcs
-          amountDebit = Math.abs(calculatedAmounts?.category_balance_debit) - expensesFromInvestmentAccounts;
+          // remove unrealized gains from budget calcs
+          amountCredit =
+            Math.abs(calculatedAmounts?.category_balance_credit) - creditFromInvestmentAccounts;
+          // remove unrealized losses from budget calcs
+          amountDebit =
+            Math.abs(calculatedAmounts?.category_balance_debit) - expensesFromInvestmentAccounts;
         }
 
-    /* Logger.addLog(
+        /* Logger.addLog(
           `Category: ${category.category_id} | amountCredit: ${amountCredit} | amountDebit: ${amountDebit}`
         ); */
 
@@ -171,7 +212,7 @@ class BudgetService {
           balanceDebit += amountDebit;
         }
       }
-  /* Logger.addLog(`balanceCredit: ${balanceCredit} | balanceDebit: ${balanceDebit}`); */
+      /* Logger.addLog(`balanceCredit: ${balanceCredit} | balanceDebit: ${balanceDebit}`); */
 
       return {
         balance_credit: ConvertUtils.convertBigIntegerToFloat(BigInt(balanceCredit)),
@@ -186,8 +227,8 @@ class BudgetService {
     budgetBalance: number,
     dbClient = prisma
   ) {
-    const month = parseInt(budget.month as any, 10);
-    const year = parseInt(budget.year as any, 10);
+    const month = Number.parseInt(budget.month as any, 10);
+    const year = Number.parseInt(budget.year as any, 10);
 
     const initialBalance = await AccountService.getBalancesSnapshotForMonthForUser(
       userId,
@@ -199,7 +240,7 @@ class BudgetService {
 
     const finalBalance = initialBalance + budgetBalance;
     if (initialBalance === 0) {
-      return "NaN";
+      return 'NaN';
     }
 
     return ((finalBalance - initialBalance) / Math.abs(initialBalance)) * 100;
@@ -215,14 +256,20 @@ class BudgetService {
         year: true,
         budget_id: true,
       },
-      orderBy: [{ year: "desc" }, { month: "desc" }],
+      orderBy: [{ year: 'desc' }, { month: 'desc' }],
     });
   }
 
-  static async getExpandedBudgetAmountsData(userId: bigint, budget: BudgetWithAmounts, dbClient = prisma) {
+  static async getExpandedBudgetAmountsData(
+    userId: bigint,
+    budget: BudgetWithAmounts,
+    dbClient = prisma
+  ) {
     const promises = [];
     promises.push(this.calculateBudgetBalance(userId, budget, dbClient));
-    promises.push(this.calculateBudgetBalanceChangePercentage(userId, budget, budget.balance_value, dbClient));
+    promises.push(
+      this.calculateBudgetBalanceChangePercentage(userId, budget, budget.balance_value, dbClient)
+    );
     promises.push(this.getSumAmountsForBudget(userId, budget, dbClient));
 
     const [budgetBalance, balanceChangePercentage, budgetSums] = await Promise.all(promises);
@@ -230,7 +277,8 @@ class BudgetService {
     budget.balance_change_percentage = balanceChangePercentage;
     budget.credit_amount = budgetSums.balance_credit;
     budget.debit_amount = budgetSums.balance_debit;
-    budget.savings_rate_percentage = budget.credit_amount === 0 ? 0 : (budget.balance_value / budget.credit_amount) * 100;
+    budget.savings_rate_percentage =
+      budget.credit_amount === 0 ? 0 : (budget.balance_value / budget.credit_amount) * 100;
 
     return budget;
   }
@@ -248,61 +296,65 @@ class BudgetService {
 
     const budgetsList: Array<BudgetWithAmounts> = await dbClient.budgets.findMany({
       where: whereCondition,
-      orderBy: [{ year: "desc" }, { month: "desc" }],
+      orderBy: [{ year: 'desc' }, { month: 'desc' }],
     });
 
-  const budgetPromises = [];
-  for await (const budget of budgetsList) {
-    budgetPromises.push(this.getExpandedBudgetAmountsData(userId, budget, dbClient));
-  }
+    const budgetPromises = [];
+    for await (const budget of budgetsList) {
+      budgetPromises.push(this.getExpandedBudgetAmountsData(userId, budget, dbClient));
+    }
     return Promise.all(budgetPromises);
   }
 
-  static async getBudgetsForUserByPage(userId: bigint, page: number, pageSize: number, searchQuery: string, status: string, dbClient = prisma): Promise<{ total_count: number; filtered_count: number; results: Array<any> }> {
+  static async getBudgetsForUserByPage(
+    userId: bigint,
+    page: number,
+    pageSize: number,
+    searchQuery: string,
+    status: string,
+    dbClient = prisma
+  ): Promise<{ total_count: number; filtered_count: number; results: Array<any> }> {
     const query = `%${searchQuery}%`;
     const offsetValue = page * pageSize;
 
-    let isOpenValue = "%";
-  if (status) {
-    // eslint-disable-next-line default-case
-    switch (status) {
-      case "O":
-        isOpenValue = "1";
-        break;
-      case "1":
-        isOpenValue = "0";
-        break;
-      default:
-        isOpenValue = "%";
-        break;
+    let isOpenValue = '%';
+    if (status) {
+      // eslint-disable-next-line default-case
+      switch (status) {
+        case 'O':
+          isOpenValue = '1';
+          break;
+        case 'C':
+          isOpenValue = '0';
+          break;
+        default:
+          isOpenValue = '%';
+          break;
+      }
     }
-  }
-  /*Logger.addLog(
+    /*Logger.addLog(
       `userId: ${userId} | query: ${query} | offsetValue: ${offsetValue} | page: ${page} | pageSize: ${pageSize}} | isOpenValue: ${isOpenValue}`
   );*/
 
-  // main query for list of results (limited by $pageSize and $offsetValue)
+    // main query for list of results (limited by $pageSize and $offsetValue)
     const results: any = await dbClient.$queryRaw`
       SELECT budget_id, month, year, observations, is_open, users_user_id
       FROM budgets
       WHERE (users_user_id = ${userId})
         AND (observations LIKE ${query} OR month LIKE ${query} OR year LIKE ${query})
         AND is_open LIKE ${isOpenValue}
-      GROUP BY budget_id
       ORDER BY year DESC, month DESC
       LIMIT ${pageSize}
       OFFSET ${offsetValue}`;
 
     const filteredCount = await dbClient.$queryRaw`
       SELECT count(*) as 'count'
-      FROM (SELECT budget_id
-            FROM budgets
-            WHERE (users_user_id = ${userId})
-              AND (observations LIKE ${query} OR month LIKE ${query} OR year LIKE ${query})
-              AND is_open LIKE ${isOpenValue}
-            GROUP BY budget_id) budget`;
+      FROM budgets
+      WHERE (users_user_id = ${userId})
+        AND (observations LIKE ${query} OR month LIKE ${query} OR year LIKE ${query})
+        AND is_open LIKE ${isOpenValue}`;
 
-  // count of total of results
+    // count of total of results
     const totalCount = await dbClient.$queryRaw`
       SELECT count(*) as 'count'
       FROM budgets
@@ -310,12 +362,153 @@ class BudgetService {
 
     return {
       results: results,
-      filtered_count: parseInt(filteredCount[0].count, 10),
-      total_count: parseInt(totalCount[0].count, 10),
+      filtered_count: Number.parseInt(filteredCount[0].count, 10),
+      total_count: Number.parseInt(totalCount[0].count, 10),
     };
   }
 
-  static async getFilteredBudgetsForUserByPage(userId: bigint, page: number, pageSize: number, query: string, status: string, dbClient = prisma) {
+  static async getAggregatedAmountsForBudget(
+    userId: bigint,
+    budget: BudgetWithAmounts,
+    dbClient = prisma
+  ): Promise<BudgetAmountTotals> {
+    let amounts: Array<{ balance_credit: bigint; balance_debit: bigint }>;
+
+    if (budget.is_open) {
+      amounts = await dbClient.$queryRaw`
+        SELECT
+          COALESCE(SUM(ABS(COALESCE(bhc.planned_amount_credit, 0))), 0) AS balance_credit,
+          COALESCE(SUM(ABS(COALESCE(bhc.planned_amount_debit, 0))), 0) AS balance_debit
+        FROM categories c
+        LEFT JOIN budgets_has_categories bhc
+          ON bhc.categories_category_id = c.category_id
+          AND bhc.budgets_budget_id = ${budget.budget_id}
+          AND bhc.budgets_users_user_id = ${userId}
+        WHERE c.users_user_id = ${userId}
+          AND c.status = ${MYFIN.CATEGORY_STATUS.ACTIVE}
+          AND c.exclude_from_budgets = 0`;
+    } else {
+      const nextMonth = budget.month < 12 ? budget.month + 1 : 1;
+      const nextMonthsYear = budget.month < 12 ? budget.year : budget.year + 1;
+      const fromDate = DateTimeUtils.getUnixTimestampFromDate(
+        new Date(budget.year, budget.month - 1, 1)
+      );
+      const toDate = DateTimeUtils.getUnixTimestampFromDate(
+        new Date(nextMonthsYear, nextMonth - 1, 1)
+      );
+
+      amounts = await dbClient.$queryRaw`
+        SELECT
+          COALESCE(SUM(category_credit), 0) AS balance_credit,
+          COALESCE(SUM(category_debit), 0) AS balance_debit
+        FROM (
+          SELECT
+            c.category_id,
+            ABS(COALESCE(SUM(IF(t.type = ${MYFIN.TRX_TYPES.INCOME}, t.amount, 0)), 0))
+              - COALESCE(SUM(IF(
+                  t.type = ${MYFIN.TRX_TYPES.INCOME}
+                  AND (acc_from.type = ${MYFIN.ACCOUNT_TYPES.INVESTING}
+                    OR acc_to.type = ${MYFIN.ACCOUNT_TYPES.INVESTING}),
+                  t.amount,
+                  0
+                )), 0) AS category_credit,
+            ABS(COALESCE(SUM(IF(
+                t.type = ${MYFIN.TRX_TYPES.EXPENSE}
+                OR (t.type = ${MYFIN.TRX_TYPES.TRANSFER}
+                  AND acc_to.exclude_from_budgets = TRUE),
+                t.amount,
+                0
+              )), 0))
+              - COALESCE(SUM(IF(
+                  t.type = ${MYFIN.TRX_TYPES.EXPENSE}
+                  AND (acc_from.type = ${MYFIN.ACCOUNT_TYPES.INVESTING}
+                    OR acc_to.type = ${MYFIN.ACCOUNT_TYPES.INVESTING}),
+                  t.amount,
+                  0
+                )), 0) AS category_debit
+          FROM categories c
+          LEFT JOIN transactions t
+            ON t.categories_category_id = c.category_id
+            AND t.date_timestamp >= ${fromDate}
+            AND t.date_timestamp < ${toDate}
+          LEFT JOIN accounts acc_from
+            ON acc_from.account_id = t.accounts_account_from_id
+          LEFT JOIN accounts acc_to
+            ON acc_to.account_id = t.accounts_account_to_id
+          WHERE c.users_user_id = ${userId}
+            AND c.status = ${MYFIN.CATEGORY_STATUS.ACTIVE}
+            AND c.exclude_from_budgets = 0
+          GROUP BY c.category_id
+        ) category_amounts`;
+    }
+
+    const balanceCredit = BigInt(String(amounts[0]?.balance_credit ?? 0));
+    const balanceDebit = BigInt(String(amounts[0]?.balance_debit ?? 0));
+    return {
+      balance_credit: ConvertUtils.convertBigIntegerToFloat(balanceCredit),
+      balance_debit: ConvertUtils.convertBigIntegerToFloat(balanceDebit),
+    };
+  }
+
+  static async getBalanceSnapshotsForUser(
+    userId: bigint,
+    dbClient = prisma
+  ): Promise<BalanceSnapshotRow[]> {
+    return dbClient.$queryRaw`
+      SELECT
+        bs.accounts_account_id,
+        bs.month,
+        bs.year,
+        bs.balance
+      FROM balances_snapshot bs
+      INNER JOIN accounts a ON a.account_id = bs.accounts_account_id
+      WHERE a.users_user_id = ${userId}`;
+  }
+
+  static getInitialBalancesByBudget(
+    budgets: BudgetWithAmounts[],
+    snapshots: BalanceSnapshotRow[]
+  ): Map<bigint, number> {
+    const initialBalances = new Map<bigint, number>();
+
+    for (const budget of budgets) {
+      const targetMonth = budget.month > 1 ? budget.month - 1 : 12;
+      const targetYear = budget.month > 1 ? budget.year : budget.year - 1;
+      const targetPeriod = targetYear * 12 + targetMonth;
+      const latestByAccount = new Map<bigint, BalanceSnapshotRow>();
+
+      for (const snapshot of snapshots) {
+        const snapshotPeriod = snapshot.year * 12 + snapshot.month;
+        if (snapshotPeriod > targetPeriod) continue;
+
+        const currentLatest = latestByAccount.get(snapshot.accounts_account_id);
+        if (
+          !currentLatest ||
+          snapshotPeriod > currentLatest.year * 12 + currentLatest.month
+        ) {
+          latestByAccount.set(snapshot.accounts_account_id, snapshot);
+        }
+      }
+
+      const initialBalance = Array.from(latestByAccount.values()).reduce(
+        (total, snapshot) =>
+          total + ConvertUtils.convertBigIntegerToFloat(BigInt(String(snapshot.balance))),
+        0
+      );
+      initialBalances.set(budget.budget_id, initialBalance);
+    }
+
+    return initialBalances;
+  }
+
+  static async getFilteredBudgetsForUserByPage(
+    userId: bigint,
+    page: number,
+    pageSize: number,
+    query: string,
+    status: string,
+    dbClient = prisma
+  ) {
     return performDatabaseRequest(async (prismaTx) => {
       const budgetsArr = await this.getBudgetsForUserByPage(
         userId,
@@ -326,15 +519,33 @@ class BudgetService {
         prismaTx
       );
 
-      const balancePromises = budgetsArr.results.map(async budget => {
-        const balanceValue = await this.calculateBudgetBalance(userId, budget, prismaTx);
-        budget.balance_value = balanceValue;
-        const balanceChangePercentage = await this.calculateBudgetBalanceChangePercentage(userId, budget, balanceValue, prismaTx);
-        budget.balance_change_percentage = balanceChangePercentage;
-        const budgetSums = await this.getSumAmountsForBudget(userId, budget, prismaTx);
+      const snapshots =
+        budgetsArr.results.length > 0
+          ? await BudgetService.getBalanceSnapshotsForUser(userId, prismaTx)
+          : [];
+      const initialBalances = BudgetService.getInitialBalancesByBudget(
+        budgetsArr.results,
+        snapshots
+      );
+
+      const balancePromises = budgetsArr.results.map(async (budget) => {
+        const budgetSums = await BudgetService.getAggregatedAmountsForBudget(
+          userId,
+          budget,
+          prismaTx
+        );
         budget.credit_amount = budgetSums.balance_credit;
         budget.debit_amount = budgetSums.balance_debit;
-        budget.savings_rate_percentage = parseFloat(budget.credit_amount) === 0 ? 0 : (parseFloat(budget.balance_value) / parseFloat(budget.credit_amount)) * 100;
+        budget.balance_value = budget.credit_amount - budget.debit_amount;
+        const initialBalance = initialBalances.get(budget.budget_id) ?? 0;
+        budget.balance_change_percentage =
+          initialBalance === 0
+            ? 'NaN'
+            : (budget.balance_value / Math.abs(initialBalance)) * 100;
+        budget.savings_rate_percentage =
+          budget.credit_amount === 0
+            ? 0
+            : (budget.balance_value / budget.credit_amount) * 100;
       });
 
       await Promise.all(balancePromises);
@@ -351,70 +562,85 @@ class BudgetService {
 
       const previousMonth = monthToUse > 1 ? monthToUse - 1 : 12;
       const previousMonthsYear = monthToUse > 1 ? yearToUse : yearToUse - 1;
-    const previousMonthAmounts = await CategoryService.getAmountForCategoryInMonth(
-      category.category_id as bigint,
-      previousMonth,
-      previousMonthsYear,
-      true
-    );
+      const previousMonthAmounts = await CategoryService.getAmountForCategoryInMonth(
+        category.category_id as bigint,
+        previousMonth,
+        previousMonthsYear,
+        true
+      );
 
       if (previousMonthAmounts) {
-      (category as any).avg_previous_month_credit = Math.abs(
-        Number(
-          ConvertUtils.convertBigIntegerToFloat(
-            BigInt(previousMonthAmounts.category_balance_credit ?? 0)
+        (category as any).avg_previous_month_credit = Math.abs(
+          Number(
+            ConvertUtils.convertBigIntegerToFloat(
+              BigInt(previousMonthAmounts.category_balance_credit ?? 0)
+            )
           )
-        )
-      );
+        );
 
-      (category as any).avg_previous_month_debit = Math.abs(
-        Number(
-          ConvertUtils.convertBigIntegerToFloat(BigInt(previousMonthAmounts.category_balance_debit ?? 0))
-        )
-      );
+        (category as any).avg_previous_month_debit = Math.abs(
+          Number(
+            ConvertUtils.convertBigIntegerToFloat(
+              BigInt(previousMonthAmounts.category_balance_debit ?? 0)
+            )
+          )
+        );
       }
 
-      const sameMonthPreviousYearAmounts = await CategoryService.getAmountForCategoryInMonth(category.category_id as bigint, monthToUse, yearToUse - 1, true);
+      const sameMonthPreviousYearAmounts = await CategoryService.getAmountForCategoryInMonth(
+        category.category_id as bigint,
+        monthToUse,
+        yearToUse - 1,
+        true
+      );
       if (sameMonthPreviousYearAmounts) {
-      (category as any).avg_same_month_previous_year_credit = Math.abs(
-        Number(
-          ConvertUtils.convertBigIntegerToFloat(
-            BigInt(sameMonthPreviousYearAmounts.category_balance_credit ?? 0)
+        (category as any).avg_same_month_previous_year_credit = Math.abs(
+          Number(
+            ConvertUtils.convertBigIntegerToFloat(
+              BigInt(sameMonthPreviousYearAmounts.category_balance_credit ?? 0)
+            )
           )
-        )
-      );
-      (category as any).avg_same_month_previous_year_debit = Math.abs(
-        Number(
-          ConvertUtils.convertBigIntegerToFloat(
-            BigInt(sameMonthPreviousYearAmounts.category_balance_debit ?? 0)
+        );
+        (category as any).avg_same_month_previous_year_debit = Math.abs(
+          Number(
+            ConvertUtils.convertBigIntegerToFloat(
+              BigInt(sameMonthPreviousYearAmounts.category_balance_debit ?? 0)
+            )
           )
-        )
-      );
+        );
       }
 
-    const last12MonthsAverageAmounts =
-      (await CategoryService.getAverageAmountForCategoryInLast12Months(
-        userId,
-        category.category_id as bigint
-      ));
+      const last12MonthsAverageAmounts =
+        await CategoryService.getAverageAmountForCategoryInLast12Months(
+          userId,
+          category.category_id as bigint
+        );
 
       if (last12MonthsAverageAmounts) {
-        (category as any).avg_12_months_credit = Math.abs(Number(last12MonthsAverageAmounts.category_balance_credit));
-        (category as any).avg_12_months_debit = Math.abs(Number(last12MonthsAverageAmounts.category_balance_debit));
+        (category as any).avg_12_months_credit = Math.abs(
+          Number(last12MonthsAverageAmounts.category_balance_credit)
+        );
+        (category as any).avg_12_months_debit = Math.abs(
+          Number(last12MonthsAverageAmounts.category_balance_debit)
+        );
       }
 
-    const lifetimeAverageAmounts = (await CategoryService.getAverageAmountForCategoryInLifetime(
-      userId,
-      category.category_id as bigint
-    ));
+      const lifetimeAverageAmounts = await CategoryService.getAverageAmountForCategoryInLifetime(
+        userId,
+        category.category_id as bigint
+      );
       if (lifetimeAverageAmounts) {
-        (category as any).avg_lifetime_credit = Math.abs(Number(lifetimeAverageAmounts.category_balance_credit));
-        (category as any).avg_lifetime_debit = Math.abs(Number(lifetimeAverageAmounts.category_balance_debit));
+        (category as any).avg_lifetime_credit = Math.abs(
+          Number(lifetimeAverageAmounts.category_balance_credit)
+        );
+        (category as any).avg_lifetime_debit = Math.abs(
+          Number(lifetimeAverageAmounts.category_balance_debit)
+        );
       }
     }
     return {
       categories: categories,
-      initial_balance: "-",
+      initial_balance: '-',
     };
   }
 
@@ -424,12 +650,19 @@ class BudgetService {
     catId: bigint,
     plannedValueCredit: number,
     plannedValueDebit: number,
-    dbClient = prisma
+    dbClient = undefined
   ) {
-    await dbClient.$executeRaw`
-      INSERT INTO budgets_has_categories (budgets_budget_id, budgets_users_user_id, categories_category_id, planned_amount_credit, planned_amount_debit)
-      VALUES (${budgetId}, ${userId}, ${catId}, ${plannedValueCredit}, ${plannedValueDebit})
-      ON DUPLICATE KEY UPDATE planned_amount_credit = ${plannedValueCredit}, planned_amount_debit = ${plannedValueDebit}`;
+    return performDatabaseRequest(async (tx) => {
+      await BudgetAllocationService.save(
+        userId,
+        budgetId,
+        catId,
+        plannedValueDebit / 100,
+        plannedValueCredit / 100,
+        {},
+        tx
+      );
+    }, dbClient);
   }
 
   private static async parseCatValuesIntoBudgetCategories(
@@ -438,30 +671,22 @@ class BudgetService {
     catValuesArr: Array<any>,
     dbClient = prisma
   ) {
-    // ADD CAT VALUES TO BUDGET CATEGORIES
-    const promises = [];
-    for (const catValue of catValuesArr) {
-      const plannedValueCredit = ConvertUtils.convertFloatToBigInteger(
-        parseFloat(catValue.planned_value_credit)
-      );
-      const plannedValueDebit = ConvertUtils.convertFloatToBigInteger(
-        parseFloat(catValue.planned_value_debit)
-      );
-      /* Logger.addLog(`cat value debit: ${catValue.planned_value_debit} || converted: ${plannedValueDebit}`);
-          Logger.addStringifiedLog(catValue); */
-
-      promises.push(
-        this.addOrUpdateCategoryValueInBudget(
-          userId,
-          budgetId,
-          catValue.category_id,
-          plannedValueCredit,
-          plannedValueDebit,
-          dbClient
-        )
+    if (!Array.isArray(catValuesArr)) throw APIError.badRequest('Invalid category allocations.');
+    for (const value of catValuesArr) {
+      if (!value || !/^[1-9]\d*$/.test(String(value.category_id)))
+        throw APIError.badRequest('Invalid category id.');
+    }
+    for (const value of catValuesArr) {
+      await BudgetAllocationService.save(
+        userId,
+        budgetId,
+        BigInt(value.category_id),
+        value.planned_value_debit,
+        value.planned_value_credit,
+        value,
+        dbClient
       );
     }
-    return Promise.all(promises);
   }
 
   static async createBudget(
@@ -483,7 +708,12 @@ class BudgetService {
         },
       });
 
-      await this.parseCatValuesIntoBudgetCategories(userId, budget.budget_id, catValuesArr, prismaTx);
+      await this.parseCatValuesIntoBudgetCategories(
+        userId,
+        budget.budget_id,
+        catValuesArr,
+        prismaTx
+      );
       return budget.budget_id;
     }, dbClient);
   }
@@ -493,8 +723,8 @@ class BudgetService {
     budget: Prisma.budgetsUpdateInput,
     dbClient = prisma
   ) {
-    const month = parseInt(budget.month as any, 10);
-    const year = parseInt(budget.year as any, 10);
+    const month = Number.parseInt(budget.month as any, 10);
+    const year = Number.parseInt(budget.year as any, 10);
     const result: any = await dbClient.$queryRaw`
       SELECT sum(amount) as 'amount'
       FROM transactions
@@ -506,8 +736,28 @@ class BudgetService {
     return result[0].amount ? ConvertUtils.convertBigIntegerToFloat(result[0].amount) : 0;
   }
 
+  static async getTransactionCountForBudget(
+    userId: bigint,
+    budget: Prisma.budgetsUpdateInput,
+    dbClient = prisma
+  ) {
+    const month = Number.parseInt(budget.month as any, 10);
+    const year = Number.parseInt(budget.year as any, 10);
+    const nextMonth = month < 12 ? month + 1 : 1;
+    const nextMonthYear = month < 12 ? year : year + 1;
+    const result: any = await dbClient.$queryRaw`
+      SELECT count(DISTINCT transactions.transaction_id) as 'count'
+      FROM transactions
+      LEFT JOIN accounts acc_from ON acc_from.account_id = transactions.accounts_account_from_id
+      LEFT JOIN accounts acc_to ON acc_to.account_id = transactions.accounts_account_to_id
+      WHERE (acc_from.users_user_id = ${userId} OR acc_to.users_user_id = ${userId})
+        AND transactions.date_timestamp >= ${new Date(year, month - 1, 1).getTime() / 1000}
+        AND transactions.date_timestamp < ${new Date(nextMonthYear, nextMonth - 1, 1).getTime() / 1000}`;
+    return Number(result[0]?.count ?? 0);
+  }
+
   static async getBudget(userId: bigint, budgetId: number | bigint, dbclient = prisma) {
-    const budget = await prisma.budgets.findUnique({
+    const budget = await dbclient.budgets.findUnique({
       where: {
         users_user_id: userId,
         budget_id: budgetId,
@@ -520,6 +770,7 @@ class BudgetService {
       },
     });
 
+    if (!budget) throw APIError.notFound();
     const month = (budget as any).month;
     const year = (budget as any).year;
 
@@ -530,58 +781,82 @@ class BudgetService {
       true,
       dbclient
     );
-    (budget as any).categories = await CategoryService.getAllCategoriesForBudget(userId, budgetId, dbclient);
-    (budget as any).debit_essential_trx_total = await this.getTotalEssentialDebitTransactionsAmountForBudget(userId, budget, dbclient);
+    (budget as any).categories = await CategoryService.getAllCategoriesForBudget(
+      userId,
+      budgetId,
+      dbclient
+    );
+    (budget as any).debit_essential_trx_total =
+      await this.getTotalEssentialDebitTransactionsAmountForBudget(userId, budget, dbclient);
+    (budget as any).transaction_count =
+      await this.getTransactionCountForBudget(userId, budget, dbclient);
 
+    const items = await dbclient.budget_category_items.findMany({
+      where: { budgets_budget_id: BigInt(budgetId), budgets_users_user_id: userId },
+      orderBy: [{ sort_order: 'asc' }, { item_id: 'asc' }],
+    });
     for (const category of (budget as any).categories) {
-    /*Logger.addLog(`_------_\nCategory: ${category.category_id}`);*/
-    const monthToUse = (budget as any).month;
-    const yearToUse = (budget as any).year;
-      const calculatedAmounts = await CategoryService.getAmountForCategoryInMonth(
-        category.category_id,
-      monthToUse,
-      yearToUse,
-        true,
-        dbclient
+      Object.assign(
+        category,
+        serializeItems(
+          items.filter((item) => item.categories_category_id === BigInt(category.category_id))
+        )
       );
-    /*Logger.addLog(`------\nCATEGORY ${category.category_id}`);
-    Logger.addStringifiedLog(calculatedAmounts);*/
-      const calculatedAmountsFromInvestmentAccounts = await AccountService.getAmountForInvestmentAccountsInMonth(
+      /*Logger.addLog(`_------_\nCategory: ${category.category_id}`);*/
+      const monthToUse = (budget as any).month;
+      const yearToUse = (budget as any).year;
+      const calculatedAmounts = await CategoryService.getAmountForCategoryInMonth(
         category.category_id,
         monthToUse,
         yearToUse,
+        true,
         dbclient
       );
+      /*Logger.addLog(`------\nCATEGORY ${category.category_id}`);
+    Logger.addStringifiedLog(calculatedAmounts);*/
+      const calculatedAmountsFromInvestmentAccounts =
+        await AccountService.getAmountForInvestmentAccountsInMonth(
+          category.category_id,
+          monthToUse,
+          yearToUse,
+          dbclient
+        );
 
-    /* Logger.addLog(`-----------------------
+      /* Logger.addLog(`-----------------------
         Category: ${category.name}
         Calculated amounts: ${JSON.stringify(calculatedAmounts[0])}
         `); */
 
-    // Unrealized gains
-    const creditFromInvestmentAccounts = calculatedAmountsFromInvestmentAccounts
-      ? calculatedAmountsFromInvestmentAccounts.account_balance_credit
-      : 0;
-    // Unrealized losses
-    const expensesFromInvestmentAccounts = calculatedAmountsFromInvestmentAccounts
-      ? calculatedAmountsFromInvestmentAccounts.account_balance_debit
-      : 0;
-    // remove unrealized gains from budget calcs
-    const currentAmountCredit =
-      (calculatedAmounts ? calculatedAmounts.category_balance_credit : 0) -
-      creditFromInvestmentAccounts;
-    /*Logger.addLog(`Current amount credit: ${currentAmountCredit}`);*/
-    // remove unrealized losses from budget calcs
-      const currentAmountDebit = (calculatedAmounts ? calculatedAmounts.category_balance_debit : 0) - expensesFromInvestmentAccounts;
+      // Unrealized gains
+      const creditFromInvestmentAccounts = calculatedAmountsFromInvestmentAccounts
+        ? calculatedAmountsFromInvestmentAccounts.account_balance_credit
+        : 0;
+      // Unrealized losses
+      const expensesFromInvestmentAccounts = calculatedAmountsFromInvestmentAccounts
+        ? calculatedAmountsFromInvestmentAccounts.account_balance_debit
+        : 0;
+      // remove unrealized gains from budget calcs
+      const currentAmountCredit =
+        (calculatedAmounts ? calculatedAmounts.category_balance_credit : 0) -
+        creditFromInvestmentAccounts;
+      /*Logger.addLog(`Current amount credit: ${currentAmountCredit}`);*/
+      // remove unrealized losses from budget calcs
+      const currentAmountDebit =
+        (calculatedAmounts ? calculatedAmounts.category_balance_debit : 0) -
+        expensesFromInvestmentAccounts;
 
-      category.current_amount_credit = Math.abs(Number(ConvertUtils.convertBigIntegerToFloat(BigInt(currentAmountCredit))));
-      category.current_amount_debit = Math.abs(Number(ConvertUtils.convertBigIntegerToFloat(BigInt(currentAmountDebit))));
+      category.current_amount_credit = Math.abs(
+        Number(ConvertUtils.convertBigIntegerToFloat(BigInt(currentAmountCredit)))
+      );
+      category.current_amount_debit = Math.abs(
+        Number(ConvertUtils.convertBigIntegerToFloat(BigInt(currentAmountDebit)))
+      );
 
       category.planned_amount_credit = Number(category.planned_amount_credit);
       category.planned_amount_debit = Number(category.planned_amount_debit);
 
-    const previousMonth = monthToUse > 1 ? monthToUse - 1 : 12;
-    const previousMonthsYear = monthToUse > 1 ? yearToUse : yearToUse - 1;
+      const previousMonth = monthToUse > 1 ? monthToUse - 1 : 12;
+      const previousMonthsYear = monthToUse > 1 ? yearToUse : yearToUse - 1;
       const previousMonthAmounts = await CategoryService.getAmountForCategoryInMonth(
         category.category_id,
         previousMonth,
@@ -589,47 +864,69 @@ class BudgetService {
         true,
         dbclient
       );
-      category.avg_previous_month_credit = Math.abs(Number(ConvertUtils.convertBigIntegerToFloat(BigInt(previousMonthAmounts?.category_balance_credit ?? 0))));
-      category.avg_previous_month_debit = Math.abs(Number(ConvertUtils.convertBigIntegerToFloat(BigInt(previousMonthAmounts?.category_balance_debit ?? 0))));
+      category.avg_previous_month_credit = Math.abs(
+        Number(
+          ConvertUtils.convertBigIntegerToFloat(
+            BigInt(previousMonthAmounts?.category_balance_credit ?? 0)
+          )
+        )
+      );
+      category.avg_previous_month_debit = Math.abs(
+        Number(
+          ConvertUtils.convertBigIntegerToFloat(
+            BigInt(previousMonthAmounts?.category_balance_debit ?? 0)
+          )
+        )
+      );
 
       const sameMonthPreviousYearAmounts = await CategoryService.getAmountForCategoryInMonth(
         category.category_id,
-      monthToUse,
-      yearToUse - 1,
+        monthToUse,
+        yearToUse - 1,
         true,
         dbclient
       );
-      category.avg_same_month_previous_year_credit = Math.abs(Number(ConvertUtils.convertBigIntegerToFloat(BigInt(sameMonthPreviousYearAmounts?.category_balance_credit ?? 0))));
-    category.avg_same_month_previous_year_debit = Math.abs(
-      Number(
-        ConvertUtils.convertBigIntegerToFloat(
-          BigInt(sameMonthPreviousYearAmounts?.category_balance_debit ?? 0)
+      category.avg_same_month_previous_year_credit = Math.abs(
+        Number(
+          ConvertUtils.convertBigIntegerToFloat(
+            BigInt(sameMonthPreviousYearAmounts?.category_balance_credit ?? 0)
+          )
         )
-      )
-    );
+      );
+      category.avg_same_month_previous_year_debit = Math.abs(
+        Number(
+          ConvertUtils.convertBigIntegerToFloat(
+            BigInt(sameMonthPreviousYearAmounts?.category_balance_debit ?? 0)
+          )
+        )
+      );
 
-    const last12MonthsAverageAmounts =
-      (await CategoryService.getAverageAmountForCategoryInLast12Months(
+      const last12MonthsAverageAmounts =
+        await CategoryService.getAverageAmountForCategoryInLast12Months(
+          userId,
+          category.category_id,
+          dbclient
+        );
+
+      category.avg_12_months_credit = Math.abs(
+        Number(last12MonthsAverageAmounts?.category_balance_credit ?? 0)
+      );
+      category.avg_12_months_debit = Math.abs(
+        Number(last12MonthsAverageAmounts?.category_balance_debit ?? 0)
+      );
+
+      const lifetimeAverageAmounts = await CategoryService.getAverageAmountForCategoryInLifetime(
         userId,
         category.category_id,
         dbclient
-      ));
+      );
 
-    category.avg_12_months_credit = Math.abs(
-      Number(last12MonthsAverageAmounts?.category_balance_credit ?? 0)
-    );
-    category.avg_12_months_debit = Math.abs(
-      Number(last12MonthsAverageAmounts?.category_balance_debit ?? 0)
-    );
-
-    const lifetimeAverageAmounts = (await CategoryService.getAverageAmountForCategoryInLifetime(
-      userId,
-      category.category_id,
-      dbclient
-    ));
-
-      category.avg_lifetime_credit = Math.abs(Number(lifetimeAverageAmounts?.category_balance_credit ?? 0));
-      category.avg_lifetime_debit = Math.abs(Number(lifetimeAverageAmounts?.category_balance_debit ?? 0));
+      category.avg_lifetime_credit = Math.abs(
+        Number(lifetimeAverageAmounts?.category_balance_credit ?? 0)
+      );
+      category.avg_lifetime_debit = Math.abs(
+        Number(lifetimeAverageAmounts?.category_balance_debit ?? 0)
+      );
     }
 
     return budget;
@@ -645,6 +942,7 @@ class BudgetService {
     dbClient = undefined
   ) {
     return performDatabaseRequest(async (prismaTx) => {
+      await BudgetAllocationService.lock(userId, budgetId, prismaTx);
       await prismaTx.budgets.update({
         where: {
           users_user_id: userId,
@@ -661,7 +959,12 @@ class BudgetService {
     }, dbClient);
   }
 
-  static async changeBudgetStatus(userId: bigint, budgetId: bigint, isOpen: boolean, dbClient = prisma) {
+  static async changeBudgetStatus(
+    userId: bigint,
+    budgetId: bigint,
+    isOpen: boolean,
+    dbClient = prisma
+  ) {
     return dbClient.budgets.update({
       where: {
         users_user_id: userId,
@@ -700,7 +1003,12 @@ class BudgetService {
     });
   }
 
-  static async getBudgetAfterCertainMonth(userId: bigint, month: number, year: number, dbClient = prisma): Promise<Array<Prisma.budgetsUpdateInput>> {
+  static async getBudgetAfterCertainMonth(
+    userId: bigint,
+    month: number,
+    year: number,
+    dbClient = prisma
+  ): Promise<Array<Prisma.budgetsUpdateInput>> {
     return dbClient.$queryRaw`
       SELECT month, year, budget_id, users_user_id, observations, is_open, initial_balance
       FROM budgets
@@ -709,7 +1017,13 @@ class BudgetService {
       ORDER BY year ASC, month ASC`;
   }
 
-  static async getBudgetsUntilCertainMonth(userId: bigint, month: number, year: number, ordering: BudgetListOrder, dbClient = prisma): Promise<Array<Prisma.budgetsCreateManyInput>> {
+  static async getBudgetsUntilCertainMonth(
+    userId: bigint,
+    month: number,
+    year: number,
+    ordering: BudgetListOrder,
+    dbClient = prisma
+  ): Promise<Array<Prisma.budgetsCreateManyInput>> {
     if (ordering === BudgetListOrder.DESCENDING) {
       return dbClient.$queryRaw`
         SELECT month, year, budget_id, users_user_id, observations, is_open, initial_balance
@@ -730,32 +1044,20 @@ class BudgetService {
     userId: bigint,
     budgetId: bigint,
     categoryId: bigint,
-    plannedExpense?: number,
-    plannedIncome?: number,
-    dbClient = undefined
+    plannedExpense?: number | string,
+    plannedIncome?: number | string,
+    dbClient = undefined,
+    breakdown: BreakdownInput = {}
   ) {
-    return performDatabaseRequest(async (prismaTx) => {
-      const currentAmounts = await prismaTx.budgets_has_categories.findUnique({
-        where: {
-          budgets_budget_id_budgets_users_user_id_categories_category_id: {
-            budgets_budget_id: budgetId,
-            categories_category_id: categoryId,
-            budgets_users_user_id: userId,
-          },
-        },
-        select: {
-          planned_amount_credit: true,
-          planned_amount_debit: true,
-        },
-      });
-
-      await this.addOrUpdateCategoryValueInBudget(
+    return performDatabaseRequest(async (tx) => {
+      await BudgetAllocationService.save(
         userId,
         budgetId,
         categoryId,
-        ConvertUtils.convertFloatToBigInteger(plannedIncome) ?? Number(currentAmounts.planned_amount_credit),
-        ConvertUtils.convertFloatToBigInteger(plannedExpense) ?? Number(currentAmounts.planned_amount_debit),
-        prismaTx,
+        plannedExpense,
+        plannedIncome,
+        breakdown,
+        tx
       );
     }, dbClient);
   }

@@ -1,16 +1,17 @@
 import { performDatabaseRequest, prisma } from '../config/prisma.js';
 import APIError from '../errorHandling/apiError.js';
-import { Prisma } from '@prisma/client';
-import CategoryService, { CalculatedCategoryAmounts } from './categoryService.js';
+import type { Prisma } from '../generated/prisma/client.js';
+import DateTimeUtils from '../utils/DateTimeUtils.js';
+import Logger from '../utils/Logger.js';
 import ConvertUtils from '../utils/convertUtils.js';
-import TransactionService from './transactionService.js';
-import EntityService, { CalculatedEntityAmounts } from './entityService.js';
 import AccountService from './accountService.js';
 import BudgetService, { BudgetListOrder } from './budgetService.js';
+import CategoryService, { type CalculatedCategoryAmounts } from './categoryService.js';
+import EntityService, { type CalculatedEntityAmounts } from './entityService.js';
+import GoalService from './goalService.js';
 import RuleService from './ruleService.js';
-import DateTimeUtils from '../utils/DateTimeUtils.js';
-import TagService, { CalculatedTagAmounts } from "./tagService.js";
-import Logger from '../utils/Logger.js';
+import TagService, { type CalculatedTagAmounts } from './tagService.js';
+import TransactionService from './transactionService.js';
 
 const getExpensesIncomeDistributionForMonth = async (
   userId: bigint,
@@ -89,22 +90,32 @@ export interface UserCounterStats {
   nr_of_budgets: number;
   nr_of_rules: number;
   nr_of_tags: number;
+  nr_of_goals: number;
 }
 
 const getUserCounterStats = async (
   userId: bigint,
   dbClient = prisma
 ): Promise<UserCounterStats> => {
-  const [trxCount, entityCount, categoryCount, accountCount, budgetCount, ruleCount, tagCount] =
-    await Promise.all([
-      TransactionService.getCountOfUserTransactions(userId),
-      CategoryService.getCountOfUserCategories(userId, dbClient),
-      EntityService.getCountOfUserEntities(userId, dbClient),
-      AccountService.getCountOfUserAccounts(userId, dbClient),
-      BudgetService.getCountOfUserBudgets(userId, dbClient),
-      RuleService.getCountOfUserRules(userId, dbClient),
-      TagService.getCountOfUserTags(userId, dbClient),
-    ]);
+  const [
+    trxCount,
+    entityCount,
+    categoryCount,
+    accountCount,
+    budgetCount,
+    ruleCount,
+    tagCount,
+    goalCount,
+  ] = await Promise.all([
+    TransactionService.getCountOfUserTransactions(userId),
+    EntityService.getCountOfUserEntities(userId, dbClient),
+    CategoryService.getCountOfUserCategories(userId, dbClient),
+    AccountService.getCountOfUserAccounts(userId, dbClient),
+    BudgetService.getCountOfUserBudgets(userId, dbClient),
+    RuleService.getCountOfUserRules(userId, dbClient),
+    TagService.getCountOfUserTags(userId, dbClient),
+    GoalService.getCountOfUserGoals(userId, dbClient),
+  ]);
 
   return {
     nr_of_trx: trxCount as number,
@@ -114,6 +125,7 @@ const getUserCounterStats = async (
     nr_of_budgets: budgetCount as number,
     nr_of_rules: ruleCount as number,
     nr_of_tags: tagCount as number,
+    nr_of_goals: goalCount as number,
   };
 };
 
@@ -226,9 +238,8 @@ const getCategoryExpensesEvolution = async (
         CategoryService.getAmountForCategoryInMonth(categoryId, budget.month, budget.year)
       );
     }
-    const calculatedAmounts: Array<CalculatedCategoryAmounts> = await Promise.all(
-      calculatedAmountPromises
-    );
+    const calculatedAmounts: Array<CalculatedCategoryAmounts> =
+      await Promise.all(calculatedAmountPromises);
     return calculatedAmounts.map((calculatedAmount, index) => ({
       value: ConvertUtils.convertBigIntegerToFloat(
         BigInt(calculatedAmount.category_balance_debit ?? 0)
@@ -256,9 +267,8 @@ const getEntityExpensesEvolution = async (userId: bigint, entityId: bigint, dbCl
         EntityService.getAmountForEntityInMonth(entityId, budget.month, budget.year, true, prismaTx)
       );
     }
-    const calculatedAmounts: Array<CalculatedEntityAmounts> = await Promise.all(
-      calculatedAmountPromises
-    );
+    const calculatedAmounts: Array<CalculatedEntityAmounts> =
+      await Promise.all(calculatedAmountPromises);
     return calculatedAmounts.map((calculatedAmount, index) => ({
       value: ConvertUtils.convertBigIntegerToFloat(
         BigInt(calculatedAmount.entity_balance_debit ?? 0)
@@ -286,13 +296,10 @@ const getTagExpensesEvolution = async (userId: bigint, tagId: bigint, dbClient =
         TagService.getAmountForTagInMonth(tagId, budget.month, budget.year, true, prismaTx)
       );
     }
-    const calculatedAmounts: Array<CalculatedTagAmounts> = await Promise.all(
-      calculatedAmountPromises
-    );
+    const calculatedAmounts: Array<CalculatedTagAmounts> =
+      await Promise.all(calculatedAmountPromises);
     return calculatedAmounts.map((calculatedAmount, index) => ({
-      value: ConvertUtils.convertBigIntegerToFloat(
-        BigInt(calculatedAmount.tag_balance_debit ?? 0)
-      ),
+      value: ConvertUtils.convertBigIntegerToFloat(BigInt(calculatedAmount.tag_balance_debit ?? 0)),
       month: budgetsList[index].month,
       year: budgetsList[index].year,
     }));
@@ -316,9 +323,8 @@ const getTagIncomeEvolution = async (userId: bigint, tagId: bigint, dbClient = u
         TagService.getAmountForTagInMonth(tagId, budget.month, budget.year, true, prismaTx)
       );
     }
-    const calculatedAmounts: Array<CalculatedTagAmounts> = await Promise.all(
-      calculatedAmountPromises
-    );
+    const calculatedAmounts: Array<CalculatedTagAmounts> =
+      await Promise.all(calculatedAmountPromises);
     return calculatedAmounts.map((calculatedAmount, index) => ({
       value: ConvertUtils.convertBigIntegerToFloat(
         BigInt(calculatedAmount.tag_balance_credit ?? 0)
@@ -350,9 +356,8 @@ const getCategoryIncomeEvolution = async (
         CategoryService.getAmountForCategoryInMonth(categoryId, budget.month, budget.year)
       );
     }
-    const calculatedAmounts: Array<CalculatedCategoryAmounts> = await Promise.all(
-      calculatedAmountPromises
-    );
+    const calculatedAmounts: Array<CalculatedCategoryAmounts> =
+      await Promise.all(calculatedAmountPromises);
     return calculatedAmounts.map((calculatedAmount, index) => ({
       value: ConvertUtils.convertBigIntegerToFloat(
         BigInt(calculatedAmount.category_balance_credit ?? 0)
@@ -380,9 +385,8 @@ const getEntityIncomeEvolution = async (userId: bigint, entityId: bigint, dbClie
         EntityService.getAmountForEntityInMonth(entityId, budget.month, budget.year, true, prismaTx)
       );
     }
-    const calculatedAmounts: Array<CalculatedEntityAmounts> = await Promise.all(
-      calculatedAmountPromises
-    );
+    const calculatedAmounts: Array<CalculatedEntityAmounts> =
+      await Promise.all(calculatedAmountPromises);
     return calculatedAmounts.map((calculatedAmount, index) => ({
       value: ConvertUtils.convertBigIntegerToFloat(
         BigInt(calculatedAmount.entity_balance_credit ?? 0)
@@ -484,12 +488,7 @@ const getYearByYearIncomeExpenseDistribution = async (
     const calculatedEntityAmountPromises = [];
     for (const entity of entities) {
       calculatedEntityAmountPromises.push(
-        EntityService.getAmountForEntityInYear(
-          entity.entity_id as bigint,
-          year,
-          true,
-          prismaTx
-        )
+        EntityService.getAmountForEntityInYear(entity.entity_id as bigint, year, true, prismaTx)
       );
     }
 
@@ -522,12 +521,7 @@ const getYearByYearIncomeExpenseDistribution = async (
     const calculatedTagAmountPromises = [];
     for (const tag of tags) {
       calculatedTagAmountPromises.push(
-        TagService.getAmountForTagInYear(
-          tag.tag_id as bigint,
-          year,
-          true,
-          prismaTx
-        )
+        TagService.getAmountForTagInYear(tag.tag_id as bigint, year, true, prismaTx)
       );
     }
 
@@ -556,60 +550,88 @@ export interface MonthByMonthDataItem {
   balance_value: number;
 }
 
-
 const getCalculatedAmountsForUserInMonth = async (
   userId: bigint,
   month: number,
   year: number,
-  userCategories: { category_id: bigint, name: string }[] | null = null,
+  userCategories: { category_id: bigint; name: string }[] | null = null,
   dbClient = prisma
 ): Promise<MonthByMonthDataItem> => {
-  const categories = userCategories ?? (await CategoryService.getAllCategoriesForUser(userId, {
-    category_id: true,
-    name: true,
-  }, dbClient));
+  const categories =
+    userCategories ??
+    (await CategoryService.getAllCategoriesForUser(
+      userId,
+      {
+        category_id: true,
+        name: true,
+      },
+      dbClient
+    ));
 
   const promises = [];
   for (const category of categories) {
     promises.push(
-      CategoryService.getAmountForCategoryInMonth(category.category_id as bigint, month, year, true, dbClient)
-    )
+      CategoryService.getAmountForCategoryInMonth(
+        category.category_id as bigint,
+        month,
+        year,
+        true,
+        dbClient
+      )
+    );
   }
 
   const calculatedCategories = await Promise.all(promises);
 
   const balance = calculatedCategories.reduce(
-    (accumulator, currentValue) => accumulator + Number(currentValue.category_balance_credit) - Number(currentValue.category_balance_debit),
-    0)
+    (accumulator, currentValue) =>
+      accumulator +
+      Number(currentValue.category_balance_credit) -
+      Number(currentValue.category_balance_debit),
+    0
+  );
 
   return { month, year, balance_value: ConvertUtils.convertBigIntegerToFloat(balance) };
-}
+};
 
 const getMonthByMonthData = async (
   userId: bigint,
   limit: number,
   dbClient = undefined
-): Promise<MonthByMonthDataItem[]> => performDatabaseRequest(async (prismaTx) => {
+): Promise<MonthByMonthDataItem[]> =>
+  performDatabaseRequest(async (prismaTx) => {
+    // Get balance for current month & [limit - 1] previous ones
+    const currentMonth = DateTimeUtils.getMonthNumberFromTimestamp();
+    const currentYear = DateTimeUtils.getYearFromTimestamp();
 
-  // Get balance for current month & [limit - 1] previous ones
-  const currentMonth = DateTimeUtils.getMonthNumberFromTimestamp();
-  const currentYear = DateTimeUtils.getYearFromTimestamp();
+    const categories = (
+      await CategoryService.getAllCategoriesForUser(
+        userId,
+        {
+          category_id: true,
+          name: true,
+          exclude_from_budgets: true,
+        },
+        dbClient
+      )
+    ).filter((cat) => cat.exclude_from_budgets == 0);
 
-  const categories = (await CategoryService.getAllCategoriesForUser(userId, {
-    category_id: true,
-    name: true,
-    exclude_from_budgets: true,
-  }, dbClient)).filter((cat) => cat.exclude_from_budgets == 0);
+    const promises = [];
+    for (let i = 0; i < limit; i++) {
+      const { month, year } = DateTimeUtils.decrementMonthByX(currentMonth, currentYear, i);
+      promises.push(
+        getCalculatedAmountsForUserInMonth(
+          userId,
+          month,
+          year,
+          categories as { category_id: bigint; name: string }[],
+          prismaTx
+        )
+      );
+    }
 
-  const promises = []
-  for (let i = 0; i < limit; i++) {
-    const { month, year } = DateTimeUtils.decrementMonthByX(currentMonth, currentYear, i)
-    promises.push(getCalculatedAmountsForUserInMonth(userId, month, year, categories as { category_id: bigint, name: string }[], prismaTx));
-  }
-
-  return Promise.all(promises);
-
-}, dbClient);
+    return Promise.all(promises);
+  }, dbClient);
 
 export default {
   getExpensesIncomeDistributionForMonth,

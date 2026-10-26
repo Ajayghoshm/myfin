@@ -1,9 +1,9 @@
-import { NextFunction, Request, Response } from 'express';
-import Logger from '../utils/Logger.js';
-import APIError from '../errorHandling/apiError.js';
-import CommonsController from './commonsController.js';
-import InvestAssetService from '../services/investAssetService.js';
+import type { NextFunction, Request, Response } from 'express';
 import joi from 'joi';
+import APIError from '../errorHandling/apiError.js';
+import InvestAssetService from '../services/investAssetService.js';
+import Logger from '../utils/Logger.js';
+import CommonsController from './commonsController.js';
 
 const getAllAssetsForUser = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -29,7 +29,7 @@ const createAsset = async (req: Request, res: Response, next: NextFunction) => {
     const sessionData = await CommonsController.checkAuthSessionValidity(req);
     const input = await createAssetSchema.validateAsync(req.body);
     await InvestAssetService.createAsset(sessionData.userId, input);
-    res.json(`New account added!`);
+    res.json('New account added!');
   } catch (err) {
     Logger.addLog(err);
     next(err || APIError.internalServerError());
@@ -53,7 +53,7 @@ const updateAsset = async (req: Request, res: Response, next: NextFunction) => {
       assetId: assetId,
       ...input,
     });
-    res.json(`Account updated!`);
+    res.json('Account updated!');
   } catch (err) {
     Logger.addLog(err);
     next(err || APIError.internalServerError());
@@ -62,19 +62,45 @@ const updateAsset = async (req: Request, res: Response, next: NextFunction) => {
 
 const updateCurrentAssetValueSchema = joi.object({
   new_value: joi.number().required(),
+  month: joi.number().optional(),
+  year: joi.number().optional(),
 });
 
 const updateCurrentAssetValue = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const sessionData = await CommonsController.checkAuthSessionValidity(req);
     const input = await updateCurrentAssetValueSchema.validateAsync(req.body);
-    const assetId = req.params.id;
+    const assetId = req.params.id as string;
     await InvestAssetService.updateCurrentAssetValue(
       sessionData.userId,
       BigInt(assetId),
-      input.new_value
+      input.new_value,
+      input.month,
+      input.year
     );
     res.json(`Asset value successfully updated!  - ${assetId} - ${input.new_value}`);
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
+const deleteAssetValueSnapshotSchema = joi.object({
+  month: joi.number().integer().min(1).max(12).required(),
+  year: joi.number().integer().min(1970).required(),
+});
+
+const deleteAssetValueSnapshot = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    const { month, year } = await deleteAssetValueSnapshotSchema.validateAsync({
+      month: req.params.month,
+      year: req.params.year,
+    });
+    const assetId = BigInt(req.params.id as string);
+
+    await InvestAssetService.deleteAssetValueSnapshot(sessionData.userId, assetId, month, year);
+    res.json('Asset value snapshot successfully deleted!');
   } catch (err) {
     Logger.addLog(err);
     next(err || APIError.internalServerError());
@@ -106,26 +132,10 @@ const getAllAssetsSummaryForUser = async (req: Request, res: Response, next: Nex
 const deleteAsset = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const sessionData = await CommonsController.checkAuthSessionValidity(req);
-    const assetId = req.params.id;
+    const assetId = req.params.id as string;
 
     await InvestAssetService.deleteAsset(sessionData.userId, BigInt(assetId));
     res.json('Asset successfully deleted!');
-  } catch (err) {
-    Logger.addLog(err);
-    next(err || APIError.internalServerError());
-  }
-};
-
-const getAssetDetailsForUser = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const sessionData = await CommonsController.checkAuthSessionValidity(req);
-    const assetId = req.params.id;
-
-    const data = await InvestAssetService.getAssetDetailsForUser(
-      sessionData.userId,
-      BigInt(assetId)
-    );
-    res.json(data);
   } catch (err) {
     Logger.addLog(err);
     next(err || APIError.internalServerError());
@@ -137,8 +147,8 @@ export default {
   createAsset,
   updateAsset,
   updateCurrentAssetValue,
+  deleteAssetValueSnapshot,
   getAssetStatsForUser,
   getAllAssetsSummaryForUser,
   deleteAsset,
-  getAssetDetailsForUser,
 };

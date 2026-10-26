@@ -1,8 +1,9 @@
-import { prisma } from "../../../src/config/prisma.js";
+import { prisma } from '../../../src/config/prisma.js';
 
 export default async () => {
   await prisma.$transaction([
     prisma.transaction_has_tags.deleteMany(),
+    prisma.transactions.deleteMany(),
     prisma.balances_snapshot.deleteMany(),
     prisma.budgets_has_categories.deleteMany(),
     prisma.invest_asset_evo_snapshot.deleteMany(),
@@ -14,10 +15,11 @@ export default async () => {
     prisma.categories.deleteMany(),
     prisma.entities.deleteMany(),
     prisma.budgets.deleteMany(),
-    prisma.transactions.deleteMany(),
     prisma.import_instrument_mappings.deleteMany(),
+    prisma.goal_has_account.deleteMany(),
+    prisma.goals.deleteMany(),
     prisma.accounts.deleteMany(),
     prisma.otp_codes.deleteMany(),
-    prisma.users.deleteMany()
-  ])
-}
+    prisma.users.deleteMany(),
+  ]);
+};

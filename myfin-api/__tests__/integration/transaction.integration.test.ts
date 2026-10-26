@@ -1,8 +1,8 @@
-import { beforeEach, describe, test } from 'vitest';
-import UserService from '../../src/services/userService.js';
-import AccountService from '../../src/services/accountService.js';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { MYFIN } from '../../src/consts.js';
+import AccountService from '../../src/services/accountService.js';
 import TransactionService from '../../src/services/transactionService.js';
+import UserService from '../../src/services/userService.js';
 import DateTimeUtils from '../../src/utils/DateTimeUtils.js';
 import { assertAccountBalanceAtMonth, assertCurrentAccountBalance } from './utils/testUtils.js';
 
@@ -10,11 +10,16 @@ describe('Transaction tests', () => {
   let user: { user_id: bigint; username: string };
   let account1: { account_id: bigint; name: string };
   let account2: { account_id: bigint; name: string };
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   beforeEach(async () => {
     user = await UserService.createUser({
       username: 'demo',
       password: '123',
-      email: 'demo@afaneca.com',
+      email: 'demo@myfinbudget.com',
     });
 
     account1 = await AccountService.createAccount(
@@ -60,10 +65,7 @@ describe('Transaction tests', () => {
     });
 
     // Assert balance is 10
-    await assertCurrentAccountBalance(
-      account1.account_id,
-      10.0
-    );
+    await assertCurrentAccountBalance(account1.account_id, 10.0);
 
     // Create income transaction
     const trx2 = await TransactionService.createTransaction(user.user_id, {
@@ -80,11 +82,7 @@ describe('Transaction tests', () => {
     });
 
     // Assert balance is 10 + 125.5 = 135.5
-    await assertCurrentAccountBalance(
-      account1.account_id,
-      135.5
-    );
-
+    await assertCurrentAccountBalance(account1.account_id, 135.5);
 
     // Create expense transaction
     const trx3 = await TransactionService.createTransaction(user.user_id, {
@@ -101,10 +99,7 @@ describe('Transaction tests', () => {
     });
 
     // Assert balance is 10 + 125.5 - 253.35 = -117.85
-    await assertCurrentAccountBalance(
-      account1.account_id,
-      -117.85
-    );
+    await assertCurrentAccountBalance(account1.account_id, -117.85);
 
     // Create transfer from account1 to account2
     const trx4 = await TransactionService.createTransaction(user.user_id, {
@@ -121,16 +116,19 @@ describe('Transaction tests', () => {
     });
 
     // Assert balance is 10 + 125.5 - 253.35 -29 = -146.85
-    await assertCurrentAccountBalance(
-      account1.account_id,
-      -146.85
+    await assertCurrentAccountBalance(account1.account_id, -146.85);
+
+    const requestAccountId = Number(account1.account_id) as unknown as bigint;
+    const recalculateBalanceSpy = vi.spyOn(
+      AccountService,
+      'recalculateBalanceForAccountIncrementally'
     );
 
     // Update trx3 to be income and change amount
     await TransactionService.updateTransaction(user.user_id, {
       new_amount: 254.35,
       new_account_from_id: null,
-      new_account_to_id: account1.account_id,
+      new_account_to_id: requestAccountId,
       new_entity_id: null,
       new_category_id: null,
       new_type: MYFIN.TRX_TYPES.INCOME,
@@ -143,20 +141,16 @@ describe('Transaction tests', () => {
       transaction_id: trx3.transaction_id,
     });
 
+    expect(recalculateBalanceSpy).toHaveBeenCalledTimes(1);
+
     // Assert balance is 10 + 125.5 - 253.35 -29 + 253.35 + 254.35 = 360.85
-    await assertCurrentAccountBalance(
-      account1.account_id,
-      360.85
-    );
+    await assertCurrentAccountBalance(account1.account_id, 360.85);
 
     // Delete trx4
     await TransactionService.deleteTransaction(user.user_id, trx4.transaction_id);
 
     // Assert balance is 10 + 125.5 - 253.35 -29 + 253.35 + 254.35 +29 = 389.85
-    await assertCurrentAccountBalance(
-      account1.account_id,
-      389.85
-    );
+    await assertCurrentAccountBalance(account1.account_id, 389.85);
   });
 
   test('When transfer transactions accounts are changed, all affected account balances are recalculated accordingly', async () => {
@@ -181,17 +175,14 @@ describe('Transaction tests', () => {
       amount: 1000_00,
       category_id: null,
       date_timestamp: DateTimeUtils.getCurrentUnixTimestamp(),
-      description: "test 1",
+      description: 'test 1',
       entity_id: null,
       is_essential: false,
       tags: [],
       type: MYFIN.TRX_TYPES.INCOME,
     });
 
-    await assertCurrentAccountBalance(
-      account1.account_id,
-      1000_00
-    );
+    await assertCurrentAccountBalance(account1.account_id, 1000_00);
 
     // Create transfer from account 1 to account 2: 500€
     const trx2 = await TransactionService.createTransaction(user.user_id, {
@@ -200,20 +191,19 @@ describe('Transaction tests', () => {
       amount: 500_00,
       category_id: null,
       date_timestamp: DateTimeUtils.getCurrentUnixTimestamp(),
-      description: "test 2",
+      description: 'test 2',
       entity_id: null,
       is_essential: false,
       tags: [],
       type: MYFIN.TRX_TYPES.TRANSFER,
     });
 
-    await assertCurrentAccountBalance(
-      account1.account_id,
-      500_00
-    );
-    await assertCurrentAccountBalance(
-      account2.account_id,
-      500_00
+    await assertCurrentAccountBalance(account1.account_id, 500_00);
+    await assertCurrentAccountBalance(account2.account_id, 500_00);
+
+    const recalculateBalanceSpy = vi.spyOn(
+      AccountService,
+      'recalculateBalanceForAccountIncrementally'
     );
 
     // Update last transaction; change destination account from account 2 to account 3
@@ -230,9 +220,11 @@ describe('Transaction tests', () => {
       tags: trx2.tags,
       is_split: false,
       split_tags: null,
-      split_type: "E",
+      split_type: 'E',
       transaction_id: trx2.transaction_id,
     });
+
+    expect(recalculateBalanceSpy).toHaveBeenCalledTimes(3);
 
     /**
      * Check final balances:
@@ -241,17 +233,8 @@ describe('Transaction tests', () => {
      * Account 2: 0€
      * Account 3: 500€
      */
-    await assertCurrentAccountBalance(
-      account1.account_id,
-      500_00
-    );
-    await assertCurrentAccountBalance(
-      account2.account_id,
-      0.0
-    );
-    await assertCurrentAccountBalance(
-      account3.account_id,
-      500_00
-    );
+    await assertCurrentAccountBalance(account1.account_id, 500_00);
+    await assertCurrentAccountBalance(account2.account_id, 0.0);
+    await assertCurrentAccountBalance(account3.account_id, 500_00);
   });
 });

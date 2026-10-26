@@ -1,17 +1,17 @@
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../generated/prisma/client.js';
 import { performDatabaseRequest, prisma } from '../config/prisma.js';
-import EntityService from './entityService.js';
-import CategoryService from './categoryService.js';
-import AccountService from './accountService.js';
-import UserService from './userService.js';
-import DateTimeUtils from '../utils/DateTimeUtils.js';
 import { MYFIN } from '../consts.js';
-import ConvertUtils from '../utils/convertUtils.js';
 import APIError from '../errorHandling/apiError.js';
+import DateTimeUtils from '../utils/DateTimeUtils.js';
 import Logger from '../utils/Logger.js';
+import ConvertUtils from '../utils/convertUtils.js';
+import AccountService from './accountService.js';
+import CategoryService from './categoryService.js';
+import EntityService from './entityService.js';
 import RuleService from './ruleService.js';
 import TagService, { Tag } from './tagService.js';
 import { getExistingExternalIds } from './phonePeImportService.js';
+import UserService from './userService.js';
 
 const getTransactionsForUser = async (
   userId: bigint,
@@ -171,6 +171,7 @@ const getFilteredTransactionsByForUser = async (
                                             entities.name               as entity_name,
                                             categories_category_id,
                                             categories.name             as category_name,
+                                            categories.icon_key         as category_icon_key,
                                             accounts_account_from_id,
                                             acc_to.name                 as account_to_name,
                                             accounts_account_to_id,
@@ -551,11 +552,51 @@ const updateTransaction = async (
       where: { transaction_id: trx.transaction_id },
     });
 
-    const oldAmount = Number(outdatedTrx.amount);
     const oldType = outdatedTrx.type;
     const oldTimestamp = outdatedTrx.date_timestamp;
     const oldAccountTo = outdatedTrx.accounts_account_to_id;
     const oldAccountFrom = outdatedTrx.accounts_account_from_id;
+
+    const affectedAccounts = new Map<bigint, number>();
+    const addAffectedAccount = (
+      accountId: bigint | number | null | undefined,
+      timestamp: bigint | number
+    ) => {
+      if (!accountId) return;
+
+      const normalizedAccountId = BigInt(accountId);
+      const recalculationStart = Number(timestamp) - 1;
+      const existingStart = affectedAccounts.get(normalizedAccountId);
+      const earliestStart =
+        existingStart === undefined
+          ? recalculationStart
+          : Math.min(existingStart, recalculationStart);
+      affectedAccounts.set(normalizedAccountId, earliestStart);
+    };
+
+    const addAccountsForTransaction = (
+      type: string,
+      accountFromId: bigint | number | null | undefined,
+      accountToId: bigint | number | null | undefined,
+      timestamp: bigint | number
+    ) => {
+      if (type === MYFIN.TRX_TYPES.INCOME) {
+        addAffectedAccount(accountToId, timestamp);
+      } else if (type === MYFIN.TRX_TYPES.EXPENSE) {
+        addAffectedAccount(accountFromId, timestamp);
+      } else {
+        addAffectedAccount(accountFromId, timestamp);
+        addAffectedAccount(accountToId, timestamp);
+      }
+    };
+
+    addAccountsForTransaction(oldType, oldAccountFrom, oldAccountTo, oldTimestamp);
+    addAccountsForTransaction(
+      trx.new_type,
+      trx.new_account_from_id,
+      trx.new_account_to_id,
+      trx.new_date_timestamp
+    );
 
     // Make sure account(s) belong to user
     if (trx.new_account_from_id) {
@@ -612,103 +653,15 @@ const updateTransaction = async (
       prismaTx
     );
 
-    // Remove the effect of outdated amount
-    let newBalance;
-    switch (oldType) {
-      case MYFIN.TRX_TYPES.INCOME:
-        await AccountService.changeBalance(userId, oldAccountTo, -oldAmount, prismaTx);
-        await AccountService.recalculateBalanceForAccountIncrementally(
-          oldAccountTo,
-          oldTimestamp - 1n,
-          DateTimeUtils.getCurrentUnixTimestamp() + 1,
-          prismaTx
-        );
-        break;
-      case MYFIN.TRX_TYPES.EXPENSE:
-        await AccountService.changeBalance(userId, oldAccountFrom, oldAmount, prismaTx);
-        await AccountService.recalculateBalanceForAccountIncrementally(
-          oldAccountFrom,
-          oldTimestamp - 1n,
-          DateTimeUtils.getCurrentUnixTimestamp() + 1,
-          prismaTx
-        );
-        break;
-      case MYFIN.TRX_TYPES.TRANSFER:
-      default:
-        await AccountService.changeBalance(userId, oldAccountTo, -oldAmount, prismaTx);
-        await AccountService.recalculateBalanceForAccountIncrementally(
-          oldAccountTo,
-          oldTimestamp - 1n,
-          DateTimeUtils.getCurrentUnixTimestamp() + 1,
-          prismaTx
-        );
-        await AccountService.changeBalance(userId, oldAccountFrom, oldAmount, prismaTx);
-        await AccountService.recalculateBalanceForAccountIncrementally(
-          oldAccountFrom,
-          oldTimestamp - 1n,
-          DateTimeUtils.getCurrentUnixTimestamp() + 1,
-          prismaTx
-        );
-        break;
-    }
-
-    // Add the effect of updated amount
-    switch (trx.new_type) {
-      case MYFIN.TRX_TYPES.INCOME:
-        newBalance = await AccountService.recalculateBalanceForAccountIncrementally(
-          trx.new_account_to_id,
-          Math.min(trx.new_date_timestamp, Number(oldTimestamp)) - 1,
-          DateTimeUtils.getCurrentUnixTimestamp() + 1,
-          prismaTx
-        );
-        await AccountService.setNewAccountBalance(
-          userId,
-          trx.new_account_to_id,
-          newBalance,
-          prismaTx
-        );
-        break;
-      case MYFIN.TRX_TYPES.EXPENSE:
-        newBalance = await AccountService.recalculateBalanceForAccountIncrementally(
-          trx.new_account_from_id,
-          Math.min(trx.new_date_timestamp, Number(oldTimestamp)) - 1,
-          DateTimeUtils.getCurrentUnixTimestamp() + 1,
-          prismaTx
-        );
-        await AccountService.setNewAccountBalance(
-          userId,
-          trx.new_account_from_id,
-          newBalance,
-          prismaTx
-        );
-        break;
-      case MYFIN.TRX_TYPES.TRANSFER:
-      default:
-        newBalance = await AccountService.recalculateBalanceForAccountIncrementally(
-          trx.new_account_to_id,
-          Math.min(trx.new_date_timestamp, Number(oldTimestamp)) - 1,
-          DateTimeUtils.getCurrentUnixTimestamp() + 1,
-          prismaTx
-        );
-        await AccountService.setNewAccountBalance(
-          userId,
-          trx.new_account_to_id,
-          newBalance,
-          prismaTx
-        );
-        newBalance = await AccountService.recalculateBalanceForAccountIncrementally(
-          trx.new_account_from_id,
-          Math.min(trx.new_date_timestamp, Number(oldTimestamp)) - 1,
-          DateTimeUtils.getCurrentUnixTimestamp() + 1,
-          prismaTx
-        );
-        await AccountService.setNewAccountBalance(
-          userId,
-          trx.new_account_from_id,
-          newBalance,
-          prismaTx
-        );
-        break;
+    const recalculationEnd = DateTimeUtils.getCurrentUnixTimestamp() + 1;
+    for (const [accountId, recalculationStart] of affectedAccounts) {
+      const newBalance = await AccountService.recalculateBalanceForAccountIncrementally(
+        accountId,
+        recalculationStart,
+        recalculationEnd,
+        prismaTx
+      );
+      await AccountService.setNewAccountBalance(userId, accountId, newBalance, prismaTx);
     }
   }, dbClient);
 

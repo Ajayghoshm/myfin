@@ -1,5 +1,5 @@
 # Build stage
-FROM node:20-alpine AS builder
+FROM node:22.23.4-alpine AS builder
 
 WORKDIR /app
 
@@ -14,14 +14,13 @@ RUN npm ci
 COPY . .
 
 # Generate Prisma client and build
-RUN npx prisma generate && \
-    npm run build && \
+RUN npm run build && \
     npm prune --production
 
 # Production stage
-FROM node:20-alpine
+FROM node:22.23.4-alpine
 
-ARG VERSION="3.5.0"
+ARG VERSION="5.5.1"
 
 # Add metadata
 LABEL maintainer="José Valdiviesso <me@zmiguel.me>"
@@ -42,13 +41,14 @@ RUN apk --no-cache add curl openssl zlib libgcc musl
 # Copy only the necessary files from builder
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
+COPY --from=builder /app/src/config/databaseUrl.ts ./src/config/databaseUrl.ts
 COPY --from=builder /app/node_modules ./node_modules
 COPY package*.json ./
 
 # Create startup script
 RUN echo '#!/bin/sh' > /app/start.sh && \
-    echo 'export DATABASE_URL="mysql://$DB_USER:$DB_PW@$DB_HOST:$DB_PORT/$DB_NAME"' >> /app/start.sh && \
-    echo 'npm run db:deploy && npx tsx dist/server.js' >> /app/start.sh && \
+    echo 'npm run db:deploy && exec node dist/server.js' >> /app/start.sh && \
     chmod +x /app/start.sh
 
 # Set environment variables
@@ -70,7 +70,8 @@ ENV NODE_ENV=production \
     PORT="3001" \
     LOGGING="false" \
     BYPASS_SESSION_CHECK="false" \
-    ENABLE_USER_SIGNUP="true"
+    ENABLE_USER_SIGNUP="true" \
+    TRUST_PROXY="1"
 
 # Add healthcheck
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
