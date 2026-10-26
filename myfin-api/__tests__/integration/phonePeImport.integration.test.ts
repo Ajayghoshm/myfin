@@ -7,6 +7,7 @@ import AccountService from "../../src/services/accountService.js";
 import { MYFIN } from "../../src/consts.js";
 import { prisma } from "../../src/config/prisma.js";
 import PhonePeImportService from "../../src/services/phonePeImportService.js";
+import TransactionService, { CreateTransactionType } from "../../src/services/transactionService.js";
 import { expectThrowErrorCode } from "./utils/testUtils.js";
 
 const fixture = readFileSync(
@@ -258,5 +259,80 @@ describe("PhonePe import (preview / categorize)", () => {
     const mappings = allMappings.filter((m) => m.key !== "356146XXXXXXXX05");
     const result = await PhonePeImportService.categorizePhonePeImport(user.user_id, fixture, mappings);
     expect(result.fillData).toHaveLength(FIXTURE_ROWS - 1);
+  });
+
+  describe("saving (createTransactionsInBulk)", () => {
+    const toCreateList = async (csv = fixture): Promise<Array<CreateTransactionType>> => {
+      const result = await PhonePeImportService.categorizePhonePeImport(user.user_id, csv, allMappings);
+      return result.fillData.map((r) => ({
+        amount: r.amount,
+        type: r.type,
+        description: r.description,
+        entity_id: r.selectedEntityID,
+        account_from_id: r.selectedAccountFromID,
+        account_to_id: r.selectedAccountToID,
+        category_id: r.selectedCategoryID,
+        date_timestamp: r.date,
+        is_essential: r.isEssential ?? false,
+        external_id: r.external_id,
+      }));
+    };
+    const balanceOf = async (id: bigint) =>
+      Number((await prisma.accounts.findUniqueOrThrow({ where: { account_id: id } })).current_balance);
+
+    test("imports all rows with external_id, moves balances, and a second run skips everything", async () => {
+      const list = await toCreateList();
+      const res = await TransactionService.createTransactionsInBulk(user.user_id, list.map((t) => ({ ...t })));
+      expect(res).toEqual({ imported: FIXTURE_ROWS, skipped: 0 });
+      expect(await prisma.transactions.count({ where: { external_id: { startsWith: "phonepe:" } } })).toBe(
+        FIXTURE_ROWS
+      );
+
+      const again = await TransactionService.createTransactionsInBulk(user.user_id, list.map((t) => ({ ...t })));
+      expect(again).toEqual({ imported: 0, skipped: FIXTURE_ROWS });
+      expect(await prisma.transactions.count()).toBe(FIXTURE_ROWS);
+    });
+
+    test("top-up transfer moves 4998 from bank3300 to upiLite", async () => {
+      const list = await toCreateList();
+      const topUp = list.filter((t) => t.external_id === LITE_TOPUP_ID);
+      const before = await balanceOf(bank3300.account_id);
+      await TransactionService.createTransactionsInBulk(user.user_id, topUp);
+      expect(await balanceOf(bank3300.account_id)).toBe(before - 4998 * 100);
+      expect(await balanceOf(upiLite.account_id)).toBe(4998 * 100);
+    });
+
+    test("preview after import reports no new rows; a file with 2 extra rows reports 2", async () => {
+      const list = await toCreateList();
+      await TransactionService.createTransactionsInBulk(user.user_id, list);
+      let preview = await PhonePeImportService.previewPhonePeImport(user.user_id, fixture);
+      expect(preview.new_rows).toBe(0);
+      expect(preview.duplicate_rows).toBe(FIXTURE_ROWS);
+
+      const extra = [1, 2].map(
+        (i) =>
+          `"Oct 27, 2026","01:46 pm","Paid to NEWMERCHANT ${i}","TNEW00000${i}","${i}","DEBIT","Paid by ${BANK_KEY}","${i * 10}"`
+      );
+      const lines = fixture.split(/\r?\n/);
+      lines.splice(lines.findIndex((l) => l.startsWith("Date,Time,")) + 1, 0, ...extra);
+      preview = await PhonePeImportService.previewPhonePeImport(user.user_id, lines.join("\n"));
+      expect(preview.new_rows).toBe(2);
+    });
+
+    test("duplicates within the submitted list are skipped; items without external_id always import", async () => {
+      const list = await toCreateList();
+      const swiggy = list.find((t) => t.external_id === SWIGGY_ID);
+      const res = await TransactionService.createTransactionsInBulk(user.user_id, [{ ...swiggy }, { ...swiggy }]);
+      expect(res).toEqual({ imported: 1, skipped: 1 });
+
+      const paste = () => {
+        const { external_id, ...rest } = swiggy;
+        return { ...rest };
+      };
+      const pasted = await TransactionService.createTransactionsInBulk(user.user_id, [paste(), paste()]);
+      expect(pasted).toEqual({ imported: 2, skipped: 0 });
+      const again = await TransactionService.createTransactionsInBulk(user.user_id, [paste()]);
+      expect(again).toEqual({ imported: 1, skipped: 0 });
+    });
   });
 });

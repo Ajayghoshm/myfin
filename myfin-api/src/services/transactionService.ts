@@ -10,6 +10,7 @@ import APIError from '../errorHandling/apiError.js';
 import Logger from '../utils/Logger.js';
 import RuleService from './ruleService.js';
 import TagService, { Tag } from './tagService.js';
+import { getExistingExternalIds } from './phonePeImportService.js';
 
 const getTransactionsForUser = async (
   userId: bigint,
@@ -241,6 +242,7 @@ export type CreateTransactionType = {
   date_timestamp: number;
   is_essential: boolean;
   tags?: Array<string>;
+  external_id?: string;
 };
 const createTransaction = async (
   userId: bigint,
@@ -262,6 +264,7 @@ const createTransaction = async (
         accounts_account_to_id: trx.account_to_id,
         categories_category_id: trx.category_id,
         is_essential: trx.is_essential,
+        external_id: trx.external_id || undefined,
       },
     });
 
@@ -346,6 +349,14 @@ const createTransactionsInBulk = async (
 ) =>
   performDatabaseRequest(async (prismaTx) => {
     let importedCnt = 0;
+    let skippedCnt = 0;
+
+    // Rows carrying an external_id (e.g. PhonePe) are skipped if already stored for this user,
+    // or if repeated earlier in this same list. Rows without one (paste import) always import.
+    const externalIds = [...new Set(trxList.map((t) => t.external_id).filter((id) => !!id))];
+    const existingIds = await getExistingExternalIds(userId, externalIds, prismaTx);
+    const seenIds = new Set<string>();
+
     for (const trx of trxList) {
       if (
         !trx.date_timestamp ||
@@ -354,6 +365,14 @@ const createTransactionsInBulk = async (
         (!trx.account_from_id && !trx.account_to_id)
       ) {
         continue;
+      }
+
+      if (trx.external_id) {
+        if (existingIds.has(trx.external_id) || seenIds.has(trx.external_id)) {
+          skippedCnt++;
+          continue;
+        }
+        seenIds.add(trx.external_id);
       }
 
       // Both accounts (if defined) need to belong to the user making the request
@@ -375,7 +394,7 @@ const createTransactionsInBulk = async (
       importedCnt++;
     }
 
-    return importedCnt;
+    return { imported: importedCnt, skipped: skippedCnt };
   }, dbClient);
 
 const deleteTransaction = async (userId: bigint, transactionId: number, dbClient = undefined) => {

@@ -277,11 +277,11 @@ const importTransactionsStep2 = async (req: Request, res: Response, next: NextFu
     const sessionData = await CommonsController.checkAuthSessionValidity(req);
     const input = await importTrxStep2Schema.validateAsync(req.body);
 
-    const importedCnt = await TransactionService.createTransactionsInBulk(
+    const { imported, skipped } = await TransactionService.createTransactionsInBulk(
       sessionData.userId,
       JSON.parse(input.trx_list)
     );
-    res.json(`${importedCnt} transactions successfully imported!`);
+    res.json({ imported, skipped });
   } catch (err) {
     Logger.addLog(err);
     next(err || APIError.internalServerError());
