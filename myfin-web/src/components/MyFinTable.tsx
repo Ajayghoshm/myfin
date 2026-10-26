@@ -11,7 +11,7 @@ import { styled } from '@mui/material/styles';
 import type { GridColDef } from '@mui/x-data-grid/models/colDef';
 import { GridRowsProp } from '@mui/x-data-grid/models';
 import { useTranslation } from 'react-i18next';
-import { enUS, ptPT } from '@mui/x-data-grid/locales';
+import { enUS, frFR, ptPT } from '@mui/x-data-grid/locales';
 import i18next from 'i18next';
 
 type Props = {
@@ -32,11 +32,11 @@ type Props = {
 
 export const StyledDataGrid = styled(DataGrid)(({ theme }) => ({
   border: 0,
-  '--DataGrid-rowBorderColor': `${theme.palette.mode === 'light' ? '#ebe7e7' : '#304052'}`,
+  '--DataGrid-rowBorderColor': theme.palette.divider,
   '& .highlighted-row': {
-    background: 'linear-gradient(to top, #0083B0, #00B4DB)',
+    background: `linear-gradient(to top, ${theme.palette.primary.dark}, ${theme.palette.primary.main})`,
     '&:hover': {
-      backgroundColor: 'blue',
+      backgroundColor: theme.palette.primary.dark,
       cursor: 'pointer',
     },
   },
@@ -49,13 +49,13 @@ export const StyledDataGrid = styled(DataGrid)(({ theme }) => ({
     },
   },
   '& .MuiDataGrid-row': {
-    borderBottom: '0px solid #304052',
+    borderBottom: '0px solid ' + theme.palette.divider,
   },
   '& .MuiDataGrid-iconSeparator': {
     display: 'none',
   },
   '& .MuiDataGrid-columnHeader': {
-    background: `${theme.palette.mode === 'light' ? '#ebe7e7' : '#304052'}`,
+    background: theme.palette.action.hover,
     color: `${theme.palette.text.primary}`,
     border: 'none',
   },
@@ -80,9 +80,11 @@ const MyFinTable = (props: Props) => {
   } = props;
 
   const getLocaleTextForDataGrid = () => {
-    switch (i18next.resolvedLanguage) {
+    switch (i18next.resolvedLanguage?.split('-')[0]) {
       case 'pt':
         return ptPT.components.MuiDataGrid.defaultProps.localeText;
+      case 'fr':
+        return frFR.components.MuiDataGrid.defaultProps.localeText;
       default:
         return enUS.components.MuiDataGrid.defaultProps.localeText;
     }
@@ -142,20 +144,20 @@ const StyledGridOverlay = styled('div')(({ theme }) => ({
   justifyContent: 'center',
   height: '100%',
   '& .ant-empty-img-1': {
-    fill: theme.palette.mode === 'light' ? '#aeb8c2' : '#262626',
+    fill: theme.palette.text.disabled,
   },
   '& .ant-empty-img-2': {
-    fill: theme.palette.mode === 'light' ? '#f5f5f7' : '#595959',
+    fill: theme.palette.background.paper,
   },
   '& .ant-empty-img-3': {
-    fill: theme.palette.mode === 'light' ? '#dce0e6' : '#434343',
+    fill: theme.palette.divider,
   },
   '& .ant-empty-img-4': {
-    fill: theme.palette.mode === 'light' ? '#fff' : '#1c1c1c',
+    fill: theme.palette.background.default,
   },
   '& .ant-empty-img-5': {
-    fillOpacity: theme.palette.mode === 'light' ? '0.8' : '0.08',
-    fill: theme.palette.mode === 'light' ? '#f5f5f5' : '#fff',
+    fillOpacity: theme.palette.mode === 'light' ? 0.8 : 0.08,
+    fill: theme.palette.text.primary,
   },
 }));
 

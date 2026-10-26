@@ -41,6 +41,8 @@ services:
       - LOGGING=false
       - BYPASS_SESSION_CHECK=false
       - ENABLE_USER_SIGNUP=true
+      # Reverse proxy trust for Express (1 = trust the first proxy hop)
+      - TRUST_PROXY=1
     depends_on:
       db:
         condition: service_healthy

@@ -9,18 +9,12 @@ import {
   InvestTransactionsPageResponse,
   InvestTransactionType,
 } from '../../../services/invest/investServices.ts';
-import {
-  useGetInvestTransactions,
-  useRemoveInvestTransaction,
-} from '../../../services/invest/investHooks.ts';
+import { useGetInvestTransactions, useRemoveInvestTransaction } from '../../../services/invest/investHooks.ts';
 import TextField from '@mui/material/TextField';
 import InputAdornment from '@mui/material/InputAdornment';
 import MyFinTable from '../../../components/MyFinTable.tsx';
 import { useLoading } from '../../../providers/LoadingProvider.tsx';
-import {
-  AlertSeverity,
-  useSnackbar,
-} from '../../../providers/SnackbarProvider.tsx';
+import { AlertSeverity, useSnackbar } from '../../../providers/SnackbarProvider.tsx';
 import { debounce } from 'lodash';
 import { GridColDef } from '@mui/x-data-grid';
 import Stack from '@mui/material/Stack';
@@ -30,18 +24,18 @@ import {
   getMonthShortStringFromUnixTimestamp,
   getShortYearFromUnixTimestamp,
 } from '../../../utils/dateUtils.ts';
-import { Tooltip, useTheme } from '@mui/material';
+import { useTheme } from '@mui/material';
 import Typography from '@mui/material/Typography';
-import {
-  useGetLocalizedAssetType,
-  useGetLocalizedInvestTransactionType,
-} from '../InvestUtilHooks.ts';
+import { useGetLocalizedAssetType, useGetLocalizedInvestTransactionType } from '../InvestUtilHooks.ts';
 import Chip from '@mui/material/Chip';
 import { formatNumberAsCurrency } from '../../../utils/textUtils.ts';
 import IconButton from '@mui/material/IconButton';
 import AddEditInvestTransactionDialog from './AddEditInvestTransactionDialog.tsx';
 import GenericConfirmationDialog from '../../../components/GenericConfirmationDialog.tsx';
 import UpdateAssetValueDialog from '../assets/UpdateAssetValueDialog.tsx';
+import AssetValueHistoryDrawer from '../assets/AssetValueHistoryDrawer.tsx';
+import dayjs from 'dayjs';
+
 
 type UiState = {
   isLoading: boolean;
@@ -53,6 +47,19 @@ type UiState = {
   isAddEditDialogOpen: boolean;
   isRemoveDialogOpen: boolean;
   isUpdateAssetValueDialogOpen: boolean;
+
+  // Backdated transaction handling
+  isBackdatedTrxDisclaimerOpen: boolean;
+  pendingHistoryHighlightMonth?: number;
+  pendingHistoryHighlightYear?: number;
+  pendingHistoryAssetId?: bigint;
+  pendingHistoryAssetName?: string;
+
+  isHistoryDrawerOpen: boolean;
+  historyDrawerAssetId?: bigint;
+  historyDrawerAssetName?: string;
+  historyDrawerHighlightMonth?: number;
+  historyDrawerHighlightYear?: number;
 };
 
 const enum StateActionType {
@@ -66,13 +73,16 @@ const enum StateActionType {
   RemoveClick,
   DialogDismissed,
   DialogSuccess,
+  OpenBackdatedDisclaimer,
+  OpenHistoryDrawer,
+  CloseHistoryDrawer,
 }
 
 type StateAction =
   | {
-      type: StateActionType.RequestSuccess;
-      payload: InvestTransactionsPageResponse;
-    }
+  type: StateActionType.RequestSuccess;
+  payload: InvestTransactionsPageResponse;
+}
   | { type: StateActionType.RequestError }
   | { type: StateActionType.RequestStarted }
   | { type: StateActionType.SearchQueryUpdated; payload: string }
@@ -80,11 +90,21 @@ type StateAction =
   | { type: StateActionType.EditClick; payload: InvestTransaction }
   | { type: StateActionType.RemoveClick; payload: InvestTransaction }
   | { type: StateActionType.DialogDismissed }
-  | { type: StateActionType.DialogSuccess; payload: InvestAsset }
   | {
-      type: StateActionType.PaginationModelChanged;
-      payload: { pageSize: number; page: number };
-    };
+  type: StateActionType.DialogSuccess;
+  payload: {
+    asset: InvestAsset;
+    checkDate: number;
+    prevDate?: number;
+  };
+}
+  | {
+  type: StateActionType.PaginationModelChanged;
+  payload: { pageSize: number; page: number };
+}
+  | { type: StateActionType.OpenBackdatedDisclaimer }
+  | { type: StateActionType.OpenHistoryDrawer }
+  | { type: StateActionType.CloseHistoryDrawer };
 
 const createInitialState = (): UiState => {
   return {
@@ -94,6 +114,8 @@ const createInitialState = (): UiState => {
     isAddEditDialogOpen: false,
     isRemoveDialogOpen: false,
     isUpdateAssetValueDialogOpen: false,
+    isBackdatedTrxDisclaimerOpen: false,
+    isHistoryDrawerOpen: false,
   };
 };
 
@@ -125,6 +147,13 @@ const reduceState = (prevState: UiState, action: StateAction): UiState => {
         ...prevState,
         searchQuery: action.payload,
       };
+    case StateActionType.AddClick:
+      return {
+        ...prevState,
+        isAddEditDialogOpen: true,
+        isRemoveDialogOpen: false,
+        actionableTransaction: undefined,
+      };
     case StateActionType.EditClick:
       return {
         ...prevState,
@@ -145,25 +174,81 @@ const reduceState = (prevState: UiState, action: StateAction): UiState => {
         isAddEditDialogOpen: false,
         isRemoveDialogOpen: false,
         isUpdateAssetValueDialogOpen: false,
+        isBackdatedTrxDisclaimerOpen: false,
         actionableTransaction: undefined,
         actionableAsset: undefined,
       };
-    case StateActionType.DialogSuccess:
+    case StateActionType.DialogSuccess: {
+      const { asset, checkDate, prevDate } = action.payload;
+      const now = dayjs();
+      const currentMonth = now.month();
+      const currentYear = now.year();
+
+      const checkD = dayjs.unix(checkDate);
+      const isCheckBackdated =
+        checkD.month() !== currentMonth || checkD.year() !== currentYear;
+
+      let isPrevBackdated = false;
+      if (prevDate) {
+        const prevD = dayjs.unix(prevDate);
+        isPrevBackdated =
+          prevD.month() !== currentMonth || prevD.year() !== currentYear;
+      }
+
+      if (isCheckBackdated || isPrevBackdated) {
+        // Determine earliest date for highlighting
+        let targetTs = checkDate;
+        if (prevDate && prevDate < checkDate) {
+          targetTs = prevDate;
+        }
+        const targetD = dayjs.unix(targetTs);
+
+        return {
+          ...prevState,
+          isAddEditDialogOpen: false,
+          isRemoveDialogOpen: false,
+          isUpdateAssetValueDialogOpen: false,
+          isBackdatedTrxDisclaimerOpen: true,
+          actionableAsset: asset,
+          pendingHistoryAssetId: asset.asset_id,
+          pendingHistoryAssetName: asset.name,
+          pendingHistoryHighlightMonth: targetD.month() + 1,
+          pendingHistoryHighlightYear: targetD.year(),
+        };
+      }
+
       return {
         ...prevState,
         isAddEditDialogOpen: false,
         isRemoveDialogOpen: false,
         isUpdateAssetValueDialogOpen: true,
-        actionableAsset: action.payload,
+        actionableAsset: asset,
       };
-    case StateActionType.AddClick:
+    }
+    case StateActionType.OpenBackdatedDisclaimer:
+      // Helper action if needed, but DialogSuccess handles the logic
+      return prevState;
+    case StateActionType.OpenHistoryDrawer:
       return {
         ...prevState,
-        isAddEditDialogOpen: true,
-        isRemoveDialogOpen: false,
-        actionableTransaction: undefined,
-        actionableAsset: undefined,
+        isBackdatedTrxDisclaimerOpen: false,
+        isHistoryDrawerOpen: true,
+        historyDrawerAssetId: prevState.pendingHistoryAssetId,
+        historyDrawerAssetName: prevState.pendingHistoryAssetName,
+        historyDrawerHighlightMonth: prevState.pendingHistoryHighlightMonth,
+        historyDrawerHighlightYear: prevState.pendingHistoryHighlightYear,
       };
+    case StateActionType.CloseHistoryDrawer:
+      return {
+        ...prevState,
+        isHistoryDrawerOpen: false,
+        historyDrawerAssetId: undefined,
+        historyDrawerAssetName: undefined,
+        historyDrawerHighlightMonth: undefined,
+        historyDrawerHighlightYear: undefined,
+      };
+    default:
+      return prevState;
   }
 };
 
@@ -246,7 +331,7 @@ const InvestTransactions = () => {
           qty: result.units,
           ticker: result.ticker,
         },
-        value: { price: result.total_price, feesTaxes: result.fees_taxes },
+        value: { price: result.total_price, feesTaxes: result.fees_taxes_amount },
         observations: result.note,
         actions: result,
       })),
@@ -275,27 +360,32 @@ const InvestTransactions = () => {
               {/*<br />*/}
               <span>
                 {getMonthShortStringFromUnixTimestamp(params.value.date)}
-                {" '"}
+                {' \''}
                 {getShortYearFromUnixTimestamp(params.value.date)}
               </span>
             </span>
           </Box>
-          <Tooltip
-            title={getLocalizedInvestTransactionType.invoke(params.value.type)}
-          >
-            <Chip
-              label={
-                getLocalizedInvestTransactionType.invoke(params.value.type)[0]
+          <Chip
+            label={
+              getLocalizedInvestTransactionType.invoke(params.value.type)
+            }
+            variant="outlined"
+            size="small"
+            color={(() => {
+              switch (params.value.type) {
+                case InvestTransactionType.Buy:
+                  return 'success';
+                case InvestTransactionType.Sell:
+                  return 'warning';
+                case InvestTransactionType.Income:
+                  return 'info';
+                case InvestTransactionType.Cost:
+                  return 'error';
+                default:
+                  return 'default';
               }
-              variant="outlined"
-              size="small"
-              color={
-                params.value.type == InvestTransactionType.Buy
-                  ? 'success'
-                  : 'warning'
-              }
-            />
-          </Tooltip>
+            })()}
+          />
         </Stack>
       ),
     },
@@ -413,8 +503,11 @@ const InvestTransactions = () => {
         <AddEditInvestTransactionDialog
           isOpen={true}
           onClose={() => dispatch({ type: StateActionType.DialogDismissed })}
-          onSuccess={(asset) =>
-            dispatch({ type: StateActionType.DialogSuccess, payload: asset })
+          onSuccess={(asset, checkDate, prevDate) =>
+            dispatch({
+              type: StateActionType.DialogSuccess,
+              payload: { asset, checkDate, prevDate },
+            })
           }
           trx={state.actionableTransaction}
         />
@@ -423,11 +516,28 @@ const InvestTransactions = () => {
         <GenericConfirmationDialog
           isOpen={true}
           onClose={() => dispatch({ type: StateActionType.DialogDismissed })}
-          onPositiveClick={() => {
-            removeTransactionRequest.mutate(
+          onPositiveClick={async () => {
+            await removeTransactionRequest.mutateAsync(
               state.actionableTransaction?.transaction_id || -1n,
             );
-            dispatch({ type: StateActionType.DialogDismissed });
+            if (state.actionableTransaction) {
+              // Create a partial asset object as we don't have the full asset here
+              const asset = {
+                asset_id: state.actionableTransaction.asset_id,
+                name: state.actionableTransaction.name,
+              } as InvestAsset;
+
+              dispatch({
+                type: StateActionType.DialogSuccess,
+                payload: {
+                  asset,
+                  checkDate: state.actionableTransaction.date_timestamp,
+                  prevDate: state.actionableTransaction.date_timestamp,
+                },
+              });
+            } else {
+              dispatch({ type: StateActionType.DialogDismissed });
+            }
           }}
           onNegativeClick={() =>
             dispatch({ type: StateActionType.DialogDismissed })
@@ -438,6 +548,33 @@ const InvestTransactions = () => {
           descriptionText={t('investments.deleteTrxModalSubtitle')}
           alert={t('investments.deleteTrxModalAlert')}
           positiveText={t('common.delete')}
+        />
+      )}
+      {state.isBackdatedTrxDisclaimerOpen && (
+        <GenericConfirmationDialog
+          isOpen={true}
+          onClose={() => dispatch({ type: StateActionType.DialogDismissed })}
+          onPositiveClick={() =>
+            dispatch({ type: StateActionType.OpenHistoryDrawer })
+          }
+          onNegativeClick={() =>
+            dispatch({ type: StateActionType.DialogDismissed })
+          }
+          titleText={t('investments.backdatedTransactionTitle')}
+          descriptionText={t('investments.backdatedTransactionDescription')}
+          positiveText={t('investments.viewHistory')}
+          negativeText={t('common.close')}
+          alert={''}
+        />
+      )}
+      {state.isHistoryDrawerOpen && state.historyDrawerAssetId && (
+        <AssetValueHistoryDrawer
+          isOpen={true}
+          onClose={() => dispatch({ type: StateActionType.CloseHistoryDrawer })}
+          assetId={state.historyDrawerAssetId}
+          assetName={state.historyDrawerAssetName || ''}
+          highlightMonth={state.historyDrawerHighlightMonth}
+          highlightYear={state.historyDrawerHighlightYear}
         />
       )}
       <Grid
@@ -474,12 +611,14 @@ const InvestTransactions = () => {
           id="search"
           label={t('common.search')}
           variant="outlined"
-          InputProps={{
-            endAdornment: (
-              <InputAdornment position="end">
-                <Search />
-              </InputAdornment>
-            ),
+          slotProps={{
+            input: {
+              endAdornment: (
+                <InputAdornment position="end">
+                  <Search />
+                </InputAdornment>
+              ),
+            },
           }}
           onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
             debouncedSearchQuery(event.target.value);

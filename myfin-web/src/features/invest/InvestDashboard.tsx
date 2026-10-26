@@ -1,46 +1,60 @@
+import { Assessment, HelpOutline } from '@mui/icons-material';
+import {
+  Box,
+  Button,
+  Card,
+  CardContent,
+  IconButton,
+  Tooltip,
+  useMediaQuery,
+  useTheme,
+} from '@mui/material';
+import Chip from '@mui/material/Chip';
+import Grid from '@mui/material/Grid';
+import Stack from '@mui/material/Stack';
+import Typography from '@mui/material/Typography';
+import { TFunction } from 'i18next';
 import { useEffect, useReducer } from 'react';
-import { Box, Card, CardContent, useMediaQuery, useTheme } from '@mui/material';
+import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
+import EmptyView from '../../components/EmptyView.tsx';
+import PercentageChip from '../../components/PercentageChip.tsx';
+import { ColorGradient } from '../../consts';
 import { useLoading } from '../../providers/LoadingProvider.tsx';
+import { ROUTE_INVEST_REPORTS } from '../../providers/RoutesProvider.tsx';
 import {
   AlertSeverity,
   useSnackbar,
 } from '../../providers/SnackbarProvider.tsx';
-import { useTranslation } from 'react-i18next';
-import Grid from '@mui/material/Grid';
 import { useGetInvestStats } from '../../services/invest/investHooks.ts';
 import {
   AssetType,
   GetInvestStatsResponse,
   InvestAsset,
+  PeriodReturnMetrics,
 } from '../../services/invest/investServices.ts';
+import { getCurrentYear } from '../../utils/dateUtils.ts';
+import { useFormatNumberAsCurrency } from '../../utils/textHooks.ts';
 import {
   formatNumberAsCurrency,
   formatNumberAsPercentage,
 } from '../../utils/textUtils.ts';
-import Typography from '@mui/material/Typography';
-import Chip from '@mui/material/Chip';
-import { getCurrentYear } from '../../utils/dateUtils.ts';
 import DashboardPieChart, {
   ChartDataItem,
 } from '../dashboard/DashboardPieChart.tsx';
-import EmptyView from '../../components/EmptyView.tsx';
-import { TFunction } from 'i18next';
-import { ColorGradient } from '../../consts/index.ts';
-import Stack from '@mui/material/Stack';
 import { useGetGradientColorForAssetType } from './InvestUtilHooks.ts';
-import PercentageChip from '../../components/PercentageChip.tsx';
-import { useFormatNumberAsCurrency } from '../../utils/textHooks.ts';
+import ReturnMetricsDetails from './ReturnMetricsDetails.tsx';
 
 type UiState = {
   currentValue: number;
   totalInvestedFormatted: string;
   currentValueFormatted: string;
   currentYearRoiValueFormatted: string;
-  currentYearRoiPercentageFormatted: string;
-  currentYearRoiPercentageValue: number;
+  currentYearRoiPercentageValue: number | null;
+  currentYearReturnMetrics: PeriodReturnMetrics;
   globalRoiValueFormatted: string;
-  globalRoiPercentageFormatted: string;
-  globalRoiPercentageValue: number;
+  globalRoiPercentageValue: number | null;
+  globalReturnMetrics: PeriodReturnMetrics;
   assetDistributionPieChartData?: ChartDataItem[];
   topPerformingAssets?: InvestAsset[];
 } | null;
@@ -147,7 +161,10 @@ const TopPerformerCard = (props: {
 const SummaryCard = (props: {
   title: string;
   absoluteValue: string;
-  percentageValue?: number;
+  percentageValue?: number | null;
+  helpKey?: string;
+  helpAriaLabel?: string;
+  returnMetrics?: PeriodReturnMetrics;
 }) => {
   const theme = useTheme();
   return (
@@ -168,9 +185,34 @@ const SummaryCard = (props: {
           justifyContent: 'space-between',
         }}
       >
-        <Typography sx={{ fontSize: 14 }} color="text.secondary">
-          {props.title}
-        </Typography>
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Typography sx={{ fontSize: 14 }} color="text.secondary">
+            {props.title}
+          </Typography>
+          {props.returnMetrics ? (
+            <ReturnMetricsDetails
+              ariaLabel={props.helpAriaLabel ?? props.title}
+              metrics={props.returnMetrics}
+              title={props.title}
+            />
+          ) : props.helpKey ? (
+            <Tooltip title={props.helpKey} placement="top">
+              <IconButton
+                aria-label={props.helpAriaLabel}
+                size="small"
+                sx={{ ml: 0.5, color: 'text.secondary', opacity: 0.7 }}
+              >
+                <HelpOutline sx={{ fontSize: 16 }} />
+              </IconButton>
+            </Tooltip>
+          ) : null}
+        </Box>
 
         <div
           style={{
@@ -183,12 +225,13 @@ const SummaryCard = (props: {
           <Typography variant="h5" component="div">
             {props.absoluteValue}
           </Typography>
-          {props.percentageValue && (
-            <PercentageChip
-              percentage={Number(props.percentageValue)}
-              sx={{ mt: 1, alignSelf: 'center' }}
-            />
-          )}
+          {props.percentageValue !== undefined &&
+            props.percentageValue !== null && (
+              <PercentageChip
+                percentage={Number(props.percentageValue)}
+                sx={{ mt: 1, alignSelf: 'center' }}
+              />
+            )}
         </div>
       </CardContent>
     </Card>
@@ -225,49 +268,44 @@ const getLocalizedTextForAssetType = (
 const reduceState = (prevState: UiState, action: StateAction): UiState => {
   switch (action.type) {
     case StateActionType.DataLoaded: {
-      const chartData = action.payload.current_value_distribution.map(
-        (item) => {
-          const [key, value] = Object.entries(item)[0];
-
+      const chartData = action.payload.current_value_distribution
+        .filter((item) => item.percentage > 0)
+        .map((item) => {
           return {
             id: getLocalizedTextForAssetType(
               action.payload.t,
-              key as AssetType,
+              item.type as AssetType,
             ),
             color: action.payload.getGradientColorForAssetType(
-              key as AssetType,
+              item.type as AssetType,
             ),
-            value: value,
+            value: item.percentage,
           };
-        },
-      );
+        });
 
       return {
         ...prevState,
         currentValue: action.payload.total_current_value,
         totalInvestedFormatted: formatNumberAsCurrency(
-          action.payload.total_invested_value,
+          action.payload.total_currently_invested_value,
         ),
         currentValueFormatted: formatNumberAsCurrency(
           action.payload.total_current_value,
         ),
         currentYearRoiValueFormatted: formatNumberAsCurrency(
-          action.payload.current_year_roi_value,
-        ),
-        currentYearRoiPercentageFormatted: formatNumberAsPercentage(
-          action.payload.current_year_roi_percentage,
-          true,
+          action.payload.return_metrics.current_year.absolute_return_value,
         ),
         currentYearRoiPercentageValue:
-          action.payload.current_year_roi_percentage,
+          action.payload.return_metrics.current_year.portfolio_return
+            .cumulative_percentage,
+        currentYearReturnMetrics: action.payload.return_metrics.current_year,
         globalRoiValueFormatted: formatNumberAsCurrency(
-          action.payload.global_roi_value,
+          action.payload.return_metrics.global.absolute_return_value,
         ),
-        globalRoiPercentageFormatted: formatNumberAsPercentage(
-          action.payload.global_roi_percentage,
-          true,
-        ),
-        globalRoiPercentageValue: action.payload.global_roi_percentage,
+        globalRoiPercentageValue:
+          action.payload.return_metrics.global.portfolio_return
+            .annualized_percentage,
+        globalReturnMetrics: action.payload.return_metrics.global,
         assetDistributionPieChartData: chartData,
         topPerformingAssets: action.payload.top_performing_assets,
       };
@@ -281,6 +319,7 @@ const InvestDashboard = () => {
   const { t } = useTranslation();
   const theme = useTheme();
   const matchesLgScreen = useMediaQuery(theme.breakpoints.down('lg'));
+  const navigate = useNavigate();
 
   const getInvestStatsRequest = useGetInvestStats();
   const getGradientColorForAssetClass = useGetGradientColorForAssetType();
@@ -384,6 +423,15 @@ const InvestDashboard = () => {
         </Grid>
       </Grid>
       <Grid container alignContent="center" textAlign="center" size={12}>
+        <Grid display="flex" justifyContent="flex-end" size={12}>
+          <Button
+            variant="outlined"
+            startIcon={<Assessment />}
+            onClick={() => navigate(ROUTE_INVEST_REPORTS)}
+          >
+            {t('investments.annualReport.generateCta')}
+          </Button>
+        </Grid>
         <Grid
           size={{
             xs: 12,
@@ -393,6 +441,8 @@ const InvestDashboard = () => {
           <SummaryCard
             title={t('investments.totalInvested')}
             absoluteValue={state.totalInvestedFormatted}
+            helpKey={t('investments.summaryHelp.totalInvested')}
+            helpAriaLabel={t('investments.summaryHelp.totalInvestedAriaLabel')}
           />
         </Grid>
         <Grid
@@ -404,6 +454,8 @@ const InvestDashboard = () => {
           <SummaryCard
             title={t('investments.currentValue')}
             absoluteValue={state.currentValueFormatted}
+            helpKey={t('investments.summaryHelp.currentValue')}
+            helpAriaLabel={t('investments.summaryHelp.currentValueAriaLabel')}
           />
         </Grid>
         <Grid
@@ -413,9 +465,13 @@ const InvestDashboard = () => {
           }}
         >
           <SummaryCard
-            title={`ROI ${getCurrentYear()}`}
+            title={t('investments.portfolioReturnYear', {
+              year: getCurrentYear(),
+            })}
             absoluteValue={state.currentYearRoiValueFormatted}
             percentageValue={state.currentYearRoiPercentageValue}
+            helpAriaLabel={t('investments.summaryHelp.currentYearROIAriaLabel')}
+            returnMetrics={state.currentYearReturnMetrics}
           />
         </Grid>
         <Grid
@@ -425,9 +481,11 @@ const InvestDashboard = () => {
           }}
         >
           <SummaryCard
-            title={t('investments.globalROI')}
+            title={t('investments.globalPortfolioReturn')}
             absoluteValue={state.globalRoiValueFormatted}
             percentageValue={state.globalRoiPercentageValue}
+            helpAriaLabel={t('investments.summaryHelp.globalROIAriaLabel')}
+            returnMetrics={state.globalReturnMetrics}
           />
         </Grid>
       </Grid>

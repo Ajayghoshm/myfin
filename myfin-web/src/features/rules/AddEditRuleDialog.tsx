@@ -148,23 +148,25 @@ const AddEditRuleDialog = (props: Props) => {
       maxWidth="md"
       open={props.isOpen}
       onClose={props.onClose}
-      PaperProps={{
-        component: 'form',
-        onSubmit: (event: React.FormEvent<HTMLFormElement>) => {
-          event.preventDefault();
-          if (!rule) return;
-          if (isEditForm) {
-            if (rule.rule_id) {
-              // Update
-              editRuleRequest.mutate(rule as Rule);
+      slotProps={{
+        paper: {
+          component: 'form',
+          onSubmit: (event: React.FormEvent<HTMLFormElement>) => {
+            event.preventDefault();
+            if (!rule) return;
+            if (isEditForm) {
+              if (rule.rule_id) {
+                // Update
+                editRuleRequest.mutate(rule as Rule);
+              } else {
+                // Create
+                addRuleRequest.mutate(rule);
+              }
             } else {
               // Create
               addRuleRequest.mutate(rule);
             }
-          } else {
-            // Create
-            addRuleRequest.mutate(rule);
-          }
+          },
         },
       }}
     >
@@ -285,9 +287,6 @@ const AddEditRuleDialog = (props: Props) => {
                   id="amount-condition"
                   name="amount-condition"
                   type="number"
-                  inputProps={{
-                    step: 0.01,
-                  }}
                   disabled={
                     rule?.matcher_amount_operator ==
                     RuleMatchingOperatorType.Ignore
@@ -303,6 +302,11 @@ const AddEditRuleDialog = (props: Props) => {
                   label={t('common.amount')}
                   fullWidth
                   variant="outlined"
+                  slotProps={{
+                    htmlInput: {
+                      step: 0.01,
+                    }
+                  }}
                 />
               </Grid>
               {/* Type */}

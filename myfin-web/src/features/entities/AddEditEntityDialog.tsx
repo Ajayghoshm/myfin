@@ -1,14 +1,8 @@
 import { Entity } from '../../services/trx/trxServices.ts';
 import { Trans, useTranslation } from 'react-i18next';
 import { useLoading } from '../../providers/LoadingProvider.tsx';
-import {
-  AlertSeverity,
-  useSnackbar,
-} from '../../providers/SnackbarProvider.tsx';
-import {
-  useAddEntity,
-  useEditEntity,
-} from '../../services/entity/entityHooks.ts';
+import { AlertSeverity, useSnackbar } from '../../providers/SnackbarProvider.tsx';
+import { useAddEntity, useEditEntity } from '../../services/entity/entityHooks.ts';
 import React, { useEffect, useState } from 'react';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
@@ -71,22 +65,24 @@ const AddEditEntityDialog = (props: Props) => {
       maxWidth="sm"
       open={props.isOpen}
       onClose={props.onClose}
-      PaperProps={{
-        component: 'form',
-        onSubmit: (event: React.FormEvent<HTMLFormElement>) => {
-          event.preventDefault();
-          if (isEditForm && props.entity) {
-            // Update
-            editEntityRequest.mutate({
-              entity_id: props.entity.entity_id,
-              new_name: nameValue,
-            });
-          } else {
-            // Create
-            addEntityRequest.mutate({
-              name: nameValue,
-            });
-          }
+      slotProps={{
+        paper: {
+          component: 'form',
+          onSubmit: (event: React.FormEvent<HTMLFormElement>) => {
+            event.preventDefault();
+            if (isEditForm && props.entity) {
+              // Update
+              editEntityRequest.mutate({
+                entity_id: props.entity.entity_id,
+                new_name: nameValue,
+              });
+            } else {
+              // Create
+              addEntityRequest.mutate({
+                name: nameValue,
+              });
+            }
+          },
         },
       }}
     >

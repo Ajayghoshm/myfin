@@ -1,42 +1,57 @@
 import { AccountCircle, KeyboardDoubleArrowRight } from '@mui/icons-material';
-import Button from '@mui/material/Button';
-import { Trans, useTranslation } from 'react-i18next';
 import {
-  useImportTransactionsStep0,
-  useImportTransactionsStep1,
-} from '../../../services/trx/trxHooks.ts';
-import { useEffect, useState } from 'react';
+  Alert,
+  Autocomplete,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControlLabel,
+  MenuItem,
+  Radio,
+  RadioGroup,
+  Select,
+  Typography,
+  useTheme,
+} from '@mui/material';
+import Button from '@mui/material/Button';
+import Grid from '@mui/material/Grid';
+import InputAdornment from '@mui/material/InputAdornment';
+import TextField from '@mui/material/TextField';
+import { GridColDef } from '@mui/x-data-grid';
+import dayjs from 'dayjs';
+import * as fuzzball from 'fuzzball';
+import { countBy } from 'lodash';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
+import MyFinStaticTable from '../../../components/MyFinStaticTable.tsx';
 import { useLoading } from '../../../providers/LoadingProvider.tsx';
 import {
   AlertSeverity,
   useSnackbar,
 } from '../../../providers/SnackbarProvider.tsx';
-import { Account } from '../../../services/auth/authServices.ts';
+import { Account, AccountStatus } from '../../../services/auth/authServices.ts';
 import {
-  Autocomplete,
-  MenuItem,
-  Select,
-  Typography,
-  useTheme,
-} from '@mui/material';
-import MyFinStaticTable from '../../../components/MyFinStaticTable.tsx';
-import { GridColDef } from '@mui/x-data-grid';
-import { countBy } from 'lodash';
-import TextField from '@mui/material/TextField';
-import InputAdornment from '@mui/material/InputAdornment';
-import Grid from '@mui/material/Grid';
-import { IdLabelPair } from '../AddEditTransactionDialog.tsx';
+  useImportTransactionsStep0,
+  useImportTransactionsStep1,
+} from '../../../services/trx/trxHooks.ts';
 import {
   ExportedTransactionItem,
   ImportTransactionsStep1Response,
   TransactionType,
 } from '../../../services/trx/trxServices.ts';
 import {
+  convertDateStringToUnixTimestamp,
+  detectDateFormatFromList,
+  getMonthsFullName,
+  padDateComponents,
+} from '../../../utils/dateUtils.ts';
+import {
   checkIfFieldsAreFilled,
   convertStringToFloat,
 } from '../../../utils/textUtils.ts';
-import { convertDateStringToUnixTimestamp } from '../../../utils/dateUtils.ts';
-import * as fuzzball from 'fuzzball';
+import { IdLabelPair } from '../AddEditTransactionDialog.tsx';
+import { parseClipboardText } from './clipboardParser.ts';
 
 const IMPORT_TRX_FIELD_HEADER_VARIATIONS = {
   DATE: [
@@ -155,8 +170,31 @@ export type Props = {
 };
 
 export type ImportTrxStep1Result = ImportTransactionsStep1Response & {
+  // Undefined for multi-account imports (e.g. PhonePe statements)
   selectedAccountId?: bigint;
   duplicateRows?: number;
+  activeAccounts: Account[];
+};
+
+/**
+ * Accounts that can be picked in the review step: the active ones, plus any
+ * (possibly inactive) account the server already assigned to a row.
+ */
+export const getImportSelectableAccounts = (
+  accounts: Account[],
+  fillData: ImportTransactionsStep1Response['fillData'],
+): Account[] => {
+  const referenced = new Set(
+    fillData
+      .flatMap((row) => [row.selectedAccountFromID, row.selectedAccountToID])
+      .filter((id) => id != null)
+      .map((id) => String(id)),
+  );
+  return accounts.filter(
+    (acc) =>
+      acc.status === AccountStatus.Active ||
+      referenced.has(String(acc.account_id)),
+  );
 };
 
 const ImportTrxStep1 = (props: Props) => {
@@ -173,10 +211,19 @@ const ImportTrxStep1 = (props: Props) => {
   const [selectedAccount, setSelectedAccount] = useState<IdLabelPair | null>(
     null,
   );
-  const [rows, setRows] = useState<string[]>([]);
+  const [rows, setRows] = useState<string[][]>([]);
   const [columnMappings, setColumnMappings] = useState<
     Record<string, FIELD_MAPPING>
   >({});
+  const [detectedDateFormat, setDetectedDateFormat] = useState<string | null>(
+    null,
+  );
+  const [viableFormats, setViableFormats] = useState<string[]>([]);
+  const [isDateFormatDialogOpen, setIsDateFormatDialogOpen] = useState(false);
+  const [selectedFormatInDialog, setSelectedFormatInDialog] = useState<
+    string | null
+  >(null);
+  const [pendingContinue, setPendingContinue] = useState(false);
 
   const handleMappingChange = (columnIndex: number, value: FIELD_MAPPING) => {
     setColumnMappings((prev) => ({
@@ -218,6 +265,9 @@ const ImportTrxStep1 = (props: Props) => {
       props.onNext({
         ...importTrxStep1Request.data,
         selectedAccountId: selectedAccount?.id || -1n,
+        activeAccounts: accounts.filter(
+          (acc) => acc.status === AccountStatus.Active,
+        ),
       });
     }
   }, [importTrxStep1Request.data]);
@@ -229,30 +279,193 @@ const ImportTrxStep1 = (props: Props) => {
     }
   }, [accounts]);
 
+  // Detect date format whenever column mappings or rows change
+  useEffect(() => {
+    const dateColumnKey = Object.entries(columnMappings).find(
+      ([_, value]) => value === FIELD_MAPPING.DATE,
+    )?.[0];
+
+    if (!dateColumnKey || rows.length === 0) {
+      setDetectedDateFormat(null);
+      setViableFormats([]);
+      return;
+    }
+
+    const colIndex = parseInt(dateColumnKey.split('-')[1]);
+    const dateStrings = rows
+      .map((row) => row[colIndex]?.trim())
+      .filter((s): s is string => !!s && s.length > 0);
+
+    if (dateStrings.length === 0) {
+      setDetectedDateFormat(null);
+      setViableFormats([]);
+      return;
+    }
+
+    const result = detectDateFormatFromList(dateStrings);
+    setDetectedDateFormat(result.detectedFormat);
+    setViableFormats(result.viableFormats);
+
+    // Reset dialog selection when detection changes
+    if (result.detectedFormat) {
+      setSelectedFormatInDialog(null);
+    }
+  }, [columnMappings, rows]);
+
+  // Get a sample date string from the data to show preview in dialog
+  const sampleDateString = useMemo(() => {
+    const dateColumnKey = Object.entries(columnMappings).find(
+      ([_, value]) => value === FIELD_MAPPING.DATE,
+    )?.[0];
+    if (!dateColumnKey || rows.length === 0) return null;
+    const colIndex = parseInt(dateColumnKey.split('-')[1]);
+    return (
+      rows
+        .map((row) => row[colIndex]?.trim())
+        .find((s) => !!s && s.length > 0) || null
+    );
+  }, [columnMappings, rows]);
+
+  const handleDateFormatDialogConfirm = useCallback(() => {
+    if (selectedFormatInDialog) {
+      setDetectedDateFormat(selectedFormatInDialog);
+      setIsDateFormatDialogOpen(false);
+      // pendingContinue remains true so the useEffect below will proceed
+    }
+  }, [selectedFormatInDialog]);
+
+  // When detectedDateFormat is set after user picks from dialog, and
+  // pendingContinue is true, trigger the actual import
+  const pendingContinueRef = useRef(false);
+  pendingContinueRef.current = pendingContinue;
+
+  useEffect(() => {
+    if (!pendingContinueRef.current || !detectedDateFormat) return;
+    setPendingContinue(false);
+
+    // Inline the import logic here since proceedWithImport is defined after early return
+    const getCol = (field: FIELD_MAPPING): number | null => {
+      const column = Object.entries(columnMappings)
+        .find(([_, value]) => value === field)?.[0]
+        ?.split('-')[1];
+      if (column !== undefined) return parseInt(column);
+      return null;
+    };
+
+    const trxs: ExportedTransactionItem[] = [];
+    rows.forEach((row) => {
+      const columns = row;
+      const date = columns[getCol(FIELD_MAPPING.DATE) ?? -1];
+      const description = columns[getCol(FIELD_MAPPING.DESCRIPTION) ?? -1];
+
+      // Infer amount/type
+      const amountColumn = getCol(FIELD_MAPPING.AMOUNT);
+      const creditColumn = getCol(FIELD_MAPPING.CREDIT);
+      const debitColumn = getCol(FIELD_MAPPING.DEBIT);
+      const typeColumn = getCol(FIELD_MAPPING.TYPE);
+      let amount: number | undefined;
+      let type: TransactionType | undefined;
+      if (
+        amountColumn !== null &&
+        columns[amountColumn] &&
+        typeColumn === null
+      ) {
+        amount = convertStringToFloat(columns[amountColumn]);
+        type = amount > 0 ? TransactionType.Income : TransactionType.Expense;
+      } else if (creditColumn !== null && typeColumn === null) {
+        amount = convertStringToFloat(columns[creditColumn] ?? '');
+        type = amount > 0 ? TransactionType.Income : TransactionType.Expense;
+      }
+      if (!amount && debitColumn !== null && typeColumn === null) {
+        amount = convertStringToFloat(columns[debitColumn] ?? '');
+        type = amount > 0 ? TransactionType.Expense : TransactionType.Income;
+      } else if (!amount && amountColumn !== null && typeColumn !== null) {
+        amount = convertStringToFloat(columns[amountColumn] ?? '');
+        switch (columns[typeColumn]) {
+          case FIELD_MAPPING.DEBIT:
+            type =
+              amount > 0 ? TransactionType.Expense : TransactionType.Income;
+            break;
+          case FIELD_MAPPING.CREDIT:
+            type =
+              amount > 0 ? TransactionType.Income : TransactionType.Expense;
+            break;
+        }
+      }
+
+      const finalAmount = Math.abs(amount || 0);
+      const finalType = type || TransactionType.Expense;
+
+      if (
+        checkIfFieldsAreFilled([date, description, finalAmount + '', finalType])
+      ) {
+        try {
+          const unixDate = convertDateStringToUnixTimestamp(
+            date,
+            detectedDateFormat,
+          );
+          trxs.push({
+            date: unixDate,
+            description,
+            amount: finalAmount,
+            type: finalType,
+          });
+        } catch (_error) {
+          console.log(_error);
+        }
+      }
+    });
+
+    importTrxStep1Request.mutate({
+      account_id: selectedAccount?.id || -1n,
+      trx_list: trxs,
+    });
+  }, [detectedDateFormat, pendingContinue]);
+
   const transformUserAccountsIntoIdLabelPair = (userAccounts: Account[]) => {
-    return userAccounts.map((acc) => ({
-      id: acc.account_id,
-      label: acc.name,
-    }));
+    return userAccounts
+      .filter((acc) => acc.status === AccountStatus.Active)
+      .map((acc) => ({
+        id: acc.account_id,
+        label: acc.name,
+      }));
   };
 
   if (importTrxStep0Request.isPending || !importTrxStep0Request.data) {
     return null;
   }
 
-  const tryToPrefillHeaders = (firstRow: string[]) => {
+  const tryToPrefillHeaders = (firstRow: string[]): boolean => {
     const initialMappings: Record<string, FIELD_MAPPING> = {};
     usedFields.clear();
     firstRow.map((row, index) => {
       initialMappings[`column-${index}`] = guessColumnMapping(row);
     });
     setColumnMappings(initialMappings);
+
+    // Return true if at least 2 columns were matched (i.e. first row is likely a header)
+    const matchedCount = Object.values(initialMappings).filter(
+      (mapping) => mapping !== FIELD_MAPPING.IGNORE,
+    ).length;
+    return matchedCount >= 2;
   };
 
   const parseClipboardData = (data: string) => {
-    const rows = data.split('\n');
-    setRows(rows);
-    tryToPrefillHeaders(rows[0].split('\t'));
+    const parsedClipboard = parseClipboardText(data);
+    const nonEmptyRows = parsedClipboard.rows;
+
+    if (nonEmptyRows.length === 0) {
+      setRows([]);
+      return;
+    }
+
+    // Try to detect headers from first row
+    const firstRowIsHeader = tryToPrefillHeaders(nonEmptyRows[0]);
+
+    // If first row matched as headers, exclude it from data rows
+    const dataRows = firstRowIsHeader ? nonEmptyRows.slice(1) : nonEmptyRows;
+
+    setRows(dataRows);
   };
 
   interface GridValidRowModel {
@@ -260,10 +473,10 @@ const ImportTrxStep1 = (props: Props) => {
     [key: string]: string; // This allows for additional string properties
   }
 
-  const buildRowsForTable = (rows: string[]): GridValidRowModel[] => {
+  const buildRowsForTable = (rows: string[][]): GridValidRowModel[] => {
     return rows.map(
       (row, j) =>
-        row.split('\t').reduce((acc: GridValidRowModel, row, i) => {
+        row.reduce((acc: GridValidRowModel, row, i) => {
           acc.id = j + '+' + i;
           acc[`${i}`] = row; // Cast i to string for indexing
           return acc;
@@ -271,10 +484,10 @@ const ImportTrxStep1 = (props: Props) => {
     );
   };
 
-  const buildColumnsForTable = (rows: string[]): GridColDef[] => {
-    const nColumns = rows[0]?.split('\t').length || 0;
+  const buildColumnsForTable = (rows: string[][]): GridColDef[] => {
+    const nColumns = Math.max(...rows.map((row) => row.length), 0);
     if (nColumns < 1) return [];
-    return rows[0].split('\t').map((_row, i) => ({
+    return Array.from({ length: nColumns }, (_row, i) => ({
       field: `column-${i}`,
       renderHeader: (_params) => {
         return (
@@ -316,14 +529,15 @@ const ImportTrxStep1 = (props: Props) => {
     const column = Object.entries(columnMappings)
       .find(([_, value]) => value === field)?.[0]
       ?.split('-')[1];
-    if (column) return parseInt(column);
+    if (column !== undefined) return parseInt(column);
     return null;
   };
 
   const parseTransactions = () => {
     const trxs: ExportedTransactionItem[] = [];
+    const dateFormat = detectedDateFormat || undefined;
     rows.forEach((row) => {
-      const columns = row.split('\t');
+      const columns = row;
       const amountAndTypeInferred = inferTrxAmountAndType(columns);
       const date = columns[getColumnNumberForMapping(FIELD_MAPPING.DATE) ?? -1];
       const description =
@@ -332,7 +546,7 @@ const ImportTrxStep1 = (props: Props) => {
       const type = amountAndTypeInferred.type;
       if (checkIfFieldsAreFilled([date, description, amount + '', type])) {
         try {
-          const unixDate = convertDateStringToUnixTimestamp(date);
+          const unixDate = convertDateStringToUnixTimestamp(date, dateFormat);
           trxs.push({
             date: unixDate,
             description,
@@ -341,6 +555,7 @@ const ImportTrxStep1 = (props: Props) => {
           });
         } catch (_error) {
           /* no-op */
+          console.log(_error);
         }
       }
     });
@@ -356,28 +571,28 @@ const ImportTrxStep1 = (props: Props) => {
     const debitColumn = getColumnNumberForMapping(FIELD_MAPPING.DEBIT);
     const typeColumn = getColumnNumberForMapping(FIELD_MAPPING.TYPE);
 
-    let amount;
-    let type;
+    let amount: number | undefined;
+    let type: TransactionType | undefined;
 
-    if (amountColumn && row[amountColumn] && amountColumn && !typeColumn) {
-      amount = convertStringToFloat(row[amountColumn].replace(/ /g, ''));
+    if (amountColumn !== null && row[amountColumn] && typeColumn === null) {
+      amount = convertStringToFloat(row[amountColumn]);
       type = amount > 0 ? TransactionType.Income : TransactionType.Expense;
-    } else if (creditColumn && !typeColumn) {
+    } else if (creditColumn !== null && typeColumn === null) {
       amount = convertStringToFloat(row[creditColumn] ?? '');
-      type = TransactionType.Income;
+      type = amount > 0 ? TransactionType.Income : TransactionType.Expense;
     }
 
-    if (!amount && debitColumn && !typeColumn) {
+    if (!amount && debitColumn !== null && typeColumn === null) {
       amount = convertStringToFloat(row[debitColumn] ?? '');
-      type = TransactionType.Expense;
-    } else if (!amount && amountColumn && typeColumn) {
+      type = amount > 0 ? TransactionType.Expense : TransactionType.Income;
+    } else if (!amount && amountColumn !== null && typeColumn !== null) {
       amount = convertStringToFloat(row[amountColumn] ?? '');
       switch (row[typeColumn]) {
         case FIELD_MAPPING.DEBIT:
-          type = TransactionType.Expense;
+          type = amount > 0 ? TransactionType.Expense : TransactionType.Income;
           break;
         case FIELD_MAPPING.CREDIT:
-          type = TransactionType.Income;
+          type = amount > 0 ? TransactionType.Income : TransactionType.Expense;
           break;
       }
     }
@@ -388,15 +603,36 @@ const ImportTrxStep1 = (props: Props) => {
     };
   };
 
+  const proceedWithImport = () => {
+    const parsedTrxs = parseTransactions();
+    importTrxStep1Request.mutate({
+      account_id: selectedAccount?.id || -1n,
+      trx_list: parsedTrxs,
+    });
+  };
+
   const handleContinueButtonClick = () => {
     switch (validateInput()) {
       case VALIDATE_INPUT_RESULT.VALID:
         {
-          const parsedTrxs = parseTransactions();
-          importTrxStep1Request.mutate({
-            account_id: selectedAccount?.id || -1n,
-            trx_list: parsedTrxs,
-          });
+          // If date format is ambiguous (multiple viable formats, none auto-detected),
+          // prompt the user to select
+          if (!detectedDateFormat && viableFormats.length > 1) {
+            setPendingContinue(true);
+            setIsDateFormatDialogOpen(true);
+            return;
+          }
+
+          // If no viable formats at all, show warning but still proceed
+          // (dates will default to today and can be adjusted in the next step)
+          if (!detectedDateFormat && viableFormats.length === 0) {
+            snackbar.showSnackbar(
+              t('importTransactions.dateFormatNoValidFormat'),
+              AlertSeverity.WARNING,
+            );
+          }
+
+          proceedWithImport();
         }
         break;
 
@@ -463,6 +699,85 @@ const ImportTrxStep1 = (props: Props) => {
 
   return (
     <>
+      {/* Date format selection dialog */}
+      <Dialog
+        open={isDateFormatDialogOpen}
+        onClose={() => {
+          setIsDateFormatDialogOpen(false);
+          setPendingContinue(false);
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          {t('importTransactions.dateFormatAmbiguousTitle')}
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            {t('importTransactions.dateFormatAmbiguousDescription')}
+          </Typography>
+          {sampleDateString && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              {t('importTransactions.dateFormatSampleDate', {
+                date: sampleDateString,
+              })}
+            </Alert>
+          )}
+          <RadioGroup
+            value={selectedFormatInDialog || ''}
+            onChange={(e) => setSelectedFormatInDialog(e.target.value)}
+          >
+            {viableFormats.map((fmt) => (
+              <FormControlLabel
+                key={fmt}
+                value={fmt}
+                control={<Radio />}
+                label={
+                  <Typography>
+                    <strong>{fmt}</strong>
+                    {sampleDateString && (
+                      <Typography
+                        component="span"
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ ml: 1 }}
+                      >
+                        → {(() => {
+                          const parsed = dayjs(
+                            padDateComponents(sampleDateString),
+                            fmt,
+                            true,
+                          );
+                          if (!parsed.isValid()) return '—';
+                          return `${parsed.date()} ${getMonthsFullName(parsed.month() + 1)} ${parsed.year()}`;
+                        })()}
+                      </Typography>
+                    )}
+                  </Typography>
+                }
+              />
+            ))}
+          </RadioGroup>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setIsDateFormatDialogOpen(false);
+              setPendingContinue(false);
+            }}
+          >
+            {t('common.cancel')}
+          </Button>
+          <Button
+            variant="contained"
+            disabled={!selectedFormatInDialog}
+            onClick={handleDateFormatDialogConfirm}
+          >
+            {t('common.confirm')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Grid container direction="column" spacing={2}>
         <Grid>
           <Typography variant="body1" component="div" sx={{ mt: 2, mb: 2 }}>
@@ -482,19 +797,76 @@ const ImportTrxStep1 = (props: Props) => {
               <TextField
                 {...params}
                 required
-                InputProps={{
-                  ...params.InputProps,
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <AccountCircle />
-                    </InputAdornment>
-                  ),
-                }}
                 label={t('transactions.originAccount')}
+                slotProps={{
+                  input: {
+                    ...params.InputProps,
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <AccountCircle />
+                      </InputAdornment>
+                    ),
+                  },
+                }}
               />
             )}
           />
         </Grid>
+        {/* Date format detection indicator */}
+        {Object.values(columnMappings).includes(FIELD_MAPPING.DATE) && (
+          <Grid>
+            {detectedDateFormat ? (
+              <Alert
+                severity="success"
+                variant="outlined"
+                onClick={() => setIsDateFormatDialogOpen(true)}
+                sx={{ cursor: 'pointer' }}
+                {...(viableFormats.length > 1
+                  ? {
+                      action: (
+                        <Button
+                          color="inherit"
+                          size="small"
+                          onClick={() => {
+                            setSelectedFormatInDialog(detectedDateFormat);
+                            setIsDateFormatDialogOpen(true);
+                          }}
+                        >
+                          {t('common.change')}
+                        </Button>
+                      ),
+                    }
+                  : {})}
+              >
+                {t('importTransactions.dateFormatDetected', {
+                  format: detectedDateFormat,
+                })}
+              </Alert>
+            ) : viableFormats.length > 1 ? (
+              <Alert
+                severity="warning"
+                variant="outlined"
+                onClick={() => setIsDateFormatDialogOpen(true)}
+                sx={{ cursor: 'pointer' }}
+                action={
+                  <Button
+                    color="inherit"
+                    size="small"
+                    onClick={() => setIsDateFormatDialogOpen(true)}
+                  >
+                    {t('importTransactions.dateFormatSelectAction')}
+                  </Button>
+                }
+              >
+                {t('importTransactions.dateFormatAmbiguousChip')}
+              </Alert>
+            ) : viableFormats.length === 0 && rows.length > 0 ? (
+              <Alert severity="error" variant="outlined">
+                {t('importTransactions.dateFormatNoValidFormat')}
+              </Alert>
+            ) : null}
+          </Grid>
+        )}
         <Grid size={12}>
           <MyFinStaticTable
             isRefetching={false}

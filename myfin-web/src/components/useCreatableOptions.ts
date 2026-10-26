@@ -6,6 +6,7 @@ import { useAddCategory } from '../services/category/CategoryHooks.tsx';
 import { useAddEntity } from '../services/entity/entityHooks.ts';
 import { CategoryStatus } from '../services/category/categoryServices.ts';
 import { ColorGradient } from '../consts/index.ts';
+import { DEFAULT_CATEGORY_ICON_KEY } from '../services/category/categoryIcons.tsx';
 import { AlertSeverity, useSnackbar } from '../providers/SnackbarProvider.tsx';
 
 export type CreatableKind = 'category' | 'entity';
@@ -71,13 +72,20 @@ export function useCreatableOptions(kind: CreatableKind) {
     try {
       let option: IdLabelPair;
       if (kind === 'category') {
+        const colorGradient = Object.values(ColorGradient)[0];
         const result = await addCategoryRequest.mutateAsync({
           name,
-          color_gradient: Object.values(ColorGradient)[0],
+          icon_key: DEFAULT_CATEGORY_ICON_KEY,
+          color_gradient: colorGradient,
           status: CategoryStatus.Active,
           exclude_from_budgets: false,
         });
-        option = { id: BigInt(result.data.category_id), label: result.data.name };
+        option = {
+          id: BigInt(result.data.category_id),
+          label: result.data.name,
+          iconKey: DEFAULT_CATEGORY_ICON_KEY,
+          colorGradient,
+        };
       } else {
         const result = await addEntityRequest.mutateAsync({ name });
         option = { id: BigInt(result.data.entity_id), label: result.data.name };

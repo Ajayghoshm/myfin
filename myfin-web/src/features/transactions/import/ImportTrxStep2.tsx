@@ -1,5 +1,8 @@
 import { KeyboardDoubleArrowRight } from '@mui/icons-material';
-import { useCreatableOptions } from '../../../components/useCreatableOptions.ts';
+import {
+  CreatableOption,
+  useCreatableOptions,
+} from '../../../components/useCreatableOptions.ts';
 import Button from '@mui/material/Button';
 import { Trans, useTranslation } from 'react-i18next';
 import { memo, useCallback, useEffect, useMemo, useState, useRef } from 'react';
@@ -11,6 +14,7 @@ import {
 import {
   Autocomplete,
   Checkbox,
+  FilterOptionsState,
   Stack,
   TextField,
   Typography,
@@ -60,13 +64,15 @@ export type ImportTrxStep2Result = {
 
 const DescriptionCell = memo(
   ({
+     id,
     description,
     onInputChange,
     onBlur,
   }: {
+    id: number;
     description: string;
-    onInputChange: (input: string) => void;
-    onBlur: () => void;
+    onInputChange: (id: number, input: string) => void;
+    onBlur: (id: number, value: string) => void;
   }) => {
     const [localValue, setLocalValue] = useState(description);
 
@@ -82,10 +88,10 @@ const DescriptionCell = memo(
         value={localValue}
         onChange={(e) => {
           setLocalValue(e.target.value);
-          onInputChange(e.target.value);
+          onInputChange(id, e.target.value);
         }}
         onBlur={() => {
-          onBlur();
+          onBlur(id, localValue);
         }}
         onKeyUp={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
@@ -98,6 +104,181 @@ const DescriptionCell = memo(
 );
 
 DescriptionCell.displayName = 'DescriptionCell';
+
+const DateCell = memo(
+  ({
+     id,
+     value,
+     onChange,
+   }: {
+    id: number;
+    value: number;
+    onChange: (id: number, timestamp: number) => void;
+  }) => (
+    <DatePicker
+      name="date"
+      value={convertUnixTimestampToDayJs(value)}
+      onChange={(newValue) => {
+        const timestamp = convertDayJsToUnixTimestamp(newValue || dayjs());
+        onChange(id, timestamp);
+      }}
+      format="DD/MM/YYYY"
+      slotProps={{
+        textField: {
+          variant: 'outlined',
+          required: true,
+          fullWidth: true,
+          margin: 'dense',
+        },
+        inputAdornment: {
+          position: 'start',
+        },
+      }}
+    />
+  ),
+);
+DateCell.displayName = 'DateCell';
+
+const ValueCell = memo(
+  ({
+     id,
+     value,
+     onDebouncedChange,
+   }: {
+    id: number;
+    value: number;
+    onDebouncedChange: (id: number, value: number) => void;
+  }) => {
+    const [localValue, setLocalValue] = useState(value);
+
+    useEffect(() => {
+      setLocalValue(value);
+    }, [value]);
+
+    return (
+      <TextField
+        margin="dense"
+        id="amount"
+        name="amount"
+        value={localValue}
+        onChange={(e) => {
+          const newValue = Number(e.target.value);
+          setLocalValue(newValue);
+          onDebouncedChange(id, newValue);
+        }}
+        type="number"
+        fullWidth
+        variant="outlined"
+        slotProps={{
+          htmlInput: {
+            step: 0.01,
+          },
+        }}
+      />
+    );
+  },
+);
+ValueCell.displayName = 'ValueCell';
+
+type CreatableOptionsFilter = (
+  options: CreatableOption[],
+  state: FilterOptionsState<CreatableOption>,
+) => CreatableOption[];
+
+const CategoryCell = memo(
+  ({
+     id,
+     category,
+     entity,
+     categories,
+     entities,
+     filterCategoryOptions,
+     filterEntityOptions,
+     onCategoryChange,
+     onEntityChange,
+   }: {
+    id: number;
+    category: IdLabelPair | undefined;
+    entity: IdLabelPair | undefined;
+    categories: CreatableOption[];
+    entities: CreatableOption[];
+    filterCategoryOptions: CreatableOptionsFilter;
+    filterEntityOptions: CreatableOptionsFilter;
+    onCategoryChange: (id: number, value: CreatableOption | null) => void;
+    onEntityChange: (id: number, value: CreatableOption | null) => void;
+  }) => {
+    const { t } = useTranslation();
+    return (
+      <Stack spacing={2} sx={{ mt: 2, mb: 2, width: 1 }}>
+        <Autocomplete
+          id="category"
+          fullWidth
+          value={category ?? null}
+          onChange={(_event, value) => onCategoryChange(id, value)}
+          options={categories}
+          filterOptions={filterCategoryOptions}
+          isOptionEqualToValue={(option, value) => option.id === value.id}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label={t('transactions.category')}
+              fullWidth
+              onKeyDown={(e) => e.stopPropagation()}
+            />
+          )}
+        />
+        <Autocomplete
+          id="entity"
+          fullWidth
+          value={entity ?? null}
+          onChange={(_event, value) => onEntityChange(id, value)}
+          options={entities}
+          filterOptions={filterEntityOptions}
+          isOptionEqualToValue={(option, value) => option.id === value.id}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label={t('transactions.entity')}
+              fullWidth
+              onKeyDown={(e) => e.stopPropagation()}
+            />
+          )}
+        />
+      </Stack>
+    );
+  },
+);
+CategoryCell.displayName = 'CategoryCell';
+
+const CheckboxCell = memo(
+  ({
+    id,
+    checked,
+    disabled = false,
+    onChange,
+  }: {
+    id: number;
+    checked: boolean;
+    disabled?: boolean;
+    onChange: (id: number, checked: boolean) => void;
+  }) => (
+    <Checkbox
+      checked={checked}
+      disabled={disabled}
+      onChange={(_, checked) => onChange(id, checked)}
+      inputProps={{ 'aria-label': 'controlled' }}
+    />
+  ),
+);
+CheckboxCell.displayName = 'CheckboxCell';
+
+const canMarkAsEssential = (trx: Pick<ImportedTrx, 'accountFrom' | 'accountTo'>) =>
+  !!trx.accountFrom && !trx.accountTo;
+
+const toFiniteNumber = (value: unknown): number => {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : 0;
+};
 
 const ImportTrxStep2 = (props: Props) => {
   const { t } = useTranslation();
@@ -135,26 +316,31 @@ const ImportTrxStep2 = (props: Props) => {
   );
   const accounts: IdLabelPair[] | undefined = useMemo(
     () =>
-      props.data.accounts.map((account) => ({
+      props.data.activeAccounts.map((account) => ({
         id: account.account_id,
         label: account.name,
       })),
-    [props.data.categories],
+    [props.data.activeAccounts],
   );
 
   const newAccountBalance: number = useMemo(() => {
-    const initialBalance =
-      props.data.accounts.find(
+    const initialBalance = toFiniteNumber(
+      props.data.activeAccounts.find(
         (acc) => acc.account_id == props.data.selectedAccountId,
-      )?.balance || 0;
+      )?.balance,
+    );
     return filteredTransactions.reduce((acc, row) => {
-      let amount = row.value;
+      let amount = toFiniteNumber(row.value);
       if (row.accountFrom?.id == props.data.selectedAccountId) {
         amount *= -1;
       }
       return acc + amount;
     }, initialBalance);
-  }, [props.data.selectedAccountId, props.data.accounts, filteredTransactions]);
+  }, [
+    props.data.selectedAccountId,
+    props.data.activeAccounts,
+    filteredTransactions,
+  ]);
 
   useEffect(() => {
     if (importTrxStep2Request.isPending) {
@@ -191,7 +377,7 @@ const ImportTrxStep2 = (props: Props) => {
       selected: true,
       date: item.date || 0,
       description: item.description || '',
-      value: item.amount || 0,
+      value: toFiniteNumber(item.amount),
       entity: entities.find((entity) => entity.id == item.selectedEntityID),
       category: categories.find(
         (category) => category.id == item.selectedCategoryID,
@@ -202,7 +388,16 @@ const ImportTrxStep2 = (props: Props) => {
       accountTo: accounts.find(
         (account) => account.id == item.selectedAccountToID,
       ),
-      essential: item.isEssential == true,
+      essential:
+        item.isEssential == true &&
+        canMarkAsEssential({
+          accountFrom: accounts.find(
+            (account) => account.id == item.selectedAccountFromID,
+          ),
+          accountTo: accounts.find(
+            (account) => account.id == item.selectedAccountToID,
+          ),
+        }),
       externalId: item.external_id,
     }));
 
@@ -236,6 +431,116 @@ const ImportTrxStep2 = (props: Props) => {
     [],
   );
 
+  // Stable callbacks for memoized cell components
+  const handleSelectedChange = useCallback((id: number, checked: boolean) => {
+    updateTransactionRef.current(id, { selected: checked });
+  }, []);
+
+  const handleDateChange = useCallback((id: number, timestamp: number) => {
+    updateTransactionRef.current(id, { date: timestamp });
+  }, []);
+
+  const handleValueChange = useCallback((id: number, value: number) => {
+    debouncedUpdateTransaction(id, { value });
+  }, [debouncedUpdateTransaction]);
+
+  const handleDescriptionChange = useCallback((id: number, description: string) => {
+    debouncedUpdateTransaction(id, { description });
+  }, [debouncedUpdateTransaction]);
+
+  const handleDescriptionBlur = useCallback((id: number, description: string) => {
+    updateTransactionRef.current(id, { description });
+  }, []);
+
+  // Category/entity pickers can create missing items; refs keep the callbacks stable
+  const categoryCreateRef = useRef(categoryCreate);
+  categoryCreateRef.current = categoryCreate;
+  const entityCreateRef = useRef(entityCreate);
+  entityCreateRef.current = entityCreate;
+
+  const categoryOptions = useMemo(
+    () => categoryCreate.withCreated(categories),
+    [categories, categoryCreate.created],
+  );
+  const entityOptions = useMemo(
+    () => entityCreate.withCreated(entities),
+    [entities, entityCreate.created],
+  );
+
+  const filterCategoryOptions = useCallback<CreatableOptionsFilter>(
+    (options, state) => categoryCreateRef.current.filterOptions(options, state),
+    [],
+  );
+  const filterEntityOptions = useCallback<CreatableOptionsFilter>(
+    (options, state) => entityCreateRef.current.filterOptions(options, state),
+    [],
+  );
+
+  const handleCategoryChange = useCallback(
+    async (id: number, value: CreatableOption | null) => {
+      const resolved = await categoryCreateRef.current.resolve(
+        value,
+        categories,
+      );
+      if (resolved === undefined) return;
+      updateTransactionRef.current(id, { category: resolved ?? undefined });
+    },
+    [categories],
+  );
+
+  const handleEntityChange = useCallback(
+    async (id: number, value: CreatableOption | null) => {
+      const resolved = await entityCreateRef.current.resolve(value, entities);
+      if (resolved === undefined) return;
+      updateTransactionRef.current(id, { entity: resolved ?? undefined });
+    },
+    [entities],
+  );
+
+  const handleAccountFromChange = useCallback(
+    (id: number, accountFrom: IdLabelPair | null) => {
+      const currentTransaction = transactions.find((trx) => trx.tempId === id);
+      const nextAccountFrom = accountFrom ?? undefined;
+      const nextAccountTo = currentTransaction?.accountTo;
+      updateTransactionRef.current(id, {
+        accountFrom: nextAccountFrom,
+        ...(!canMarkAsEssential({
+          accountFrom: nextAccountFrom,
+          accountTo: nextAccountTo,
+        })
+          ? { essential: false }
+          : {}),
+      });
+    },
+    [transactions],
+  );
+
+  const handleAccountToChange = useCallback(
+    (id: number, accountTo: IdLabelPair | null) => {
+      const currentTransaction = transactions.find((trx) => trx.tempId === id);
+      const nextAccountFrom = currentTransaction?.accountFrom;
+      const nextAccountTo = accountTo ?? undefined;
+      updateTransactionRef.current(id, {
+        accountTo: nextAccountTo,
+        ...(!canMarkAsEssential({
+          accountFrom: nextAccountFrom,
+          accountTo: nextAccountTo,
+        })
+          ? { essential: false }
+          : {}),
+      });
+    },
+    [transactions],
+  );
+
+  const handleEssentialChange = useCallback((id: number, essential: boolean) => {
+    const currentTransaction = transactions.find((trx) => trx.tempId === id);
+    updateTransactionRef.current(id, {
+      essential:
+        essential && !!currentTransaction && canMarkAsEssential(currentTransaction),
+    });
+  }, [transactions]);
+
   const rows = useMemo(
     () =>
       transactions.map((item) => ({
@@ -253,7 +558,10 @@ const ImportTrxStep2 = (props: Props) => {
           from: item.accountFrom,
           to: item.accountTo,
         },
-        essential: item.essential,
+        essential: {
+          checked: item.essential && canMarkAsEssential(item),
+          disabled: !canMarkAsEssential(item),
+        },
       })),
     [transactions],
   );
@@ -267,14 +575,10 @@ const ImportTrxStep2 = (props: Props) => {
         editable: false,
         sortable: false,
         renderCell: (params) => (
-          <Checkbox
+          <CheckboxCell
+            id={params.id as number}
             checked={params.value}
-            onChange={(_, checked) => {
-              updateTransactionRef.current(params.id as number, {
-                selected: checked,
-              });
-            }}
-            inputProps={{ 'aria-label': 'controlled' }}
+            onChange={handleSelectedChange}
           />
         ),
       },
@@ -285,29 +589,10 @@ const ImportTrxStep2 = (props: Props) => {
         editable: false,
         sortable: false,
         renderCell: (params) => (
-          <DatePicker
-            name="date"
-            value={convertUnixTimestampToDayJs(params.value)}
-            onChange={(newValue) => {
-              const timestamp = convertDayJsToUnixTimestamp(
-                newValue || dayjs(),
-              );
-              updateTransactionRef.current(params.id as number, {
-                date: timestamp,
-              });
-            }}
-            format="DD/MM/YYYY"
-            slotProps={{
-              textField: {
-                variant: 'outlined',
-                required: true,
-                fullWidth: true,
-                margin: 'dense',
-              },
-              inputAdornment: {
-                position: 'start',
-              },
-            }}
+          <DateCell
+            id={params.id as number}
+            value={params.value}
+            onChange={handleDateChange}
           />
         ),
       },
@@ -318,27 +603,10 @@ const ImportTrxStep2 = (props: Props) => {
         editable: false,
         sortable: false,
         renderCell: (params) => (
-          <TextField
-            margin="dense"
-            id="amount"
-            name="amount"
+          <ValueCell
+            id={params.id as number}
             value={params.value}
-            onChange={(e) => {
-              debouncedUpdateTransaction(params.id as number, {
-                value: Number(e.target.value),
-              });
-            }}
-            onBlur={() => {
-              updateTransactionRef.current(params.id as number, {
-                value: params.value,
-              });
-            }}
-            type="number"
-            inputProps={{
-              step: 0.01,
-            }}
-            fullWidth
-            variant="outlined"
+            onDebouncedChange={handleValueChange}
           />
         ),
       },
@@ -351,17 +619,10 @@ const ImportTrxStep2 = (props: Props) => {
         minWidth: 100,
         renderCell: (params) => (
           <DescriptionCell
+            id={params.id as number}
             description={params.value}
-            onInputChange={(input) => {
-              debouncedUpdateTransaction(params.id as number, {
-                description: input,
-              });
-            }}
-            onBlur={() => {
-              updateTransactionRef.current(params.id as number, {
-                description: params.value,
-              });
-            }}
+            onInputChange={handleDescriptionChange}
+            onBlur={handleDescriptionBlur}
           />
         ),
       },
@@ -372,54 +633,17 @@ const ImportTrxStep2 = (props: Props) => {
         sortable: false,
         width: 180,
         renderCell: (params) => (
-          <Stack spacing={2} sx={{ mt: 2, mb: 2, width: 1 }}>
-            <Autocomplete
-              id="category"
-              fullWidth
-              value={params.value.category}
-              onChange={async (_event, value) => {
-                const resolved = await categoryCreate.resolve(value, categories);
-                if (resolved === undefined) return;
-                updateTransactionRef.current(params.id as number, {
-                  category: resolved ?? undefined,
-                });
-              }}
-              options={categoryCreate.withCreated(categories)}
-              filterOptions={categoryCreate.filterOptions}
-              isOptionEqualToValue={(option, value) => option.id === value.id}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label={t('transactions.category')}
-                  fullWidth
-                  onKeyDown={(e) => e.stopPropagation()}
-                />
-              )}
-            />
-            <Autocomplete
-              id="entity"
-              fullWidth
-              value={params.value.entity}
-              onChange={async (_event, value) => {
-                const resolved = await entityCreate.resolve(value, entities);
-                if (resolved === undefined) return;
-                updateTransactionRef.current(params.id as number, {
-                  entity: resolved ?? undefined,
-                });
-              }}
-              options={entityCreate.withCreated(entities)}
-              filterOptions={entityCreate.filterOptions}
-              isOptionEqualToValue={(option, value) => option.id === value.id}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label={t('transactions.entity')}
-                  fullWidth
-                  onKeyDown={(e) => e.stopPropagation()}
-                />
-              )}
-            />
-          </Stack>
+          <CategoryCell
+            id={params.id as number}
+            category={params.value.category}
+            entity={params.value.entity}
+            categories={categoryOptions}
+            entities={entityOptions}
+            filterCategoryOptions={filterCategoryOptions}
+            filterEntityOptions={filterEntityOptions}
+            onCategoryChange={handleCategoryChange}
+            onEntityChange={handleEntityChange}
+          />
         ),
       },
       {
@@ -430,19 +654,12 @@ const ImportTrxStep2 = (props: Props) => {
         width: 180,
         renderCell: (params) => (
           <ImportTrxStep2AccountsCell
+            id={params.id as number}
             accounts={accounts}
             selectedAccountFrom={params.value.from}
             selectedAccountTo={params.value.to}
-            onAccountFromChange={(input: IdLabelPair | null) => {
-              updateTransactionRef.current(params.id as number, {
-                accountFrom: input ?? undefined,
-              });
-            }}
-            onAccountToChange={(input: IdLabelPair | null) => {
-              updateTransactionRef.current(params.id as number, {
-                accountTo: input ?? undefined,
-              });
-            }}
+            onAccountFromChange={handleAccountFromChange}
+            onAccountToChange={handleAccountToChange}
           />
         ),
       },
@@ -453,26 +670,32 @@ const ImportTrxStep2 = (props: Props) => {
         sortable: false,
         width: 100,
         renderCell: (params) => (
-          <Checkbox
-            checked={params.value}
-            onChange={(_, checked) => {
-              updateTransactionRef.current(params.id as number, {
-                essential: checked,
-              });
-            }}
-            inputProps={{ 'aria-label': 'controlled' }}
+          <CheckboxCell
+            id={params.id as number}
+            checked={params.value.checked}
+            disabled={params.value.disabled}
+            onChange={handleEssentialChange}
           />
         ),
       },
     ],
     [
       t,
-      categories,
-      entities,
+      categoryOptions,
+      entityOptions,
       accounts,
-      debouncedUpdateTransaction,
-      categoryCreate.created,
-      entityCreate.created,
+      filterCategoryOptions,
+      filterEntityOptions,
+      handleSelectedChange,
+      handleDateChange,
+      handleValueChange,
+      handleDescriptionChange,
+      handleDescriptionBlur,
+      handleCategoryChange,
+      handleEntityChange,
+      handleAccountFromChange,
+      handleAccountToChange,
+      handleEssentialChange,
     ],
   );
 
@@ -489,7 +712,7 @@ const ImportTrxStep2 = (props: Props) => {
         amount: trx.value,
         date_timestamp: trx.date,
         description: trx.description,
-        is_essential: trx.essential,
+        is_essential: trx.essential && canMarkAsEssential(trx),
         type:
           inferTrxTypeByAttributes(trx.accountFrom?.id, trx.accountTo?.id) ||
           TransactionType.Transfer,
@@ -546,7 +769,7 @@ const ImportTrxStep2 = (props: Props) => {
             rows={rows}
             columns={columns}
             paginationModel={{
-              pageSize: 100,
+              pageSize: 50,
             }}
           />
         </Grid>

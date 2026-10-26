@@ -55,7 +55,10 @@ import {
   getShortYearFromUnixTimestamp,
 } from '../../utils/dateUtils.ts';
 import MyFinTable from '../../components/MyFinTable.tsx';
-import { AlertSeverity, useSnackbar } from '../../providers/SnackbarProvider.tsx';
+import {
+  AlertSeverity,
+  useSnackbar,
+} from '../../providers/SnackbarProvider.tsx';
 import Button from '@mui/material/Button';
 import GenericConfirmationDialog from '../../components/GenericConfirmationDialog.tsx';
 import AddEditTransactionDialog from './AddEditTransactionDialog.tsx';
@@ -64,9 +67,13 @@ import { inferTrxType } from '../../utils/transactionUtils.ts';
 import { useNavigate } from 'react-router-dom';
 import { debounce } from 'lodash';
 import { ROUTE_IMPORT_TRX } from '../../providers/RoutesProvider.tsx';
+import { CategoryIcon } from '../../services/category/categoryIcons.tsx';
+import AccountIconBadge from '../../services/account/AccountIconBadge.tsx';
+import { useUserData } from '../../providers/UserProvider.tsx';
 
 const Transactions = () => {
   const theme = useTheme();
+  const { userAccounts } = useUserData();
   const loader = useLoading();
   const snackbar = useSnackbar();
   const { t } = useTranslation();
@@ -194,7 +201,9 @@ const Transactions = () => {
       sortable: false,
       renderCell: (params) => {
         const textColor =
-          (params.value.first == true) ? theme.palette.text.primary : theme.palette.text.disabled;
+          params.value.first == true
+            ? theme.palette.text.primary
+            : theme.palette.text.disabled;
         return (
           <Stack direction="column" alignItems="center" gap={0.5}>
             <Box
@@ -204,20 +213,19 @@ const Transactions = () => {
               justifyContent="center"
               height="100%"
             >
-
-            <span style={{ textAlign: 'center', color: textColor }}>
-              <b>
-                {getDayNumberFromUnixTimestamp(params.value.date_timestamp)}
-              </b>{' '}
-              {/*<br />*/}
-              <span>
-                {getMonthShortStringFromUnixTimestamp(
-                  params.value.date_timestamp,
-                )}
-                {' \''}
-                {getShortYearFromUnixTimestamp(params.value.date_timestamp)}
+              <span style={{ textAlign: 'center', color: textColor }}>
+                <b>
+                  {getDayNumberFromUnixTimestamp(params.value.date_timestamp)}
+                </b>{' '}
+                {/*<br />*/}
+                <span>
+                  {getMonthShortStringFromUnixTimestamp(
+                    params.value.date_timestamp,
+                  )}
+                  {" '"}
+                  {getShortYearFromUnixTimestamp(params.value.date_timestamp)}
+                </span>
               </span>
-            </span>
             </Box>
             <Tooltip title={t('transactions.essential')}>
               <IconButton
@@ -246,14 +254,32 @@ const Transactions = () => {
             <ArrowBack
               fontSize="small"
               color={params.value.acc_from_name ? 'primary' : 'secondary'}
-            />{' '}
+            />
+            {params.value.acc_from ? (
+              <AccountIconBadge
+                accountType={params.value.acc_from.type}
+                colorGradient={params.value.acc_from.color_gradient}
+                size="small"
+              />
+            ) : (
+              <AccountIconBadge external size="small" />
+            )}{' '}
             {params.value.acc_from_name ?? t('common.externalAccount')}
           </Stack>
           <Stack direction="row" alignItems="center" gap={0.5}>
             <ArrowForward
               fontSize="small"
               color={params.value.acc_to_name ? 'secondary' : 'primary'}
-            />{' '}
+            />
+            {params.value.acc_to ? (
+              <AccountIconBadge
+                accountType={params.value.acc_to.type}
+                colorGradient={params.value.acc_to.color_gradient}
+                size="small"
+              />
+            ) : (
+              <AccountIconBadge external size="small" />
+            )}{' '}
             {params.value.acc_to_name ?? t('common.externalAccount')}
           </Stack>
         </Stack>
@@ -272,7 +298,15 @@ const Transactions = () => {
             {params.value.description ?? t('common.externalAccount')}
           </Stack>
           <Stack direction="row" alignItems="center" gap={0.5}>
-            <FolderShared fontSize="small" color="primary" />{' '}
+            {params.value.category_icon_key ? (
+              <CategoryIcon
+                iconKey={params.value.category_icon_key}
+                fontSize="small"
+                color="primary"
+              />
+            ) : (
+              <FolderShared fontSize="small" color="primary" />
+            )}{' '}
             {params.value.category ?? t('common.noCategory')}
             {'     '}
             <Business fontSize="small" color="primary" />{' '}
@@ -300,8 +334,7 @@ const Transactions = () => {
                         variant="outlined"
                         size="small"
                         color="primary"
-                        onClick={() => {
-                        }}
+                        onClick={() => {}}
                       />
                     </ListItem>
                   );
@@ -425,39 +458,46 @@ const Transactions = () => {
   const rows = (() => {
     const seenDates = new Set();
 
-    return getTransactionsRequest.data.results.map(
-      (result: Transaction) => {
-        const dateKey = convertUnixTimestampToDateString(result.date_timestamp || 0);
-        const isFirstOfDay = !seenDates.has(dateKey);
-        if (isFirstOfDay) {
-          seenDates.add(dateKey);
-        }
+    return getTransactionsRequest.data.results.map((result: Transaction) => {
+      const dateKey = convertUnixTimestampToDateString(
+        result.date_timestamp || 0,
+      );
+      const isFirstOfDay = !seenDates.has(dateKey);
+      if (isFirstOfDay) {
+        seenDates.add(dateKey);
+      }
 
-        return {
-          id: result.transaction_id,
-          date: {
-            date_timestamp: result.date_timestamp,
-            essential: result.is_essential,
-            first: isFirstOfDay,
-          },
-          flow: {
-            acc_from_name: result.account_from_name,
-            acc_to_name: result.account_to_name,
-          },
-          description: {
-            description: result.description,
-            entity: result.entity_name,
-            category: result.category_name,
-            tags: result.tags,
-          },
-          value: {
-            amount: formatNumberAsCurrency(result.amount),
-            chipColor: getChipColorForAmount(result),
-          },
-          actions: result,
-        };
-      },
-    );
+      return {
+        id: result.transaction_id,
+        date: {
+          date_timestamp: result.date_timestamp,
+          essential: result.is_essential,
+          first: isFirstOfDay,
+        },
+        flow: {
+          acc_from_name: result.account_from_name,
+          acc_to_name: result.account_to_name,
+          acc_from: userAccounts?.find(
+            (account) => account.account_id === result.accounts_account_from_id,
+          ),
+          acc_to: userAccounts?.find(
+            (account) => account.account_id === result.accounts_account_to_id,
+          ),
+        },
+        description: {
+          description: result.description,
+          entity: result.entity_name,
+          category: result.category_name,
+          category_icon_key: result.category_icon_key,
+          tags: result.tags,
+        },
+        value: {
+          amount: formatNumberAsCurrency(result.amount),
+          chipColor: getChipColorForAmount(result),
+        },
+        actions: result,
+      };
+    });
   })();
 
   return (
@@ -537,15 +577,17 @@ const Transactions = () => {
             id="search"
             label={t('common.search')}
             variant="outlined"
-            InputProps={{
-              endAdornment: (
-                <InputAdornment position="end">
-                  <Search />
-                </InputAdornment>
-              ),
-            }}
             onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
               debouncedSearchQuery(event.target.value);
+            }}
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <Search />
+                  </InputAdornment>
+                ),
+              },
             }}
           />
         </Grid>

@@ -12,11 +12,88 @@ export enum AssetType {
 }
 
 export type YearlyRoi = {
+  beginning_value: number;
+  contributions: number;
+  ending_value: number;
   fees_taxes: number;
-  invested_in_year_amount: number;
   roi_amount: number;
+  roi_value: number;
   roi_percentage: number;
+  return_metrics: PeriodReturnMetrics;
+  total_inflow: number;
+  total_net_flows: number;
+  total_outflow: number;
   value_total_amount: number;
+  withdrawals: number;
+};
+
+export type ReturnMetricStatus =
+  | 'ok'
+  | 'insufficient_data'
+  | 'no_solution'
+  | 'invalid_data';
+
+export type ReturnDataIssue = {
+  asset_id?: number;
+  asset_name?: string;
+  code:
+    | 'before_first_activity'
+    | 'cash_flow_timing_sensitivity'
+    | 'missing_valuation'
+    | 'possible_rollover_corruption'
+    | 'missing_opening_valuation';
+  month?: number;
+  year: number;
+};
+
+export type PeriodReturnMetrics = {
+  absolute_return_value: number;
+  cash_flows: {
+    contributions: number;
+    withdrawals: number;
+    net: number;
+    external_income: number;
+    fees_and_costs: number;
+  };
+  simple_roi: {
+    percentage: number | null;
+    denominator: number | null;
+    status: ReturnMetricStatus;
+  };
+  portfolio_return: {
+    cumulative_percentage: number | null;
+    annualized_percentage: number | null;
+    method: 'linked_monthly_modified_dietz';
+    status: ReturnMetricStatus;
+    data_issues?: ReturnDataIssue[];
+  };
+  personal_return: {
+    annualized_percentage: number | null;
+    method: 'xirr';
+    status: ReturnMetricStatus;
+  };
+};
+
+export type YearlyAssetReturn = {
+  beginning_value: number;
+  ending_value: number;
+  return_metrics: PeriodReturnMetrics;
+};
+
+export type AssetReturnMetrics = {
+  by_year?: { [year: string]: YearlyAssetReturn };
+  current_year: PeriodReturnMetrics;
+  global: PeriodReturnMetrics;
+};
+
+export type AssetClassReturnStats = {
+  type: AssetType;
+  asset_count: number;
+  invested_value: number;
+  fees_taxes: number;
+  current_value: number;
+  allocation_percentage: number;
+  return_metrics: Pick<AssetReturnMetrics, 'current_year' | 'global'>;
 };
 
 export type MonthlySnapshot = {
@@ -29,6 +106,13 @@ export type MonthlySnapshot = {
   month: number;
   units: number;
   year: number;
+  valuation_source: 'observed' | 'carried' | 'generated' | 'legacy';
+  validation_status: 'valid' | 'invalid' | 'needs_valuation' | 'suspicious';
+  validation_reasons: Array<
+    | 'before_first_activity'
+    | 'missing_valuation'
+    | 'possible_rollover_corruption'
+  >;
 };
 
 export type InvestAsset = {
@@ -38,27 +122,43 @@ export type InvestAsset = {
   current_value: number;
   currently_invested_value: number;
   fees_taxes: number;
+  fees_taxes_amount: number;
+  fees_taxes_units: number;
   invested_value: number;
   name: string;
   price_per_unit: string;
   relative_roi_percentage: number | string;
+  return_metrics?: AssetReturnMetrics;
   ticker: string;
   type: AssetType;
   units: number;
   withdrawn_amount: number;
 };
 
+export type AssetDistributionItem = {
+  type: AssetType;
+  value: number;
+  percentage: number;
+};
+
 export type GetInvestStatsResponse = {
   combined_roi_by_year: { [year: string]: YearlyRoi };
-  current_value_distribution: Array<Record<AssetType, number>>;
+  current_value_distribution: AssetDistributionItem[];
   current_year_roi_percentage: number;
   current_year_roi_value: number;
+  current_year_annualized_roi_percentage: number;
   global_roi_percentage: number;
   global_roi_value: number;
   monthly_snapshots: MonthlySnapshot[];
+  return_metrics: {
+    by_year: { [year: string]: PeriodReturnMetrics };
+    current_year: PeriodReturnMetrics;
+    global: PeriodReturnMetrics;
+  };
+  returns_by_asset_class: AssetClassReturnStats[];
   top_performing_assets: InvestAsset[];
   total_current_value: number;
-  total_invested_value: number;
+  total_currently_invested_value: number;
 };
 
 const getInvestStats = () => {
@@ -73,10 +173,27 @@ const removeAsset = (assetId: bigint) => {
   return axios.delete<string>(`invest/assets/${assetId}`);
 };
 
-const updateAssetValue = (assetId: bigint, newValue: number) => {
+const updateAssetValue = (
+  assetId: bigint,
+  newValue: number,
+  month?: number,
+  year?: number,
+) => {
   return axios.put<string>(`invest/assets/${assetId}/value`, {
     new_value: newValue,
+    month: month,
+    year: year,
   });
+};
+
+const removeAssetValueSnapshot = (
+  assetId: bigint,
+  month: number,
+  year: number,
+) => {
+  return axios.delete<string>(
+    `invest/assets/${assetId}/value/${year}/${month}`,
+  );
 };
 
 export type AddAssetRequest = {
@@ -106,6 +223,8 @@ const editAsset = (request: EditAssetRequest) => {
 export enum InvestTransactionType {
   Buy = 'B',
   Sell = 'S',
+  Income = 'I',
+  Cost = 'C',
 }
 
 export type InvestTransaction = {
@@ -114,7 +233,8 @@ export type InvestTransaction = {
   asset_type: AssetType;
   broker: string;
   date_timestamp: number;
-  fees_taxes: number;
+  fees_taxes_amount: number;
+  fees_taxes_units: number;
   name: string;
   note: string;
   ticker: string;
@@ -146,14 +266,10 @@ export type AddInvestTransactionRequest = {
   note?: string;
   total_price: number;
   units: number;
-  fees: number;
+  fees_amount: number;
+  fees_units: number;
   asset_id: bigint;
   type: InvestTransactionType;
-  is_split: boolean;
-  split_total_price?: number;
-  split_units?: number;
-  split_note?: string;
-  split_type?: InvestTransactionType;
 };
 
 const addTransaction = (request: AddInvestTransactionRequest) => {
@@ -165,7 +281,8 @@ export type EditInvestTransactionRequest = {
   note?: string;
   total_price: number;
   units: number;
-  fees: number;
+  fees_amount: number;
+  fees_units: number;
   asset_id: bigint;
   type: InvestTransactionType;
 };
@@ -192,11 +309,88 @@ const getAssetsSummary = () => {
   return axios.get<AssetSummary[]>(`/invest/assets/summary`);
 };
 
+export type AnnualReportWarning = {
+  amount?: number;
+  asset_id?: number;
+  code: string;
+  message: string;
+  transaction_id?: number;
+  units?: number;
+};
+
+export type AnnualReportBaseTransaction = {
+  date_timestamp: number;
+  fees_amount: number;
+  fees_units: number;
+  note: string;
+  total_price: number;
+  transaction_id: number;
+  units: number;
+};
+
+export type AnnualReportFifoMatch = {
+  acquisition_cost: number;
+  acquisition_fees: number;
+  allocated_fees: number;
+  buy_transaction: AnnualReportBaseTransaction;
+  gain_loss: number;
+  matched_units: number;
+  proceeds: number;
+  sell_fees: number;
+};
+
+export type AnnualReportSell = AnnualReportBaseTransaction & {
+  fifo_matches: AnnualReportFifoMatch[];
+  internal_fee_units: number;
+  unmatched_units: number;
+};
+
+export type AnnualReportAsset = {
+  asset_id: number;
+  broker: string;
+  buys: AnnualReportBaseTransaction[];
+  name: string;
+  sells: AnnualReportSell[];
+  summary: {
+    fees: number;
+    internal_fee_units: number;
+    realized_gain_loss: number;
+    total_invested: number;
+    total_withdrawn: number;
+  };
+  ticker: string;
+  type: AssetType;
+  warnings: AnnualReportWarning[];
+};
+
+export type AnnualInvestmentReport = {
+  assets: AnnualReportAsset[];
+  generated_at: string;
+  summary: {
+    annual_roi_percentage: number;
+    annual_roi_value: number;
+    beginning_value: number;
+    ending_value: number;
+    fees: number;
+    realized_gain_loss: number;
+    return_metrics: PeriodReturnMetrics;
+    total_invested: number;
+    total_withdrawn: number;
+  };
+  warnings: AnnualReportWarning[];
+  year: number;
+};
+
+const getAnnualInvestmentReport = (year: number) => {
+  return axios.get<AnnualInvestmentReport>(`/invest/reports/annual/${year}`);
+};
+
 export default {
   getInvestStats,
   getAssets,
   removeAsset,
   updateAssetValue,
+  removeAssetValueSnapshot,
   addAsset,
   editAsset,
   getTransactions,
@@ -204,4 +398,5 @@ export default {
   editTransaction,
   removeTransaction,
   getAssetsSummary,
+  getAnnualInvestmentReport,
 };

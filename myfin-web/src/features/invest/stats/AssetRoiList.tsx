@@ -1,15 +1,18 @@
-import { useTranslation } from 'react-i18next';
-
-import { InvestAsset } from '../../../services/invest/investServices.ts';
-import { useMemo } from 'react';
-import { GridColDef } from '@mui/x-data-grid';
-import { useGetLocalizedAssetType } from '../InvestUtilHooks.ts';
-import MyFinStaticTable from '../../../components/MyFinStaticTable.tsx';
+import { Timeline } from '@mui/icons-material';
+import { Box, IconButton, Tooltip, useTheme } from '@mui/material';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
-import { Box, useTheme } from '@mui/material';
-import { formatNumberAsCurrency } from '../../../utils/textUtils.ts';
+import { GridColDef } from '@mui/x-data-grid';
+import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import MyFinStaticTable from '../../../components/MyFinStaticTable.tsx';
 import PercentageChip from '../../../components/PercentageChip.tsx';
+import { InvestAsset } from '../../../services/invest/investServices.ts';
+import { getCurrentYear } from '../../../utils/dateUtils.ts';
+import { formatNumberAsCurrency } from '../../../utils/textUtils.ts';
+import { useGetLocalizedAssetType } from '../InvestUtilHooks.ts';
+import ReturnMetricsDetails from '../ReturnMetricsDetails.tsx';
+import AssetYearlyPerformanceDialog from './AssetYearlyPerformanceDialog.tsx';
 
 type Props = {
   list: InvestAsset[];
@@ -20,6 +23,7 @@ const AssetRoiList = (props: Props) => {
   const { t } = useTranslation();
 
   const getLocalizedAssetType = useGetLocalizedAssetType();
+  const [selectedAsset, setSelectedAsset] = useState<InvestAsset | null>(null);
 
   const filteredAssets = useMemo(() => {
     return props.list;
@@ -29,7 +33,7 @@ const AssetRoiList = (props: Props) => {
     () =>
       props.list.map((asset) => ({
         id: asset.asset_id,
-        name: { name: asset.name, type: asset.type },
+        name: { asset, name: asset.name, type: asset.type },
         invested: {
           invested: asset.invested_value,
           pricePerUnit: asset.price_per_unit,
@@ -39,6 +43,8 @@ const AssetRoiList = (props: Props) => {
         currentYearRoi: asset,
         globalRoi: {
           absolute: asset.absolute_roi_value,
+          assetName: asset.name,
+          metrics: asset.return_metrics?.global,
           percentage: asset.relative_roi_percentage,
         },
       })),
@@ -54,10 +60,27 @@ const AssetRoiList = (props: Props) => {
       editable: false,
       sortable: false,
       renderCell: (params) => (
-        <Stack pt={2} pb={2}>
-          <Typography variant="body1" color={theme.palette.text.primary}>
-            {params.value.name}
-          </Typography>
+        <Stack py={2}>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Typography variant="body1" color={theme.palette.text.primary}>
+              {params.value.name}
+            </Typography>
+            <Tooltip title={t('investments.yearlyPerformance')}>
+              <IconButton
+                aria-label={t('investments.yearlyPerformanceAriaLabel', {
+                  name: params.value.name,
+                })}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setSelectedAsset(params.value.asset);
+                }}
+                size="small"
+                sx={{ ml: 0.5, color: 'text.secondary' }}
+              >
+                <Timeline fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Box>
           <Typography variant="caption" color={theme.palette.text.secondary}>
             {getLocalizedAssetType.invoke(params.value.type)}
             {params.value.broker}
@@ -102,43 +125,125 @@ const AssetRoiList = (props: Props) => {
     },
     {
       field: 'currentYearRoi',
-      headerName: t('investments.currentYearROI'),
-      minWidth: 150,
+      headerName: t('investments.returnMetrics.returnYear', {
+        year: getCurrentYear(),
+      }),
+      minWidth: 160,
       editable: false,
       sortable: false,
-      renderCell: (_params) => <i>{t('common.soon')}...</i>,
+      renderCell: (params) => {
+        const metrics = params.value.return_metrics?.current_year;
+        const personalReturn = metrics?.personal_return.annualized_percentage;
+        return metrics ? (
+          <Box
+            sx={{
+              display: 'flex',
+              justifyContent: 'center',
+              flexDirection: 'column',
+            }}
+          >
+            <Box>
+              {formatNumberAsCurrency(metrics.absolute_return_value)}
+              <ReturnMetricsDetails
+                ariaLabel={t(
+                  'investments.returnMetrics.assetDetailsAriaLabel',
+                  {
+                    name: params.value.name,
+                  },
+                )}
+                metrics={metrics}
+                performanceReturnHelp={t(
+                  'investments.returnMetrics.assetReturnHelp',
+                )}
+                performanceReturnLabel={t(
+                  'investments.returnMetrics.assetReturnTwr',
+                )}
+                title={t('investments.returnMetrics.assetYearDetailsTitle', {
+                  name: params.value.name,
+                  year: getCurrentYear(),
+                })}
+              />
+            </Box>
+            {personalReturn !== null && personalReturn !== undefined && (
+              <PercentageChip
+                percentage={personalReturn}
+                sx={{ '& .MuiChip-label': { fontSize: '0.9em' } }}
+              />
+            )}
+          </Box>
+        ) : (
+          <i>{t('common.soon')}...</i>
+        );
+      },
     },
     {
       field: 'globalRoi',
-      headerName: t('investments.globalROI'),
-      minWidth: 120,
+      headerName: t('investments.returnMetrics.returnSinceStart'),
+      minWidth: 160,
       editable: false,
       sortable: false,
-      renderCell: (params) => (
-        <Box
-          sx={{
-            display: 'flex',
-            justifyContent: 'center',
-            flexDirection: 'column',
-          }}
-        >
-          {formatNumberAsCurrency(params.value.absolute)} <br />
-          <PercentageChip
-            percentage={params.value.percentage}
-            sx={{ '& .MuiChip-label': { fontSize: '0.9em' } }}
-          />
-        </Box>
-      ),
+      renderCell: (params) => {
+        const personalReturn =
+          params.value.metrics?.personal_return.annualized_percentage;
+        return (
+          <Box
+            sx={{
+              display: 'flex',
+              justifyContent: 'center',
+              flexDirection: 'column',
+            }}
+          >
+            <Box>
+              {formatNumberAsCurrency(
+                params.value.metrics?.absolute_return_value ??
+                  params.value.absolute,
+              )}
+              {params.value.metrics && (
+                <ReturnMetricsDetails
+                  ariaLabel={t(
+                    'investments.returnMetrics.assetDetailsAriaLabel',
+                    {
+                      name: params.value.assetName,
+                    },
+                  )}
+                  metrics={params.value.metrics}
+                  performanceReturnHelp={t(
+                    'investments.returnMetrics.assetReturnHelp',
+                  )}
+                  performanceReturnLabel={t(
+                    'investments.returnMetrics.assetReturnTwr',
+                  )}
+                  title={t('investments.returnMetrics.assetDetailsTitle', {
+                    name: params.value.assetName,
+                  })}
+                />
+              )}
+            </Box>
+            {personalReturn !== null && personalReturn !== undefined && (
+              <PercentageChip
+                percentage={personalReturn}
+                sx={{ '& .MuiChip-label': { fontSize: '0.9em' } }}
+              />
+            )}
+          </Box>
+        );
+      },
     },
   ];
 
   return (
-    <MyFinStaticTable
-      rows={rows}
-      columns={columns}
-      paginationModel={{ pageSize: 5 }}
-      isRefetching={false}
-    />
+    <>
+      <MyFinStaticTable
+        rows={rows}
+        columns={columns}
+        paginationModel={{ pageSize: 5 }}
+        isRefetching={false}
+      />
+      <AssetYearlyPerformanceDialog
+        asset={selectedAsset}
+        onClose={() => setSelectedAsset(null)}
+      />
+    </>
   );
 };
 

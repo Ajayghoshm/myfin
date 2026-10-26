@@ -1,30 +1,3 @@
-import React, { SyntheticEvent, useEffect, useState } from 'react';
-import { useCreatableOptions } from '../../components/useCreatableOptions.ts';
-import {
-  Transaction,
-  TransactionType,
-} from '../../services/trx/trxServices.ts';
-import { useTranslation } from 'react-i18next';
-import DialogTitle from '@mui/material/DialogTitle';
-import DialogContent from '@mui/material/DialogContent';
-import TextField from '@mui/material/TextField';
-import DialogActions from '@mui/material/DialogActions';
-import Button from '@mui/material/Button';
-import Dialog from '@mui/material/Dialog';
-import Grid from '@mui/material/Grid';
-import {
-  Autocomplete,
-  AutocompleteRenderInputParams,
-  Checkbox,
-  Collapse,
-  Divider,
-  Grow,
-  ToggleButton,
-  ToggleButtonGroup,
-  Tooltip,
-} from '@mui/material';
-import FormControlLabel from '@mui/material/FormControlLabel';
-import InputAdornment from '@mui/material/InputAdornment';
 import {
   AccountCircle,
   AutoAwesome,
@@ -38,30 +11,66 @@ import {
   StarBorder,
   Undo,
 } from '@mui/icons-material';
+import {
+  Autocomplete,
+  AutocompleteRenderInputParams,
+  Checkbox,
+  Collapse,
+  Divider,
+  Grow,
+  ToggleButton,
+  ToggleButtonGroup,
+  Tooltip,
+} from '@mui/material';
+import Button from '@mui/material/Button';
+import Chip from '@mui/material/Chip';
+import Dialog from '@mui/material/Dialog';
+import DialogActions from '@mui/material/DialogActions';
+import DialogContent from '@mui/material/DialogContent';
+import DialogTitle from '@mui/material/DialogTitle';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import Grid from '@mui/material/Grid';
+import IconButton from '@mui/material/IconButton';
+import InputAdornment from '@mui/material/InputAdornment';
+import TextField from '@mui/material/TextField';
 import { DatePicker } from '@mui/x-date-pickers';
 import dayjs, { Dayjs } from 'dayjs';
+import React, { SyntheticEvent, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { NumericFormat } from 'react-number-format';
+import CurrencyIcon from '../../components/CurrencyIcon.tsx';
+import {
+  CreatableOption,
+  useCreatableOptions,
+} from '../../components/useCreatableOptions.ts';
+import { useLoading } from '../../providers/LoadingProvider.tsx';
+import {
+  AlertSeverity,
+  useSnackbar,
+} from '../../providers/SnackbarProvider.tsx';
 import { useUserData } from '../../providers/UserProvider.tsx';
+import {
+  Account,
+  AccountStatus,
+  AccountType,
+} from '../../services/auth/authServices.ts';
 import {
   useAddTransactionStep0,
   useAddTransactionStep1,
   useAutoCategorizeTransaction,
   useEditTransaction,
 } from '../../services/trx/trxHooks.ts';
-import { useLoading } from '../../providers/LoadingProvider.tsx';
 import {
-  AlertSeverity,
-  useSnackbar,
-} from '../../providers/SnackbarProvider.tsx';
+  Transaction,
+  TransactionType,
+} from '../../services/trx/trxServices.ts';
 import { convertDateStringToUnixTimestamp } from '../../utils/dateUtils.ts';
+import CategoryIconBadge from '../../services/category/CategoryIconBadge.tsx';
+import AccountIconBadge from '../../services/account/AccountIconBadge.tsx';
 import {
   inferTrxType,
   inferTrxTypeByAttributes,
 } from '../../utils/transactionUtils.ts';
-import IconButton from '@mui/material/IconButton';
-import Chip from '@mui/material/Chip';
-import { Account } from '../../services/auth/authServices.ts';
-import { NumericFormat } from 'react-number-format';
-import CurrencyIcon from '../../components/CurrencyIcon.tsx';
 
 interface Props {
   isOpen: boolean;
@@ -74,7 +83,58 @@ interface Props {
 export type IdLabelPair = {
   id: bigint;
   label: string;
+  iconKey?: string;
+  colorGradient?: string;
+  accountType?: AccountType;
 };
+
+const renderCategoryOption = (
+  props: React.HTMLAttributes<HTMLLIElement>,
+  option: CreatableOption,
+) =>
+  // The "+ Add <name>" option has no icon yet
+  option.createName ? (
+    <li {...props}>{option.label}</li>
+  ) : (
+    <li
+      {...props}
+      style={{
+        ...props.style,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+      }}
+    >
+      <CategoryIconBadge
+        iconKey={option.iconKey}
+        colorGradient={option.colorGradient}
+        size="compact"
+      />
+      <span>{option.label}</span>
+    </li>
+  );
+
+const renderAccountOption = (
+  props: React.HTMLAttributes<HTMLLIElement>,
+  option: IdLabelPair,
+) => (
+  <li
+    {...props}
+    style={{
+      ...props.style,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+    }}
+  >
+    <AccountIconBadge
+      accountType={option.accountType}
+      colorGradient={option.colorGradient}
+      size="compact"
+    />
+    <span>{option.label}</span>
+  </li>
+);
 
 const AddEditTransactionDialog = (props: Props) => {
   const isEditForm = props.transaction !== null;
@@ -261,33 +321,59 @@ const AddEditTransactionDialog = (props: Props) => {
     }));
   }, [transactionType, accountFromValue, accountToValue]);
 
-  const transformUserAccountsIntoIdLabelPair = (userAccounts: Account[]) => {
-    return userAccounts.map((acc) => ({
-      id: acc.account_id,
-      label: acc.name,
-    }));
+  const transformUserAccountsIntoIdLabelPair = (
+    userAccounts: Account[],
+    includeInactive = false,
+  ) => {
+    return userAccounts
+      .filter((acc) => includeInactive || acc.status === AccountStatus.Active)
+      .map((acc) => ({
+        id: acc.account_id,
+        label: acc.name,
+        accountType: acc.type,
+        colorGradient: acc.color_gradient,
+      }));
   };
 
   useEffect(() => {
     if (userAccounts) {
-      const accounts = transformUserAccountsIntoIdLabelPair(userAccounts);
+      const accounts = transformUserAccountsIntoIdLabelPair(
+        userAccounts,
+        isEditForm,
+      );
       setAccountOptionsValue(accounts);
+      setAccountFromValue((current) => {
+        if (!current) return current;
+        return accounts.find((account) => account.id === current.id) ?? current;
+      });
+      setAccountToValue((current) => {
+        if (!current) return current;
+        return accounts.find((account) => account.id === current.id) ?? current;
+      });
       setSplitTransactionFormState((prevState) => ({
         ...prevState,
         accountOptions: accounts,
       }));
     }
-  }, [userAccounts]);
+  }, [userAccounts, isEditForm]);
 
   useEffect(() => {
     if (!addTransactionStep0Request.isSuccess) return;
     const categories = addTransactionStep0Request.data.categories.map(
       (category) => ({
         id: category.category_id || 0n,
+        iconKey: category.icon_key,
+        colorGradient: category.color_gradient,
         label: category.name || '',
       }),
     );
     setCategoryOptionsValue(categories);
+    setCategoryValue((current) => {
+      if (!current) return current;
+      return (
+        categories.find((category) => category.id === current.id) ?? current
+      );
+    });
     setSplitTransactionFormState((prevState) => ({
       ...prevState,
       categoryOptions: categories,
@@ -429,111 +515,157 @@ const AddEditTransactionDialog = (props: Props) => {
       maxWidth="md"
       open={props.isOpen}
       onClose={props.onClose}
-      PaperProps={{
-        component: 'form',
-        onSubmit: (event: React.FormEvent<HTMLFormElement>) => {
-          event.preventDefault();
-          const formData = new FormData(event.currentTarget);
-          const formJson = Object.fromEntries((formData as any).entries());
-          const isEssential = formJson.essential == 'on';
-          const accountFrom = accountFromValue;
-          const accountTo = accountToValue;
-          const category = categoryValue;
-          const entity = entityValue;
+      slotProps={{
+        paper: {
+          component: 'form',
+          onSubmit: (event: React.FormEvent<HTMLFormElement>) => {
+            event.preventDefault();
+            const formData = new FormData(event.currentTarget);
+            const formJson = Object.fromEntries((formData as any).entries());
+            const isEssential = formJson.essential == 'on';
+            const accountFrom = accountFromValue;
+            const accountTo = accountToValue;
+            const category = categoryValue;
+            const entity = entityValue;
 
-          const splitAmount = isSplitTransactionFormOpen
-            ? splitTransactionFormState?.amount
-            : undefined;
+            const splitAmount = isSplitTransactionFormOpen
+              ? splitTransactionFormState?.amount
+              : undefined;
 
-          const splitCategory = isSplitTransactionFormOpen
-            ? splitTransactionFormState?.category
-            : undefined;
+            const splitCategory = isSplitTransactionFormOpen
+              ? splitTransactionFormState?.category
+              : undefined;
 
-          const splitEntity = isSplitTransactionFormOpen
-            ? splitTransactionFormState?.entity
-            : undefined;
+            const splitEntity = isSplitTransactionFormOpen
+              ? splitTransactionFormState?.entity
+              : undefined;
 
-          const splitType = isSplitTransactionFormOpen
-            ? splitTransactionFormState?.type
-            : undefined;
+            const splitType = isSplitTransactionFormOpen
+              ? splitTransactionFormState?.type
+              : undefined;
 
-          const splitAccountFrom = isSplitTransactionFormOpen
-            ? splitTransactionFormState?.accountFrom?.id
-            : undefined;
+            const splitAccountFrom = isSplitTransactionFormOpen
+              ? splitTransactionFormState?.accountFrom?.id
+              : undefined;
 
-          const splitAccountTo = isSplitTransactionFormOpen
-            ? splitTransactionFormState?.accountTo?.id
-            : undefined;
+            const splitAccountTo = isSplitTransactionFormOpen
+              ? splitTransactionFormState?.accountTo?.id
+              : undefined;
 
-          const splitDescription = isSplitTransactionFormOpen
-            ? splitTransactionFormState?.description
-            : undefined;
+            const splitDescription = isSplitTransactionFormOpen
+              ? splitTransactionFormState?.description
+              : undefined;
 
-          const splitEssential = isSplitTransactionFormOpen
-            ? splitTransactionFormState?.isEssential
-            : undefined;
+            const splitEssential = isSplitTransactionFormOpen
+              ? splitTransactionFormState?.isEssential
+              : undefined;
 
-          const splitTags = isSplitTransactionFormOpen
-            ? JSON.stringify(splitTransactionFormState?.tags)
-            : undefined;
+            const splitTags = isSplitTransactionFormOpen
+              ? JSON.stringify(splitTransactionFormState?.tags)
+              : undefined;
 
-          // Process the form data as needed
-          if (isEditForm) {
-            editTransactionRequest.mutate({
-              transaction_id: props.transaction?.transaction_id ?? -1n,
-              new_amount: amountValue as number,
-              new_type: transactionType ?? TransactionType.Expense,
-              new_description: formJson.description,
-              new_account_from_id:
-                typeof accountFrom === 'string' ? undefined : accountFrom?.id,
-              new_account_to_id:
-                typeof accountTo === 'string' ? undefined : accountTo?.id,
-              new_category_id:
-                typeof category === 'string' ? undefined : category?.id,
-              new_entity_id:
-                typeof entity === 'string' ? undefined : entity?.id,
-              tags: JSON.stringify(selectedTags),
-              new_date_timestamp: convertDateStringToUnixTimestamp(
-                formJson.date,
-              ),
-              new_is_essential: isEssential,
-              is_split: isSplitTransactionFormOpen,
-              split_amount: splitAmount,
-              split_category: splitCategory?.id,
-              split_entity: splitEntity?.id,
-              split_type: splitType ?? TransactionType.Expense,
-              split_account_from: splitAccountFrom,
-              split_account_to: splitAccountTo,
-              split_description: splitDescription,
-              split_is_essential: splitEssential,
-              split_tags: splitTags,
-            });
-          } else {
-            addTransactionStep1Request.mutate({
-              amount: amountValue as number,
-              type: transactionType ?? TransactionType.Expense,
-              description: formJson.description,
-              account_from_id: accountFrom?.id,
-              account_to_id: accountTo?.id,
-              category_id: category?.id,
-              entity_id: entity?.id,
-              tags: JSON.stringify(selectedTags),
-              date_timestamp: convertDateStringToUnixTimestamp(formJson.date),
-              is_essential: isEssential,
-            });
-          }
+            // Process the form data as needed
+            if (isEditForm) {
+              editTransactionRequest.mutate({
+                transaction_id: props.transaction?.transaction_id ?? -1n,
+                new_amount: amountValue as number,
+                new_type: transactionType ?? TransactionType.Expense,
+                new_description: formJson.description,
+                new_account_from_id:
+                  typeof accountFrom === 'string' ? undefined : accountFrom?.id,
+                new_account_to_id:
+                  typeof accountTo === 'string' ? undefined : accountTo?.id,
+                new_category_id:
+                  typeof category === 'string' ? undefined : category?.id,
+                new_entity_id:
+                  typeof entity === 'string' ? undefined : entity?.id,
+                tags: JSON.stringify(selectedTags),
+                new_date_timestamp: convertDateStringToUnixTimestamp(
+                  formJson.date,
+                ),
+                new_is_essential: isEssential,
+                is_split: isSplitTransactionFormOpen,
+                split_amount: splitAmount,
+                split_category: splitCategory?.id,
+                split_entity: splitEntity?.id,
+                split_type: splitType ?? TransactionType.Expense,
+                split_account_from: splitAccountFrom,
+                split_account_to: splitAccountTo,
+                split_description: splitDescription,
+                split_is_essential: splitEssential,
+                split_tags: splitTags,
+              });
+            } else {
+              addTransactionStep1Request.mutate({
+                amount: amountValue as number,
+                type: transactionType ?? TransactionType.Expense,
+                description: formJson.description,
+                account_from_id: accountFrom?.id,
+                account_to_id: accountTo?.id,
+                category_id: category?.id,
+                entity_id: entity?.id,
+                tags: JSON.stringify(selectedTags),
+                date_timestamp: convertDateStringToUnixTimestamp(formJson.date),
+                is_essential: isEssential,
+              });
+            }
+          },
         },
       }}
     >
       <DialogTitle>
-        {t(
-          isEditForm
-            ? 'transactions.editTransactionModalTitle'
-            : 'transactions.addNewTransaction',
-          {
-            id: props.transaction?.transaction_id,
-          },
-        )}
+        <Grid container spacing={2} rowSpacing={2}>
+          <Grid
+            size={{
+              xs: 12,
+              md: 8,
+            }}
+          >
+            {t(
+              isEditForm
+                ? 'transactions.editTransactionModalTitle'
+                : 'transactions.addNewTransaction',
+              {
+                id: props.transaction?.transaction_id,
+              },
+            )}
+          </Grid>
+          <Grid
+            display="flex"
+            justifyContent="flex-end"
+            size={{
+              xs: 12,
+              md: 4,
+            }}
+          >
+            {/* Transaction type */}
+            <ToggleButtonGroup
+              value={transactionType}
+              exclusive
+              onChange={onTransactionTypeSelected}
+              aria-label={t('transactions.typeOfTrx')}
+            >
+              <ToggleButton
+                value={TransactionType.Expense}
+                aria-label={t('transactions.expense')}
+              >
+                {t('transactions.expense')}
+              </ToggleButton>
+              <ToggleButton
+                value={TransactionType.Transfer}
+                aria-label={t('transactions.transfer')}
+              >
+                {t('transactions.transfer')}
+              </ToggleButton>
+              <ToggleButton
+                value={TransactionType.Income}
+                aria-label={t('transactions.income')}
+              >
+                {t('transactions.income')}
+              </ToggleButton>
+            </ToggleButtonGroup>
+          </Grid>
+        </Grid>
       </DialogTitle>
       <DialogContent>
         <Grid container spacing={2} rowSpacing={2}>
@@ -556,41 +688,6 @@ const AddEditTransactionDialog = (props: Props) => {
                   onChange={(_e, checked) => setEssentialValue(checked)}
                 />
               </Grow>
-            </Grid>
-            <Grid
-              display="flex"
-              justifyContent="flex-end"
-              size={{
-                xs: 12,
-                md: 8,
-              }}
-            >
-              {/* Transaction type */}
-              <ToggleButtonGroup
-                value={transactionType}
-                exclusive
-                onChange={onTransactionTypeSelected}
-                aria-label={t('transactions.typeOfTrx')}
-              >
-                <ToggleButton
-                  value={TransactionType.Expense}
-                  aria-label={t('transactions.expense')}
-                >
-                  {t('transactions.expense')}
-                </ToggleButton>
-                <ToggleButton
-                  value={TransactionType.Transfer}
-                  aria-label={t('transactions.transfer')}
-                >
-                  {t('transactions.transfer')}
-                </ToggleButton>
-                <ToggleButton
-                  value={TransactionType.Income}
-                  aria-label={t('transactions.income')}
-                >
-                  {t('transactions.income')}
-                </ToggleButton>
-              </ToggleButtonGroup>
             </Grid>
           </Grid>
           {/* Value, date & description */}
@@ -623,6 +720,7 @@ const AddEditTransactionDialog = (props: Props) => {
                 /*prefix="€"*/
                 inputProps={{
                   step: 0.01,
+                  min: 0,
                 }}
                 InputProps={{
                   startAdornment: (
@@ -674,27 +772,29 @@ const AddEditTransactionDialog = (props: Props) => {
                 type="text"
                 fullWidth
                 variant="outlined"
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Description />
-                    </InputAdornment>
-                  ),
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <Tooltip title={t('transactions.autoCategorize')}>
-                        <Grow in={isAutoCatVisible}>
-                          <IconButton
-                            aria-label={t('transactions.autoCategorize')}
-                            onClick={handleAutoCategorizeClick}
-                            edge="end"
-                          >
-                            <AutoAwesome color="primary" />
-                          </IconButton>
-                        </Grow>
-                      </Tooltip>
-                    </InputAdornment>
-                  ),
+                slotProps={{
+                  input: {
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Description />
+                      </InputAdornment>
+                    ),
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <Tooltip title={t('transactions.autoCategorize')}>
+                          <Grow in={isAutoCatVisible}>
+                            <IconButton
+                              aria-label={t('transactions.autoCategorize')}
+                              onClick={handleAutoCategorizeClick}
+                              edge="end"
+                            >
+                              <AutoAwesome color="primary" />
+                            </IconButton>
+                          </Grow>
+                        </Tooltip>
+                      </InputAdornment>
+                    ),
+                  },
                 }}
               />
             </Grid>
@@ -716,20 +816,31 @@ const AddEditTransactionDialog = (props: Props) => {
                   setAccountFromValue(value as IdLabelPair);
                 }}
                 isOptionEqualToValue={(option, value) => option.id === value.id}
+                renderOption={renderAccountOption}
                 renderInput={(params) => (
                   <TextField
                     {...params}
                     fullWidth
                     required={isAccountFromRequired}
-                    InputProps={{
-                      ...params.InputProps,
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <AccountCircle />
-                        </InputAdornment>
-                      ),
-                    }}
                     label={t('transactions.originAccount')}
+                    slotProps={{
+                      input: {
+                        ...params.InputProps,
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            {accountFromValue?.accountType ? (
+                              <AccountIconBadge
+                                accountType={accountFromValue.accountType}
+                                colorGradient={accountFromValue.colorGradient}
+                                size="compact"
+                              />
+                            ) : (
+                              <AccountCircle />
+                            )}
+                          </InputAdornment>
+                        ),
+                      },
+                    }}
                   />
                 )}
               />
@@ -749,20 +860,31 @@ const AddEditTransactionDialog = (props: Props) => {
                   setAccountToValue(value as IdLabelPair);
                 }}
                 isOptionEqualToValue={(option, value) => option.id === value.id}
+                renderOption={renderAccountOption}
                 renderInput={(params) => (
                   <TextField
                     {...params}
                     fullWidth
                     required={isAccountToRequired}
-                    InputProps={{
-                      ...params.InputProps,
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <AccountCircle />
-                        </InputAdornment>
-                      ),
-                    }}
                     label={t('transactions.destinationAccount')}
+                    slotProps={{
+                      input: {
+                        ...params.InputProps,
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            {accountToValue?.accountType ? (
+                              <AccountIconBadge
+                                accountType={accountToValue.accountType}
+                                colorGradient={accountToValue.colorGradient}
+                                size="compact"
+                              />
+                            ) : (
+                              <AccountCircle />
+                            )}
+                          </InputAdornment>
+                        ),
+                      },
+                    }}
                   />
                 )}
               />
@@ -786,20 +908,31 @@ const AddEditTransactionDialog = (props: Props) => {
                 }}
                 options={categoryCreate.withCreated(categoryOptionsValue)}
                 filterOptions={categoryCreate.filterOptions}
+                renderOption={renderCategoryOption}
                 isOptionEqualToValue={(option, value) => option.id === value.id}
                 renderInput={(params) => (
                   <TextField
                     {...params}
                     fullWidth
-                    InputProps={{
-                      ...params.InputProps,
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <FolderShared />
-                        </InputAdornment>
-                      ),
-                    }}
                     label={t('transactions.category')}
+                    slotProps={{
+                      input: {
+                        ...params.InputProps,
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            {categoryValue?.iconKey ? (
+                              <CategoryIconBadge
+                                iconKey={categoryValue.iconKey}
+                                colorGradient={categoryValue.colorGradient}
+                                size="compact"
+                              />
+                            ) : (
+                              <FolderShared />
+                            )}
+                          </InputAdornment>
+                        ),
+                      },
+                    }}
                   />
                 )}
               />
@@ -827,15 +960,17 @@ const AddEditTransactionDialog = (props: Props) => {
                   <TextField
                     {...params}
                     fullWidth
-                    InputProps={{
-                      ...params.InputProps,
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <Business />
-                        </InputAdornment>
-                      ),
-                    }}
                     label={t('transactions.entity')}
+                    slotProps={{
+                      input: {
+                        ...params.InputProps,
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <Business />
+                          </InputAdornment>
+                        ),
+                      },
+                    }}
                   />
                 )}
               />
@@ -1145,12 +1280,14 @@ const SplitTransactionForm = ({
               type="text"
               fullWidth
               variant="outlined"
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Description />
-                  </InputAdornment>
-                ),
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Description />
+                    </InputAdornment>
+                  ),
+                },
               }}
             />
           </Grid>
@@ -1176,21 +1313,32 @@ const SplitTransactionForm = ({
                 handleAccountFromChange(value as IdLabelPair);
               }}
               isOptionEqualToValue={(option, value) => option.id === value.id}
+              renderOption={renderAccountOption}
               renderInput={(params) => (
                 <TextField
                   {...params}
                   name="split_account_from"
                   fullWidth
                   required={isOpen && isAccountFromRequired}
-                  InputProps={{
-                    ...params.InputProps,
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <AccountCircle />
-                      </InputAdornment>
-                    ),
-                  }}
                   label={t('transactions.originAccount')}
+                  slotProps={{
+                    input: {
+                      ...params.InputProps,
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          {state?.accountFrom?.accountType ? (
+                            <AccountIconBadge
+                              accountType={state.accountFrom.accountType}
+                              colorGradient={state.accountFrom.colorGradient}
+                              size="compact"
+                            />
+                          ) : (
+                            <AccountCircle />
+                          )}
+                        </InputAdornment>
+                      ),
+                    },
+                  }}
                 />
               )}
             />
@@ -1210,21 +1358,32 @@ const SplitTransactionForm = ({
                 handleAccountToChange(value as IdLabelPair);
               }}
               isOptionEqualToValue={(option, value) => option.id === value.id}
+              renderOption={renderAccountOption}
               renderInput={(params) => (
                 <TextField
                   {...params}
                   name="split_account_to"
                   fullWidth
                   required={isOpen && isAccountToRequired}
-                  InputProps={{
-                    ...params.InputProps,
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <AccountCircle />
-                      </InputAdornment>
-                    ),
-                  }}
                   label={t('transactions.destinationAccount')}
+                  slotProps={{
+                    input: {
+                      ...params.InputProps,
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          {state?.accountTo?.accountType ? (
+                            <AccountIconBadge
+                              accountType={state.accountTo.accountType}
+                              colorGradient={state.accountTo.colorGradient}
+                              size="compact"
+                            />
+                          ) : (
+                            <AccountCircle />
+                          )}
+                        </InputAdornment>
+                      ),
+                    },
+                  }}
                 />
               )}
             />
@@ -1248,20 +1407,31 @@ const SplitTransactionForm = ({
               }}
               options={categoryCreate.withCreated(state?.categoryOptions ?? [])}
               filterOptions={categoryCreate.filterOptions}
+              renderOption={renderCategoryOption}
               isOptionEqualToValue={(option, value) => option.id === value.id}
               renderInput={(params) => (
                 <TextField
                   {...params}
                   fullWidth
-                  InputProps={{
-                    ...params.InputProps,
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <FolderShared />
-                      </InputAdornment>
-                    ),
-                  }}
                   label={t('transactions.category')}
+                  slotProps={{
+                    input: {
+                      ...params.InputProps,
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          {state?.category?.iconKey ? (
+                            <CategoryIconBadge
+                              iconKey={state.category.iconKey}
+                              colorGradient={state.category.colorGradient}
+                              size="compact"
+                            />
+                          ) : (
+                            <FolderShared />
+                          )}
+                        </InputAdornment>
+                      ),
+                    },
+                  }}
                 />
               )}
             />
@@ -1289,15 +1459,17 @@ const SplitTransactionForm = ({
                 <TextField
                   {...params}
                   fullWidth
-                  InputProps={{
-                    ...params.InputProps,
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Business />
-                      </InputAdornment>
-                    ),
-                  }}
                   label={t('transactions.entity')}
+                  slotProps={{
+                    input: {
+                      ...params.InputProps,
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Business />
+                        </InputAdornment>
+                      ),
+                    },
+                  }}
                 />
               )}
             />

@@ -1,4 +1,4 @@
-import { Tab, Tabs, useTheme } from '@mui/material';
+import { AlertTitle, Link, Tab, Tabs, useTheme } from '@mui/material';
 import Grid from '@mui/material/Grid';
 import React, { useEffect, useState } from 'react';
 import Box from '@mui/material/Box';
@@ -9,19 +9,23 @@ import InvestDashboard from './InvestDashboard.tsx';
 import InvestAssets from './assets/InvestAssets.tsx';
 import InvestTransactions from './transactions/InvestTransactions.tsx';
 import InvestStats from './stats/InvestStats.tsx';
+import InvestReports from './reports/InvestReports.tsx';
 import {
   ROUTE_INVEST_ASSETS,
   ROUTE_INVEST_DASHBOARD,
+  ROUTE_INVEST_REPORTS,
   ROUTE_INVEST_STATS,
   ROUTE_INVEST_TRANSACTIONS,
 } from '../../providers/RoutesProvider.tsx';
 import { useNavigate } from 'react-router-dom';
+import Alert from '@mui/material/Alert';
 
 export enum InvestTab {
   Summary = 0,
   Assets = 1,
   Transactions = 2,
-  Reports = 3,
+  Stats = 3,
+  Reports = 4,
 }
 
 const Invest = ({ defaultTab }: { defaultTab?: InvestTab }) => {
@@ -36,6 +40,10 @@ const Invest = ({ defaultTab }: { defaultTab?: InvestTab }) => {
   };
 
   useEffect(() => {
+    setSelectedTab(defaultTab || 0);
+  }, [defaultTab]);
+
+  useEffect(() => {
     switch (selectedTab) {
       case InvestTab.Assets:
         navigate(ROUTE_INVEST_ASSETS);
@@ -43,8 +51,11 @@ const Invest = ({ defaultTab }: { defaultTab?: InvestTab }) => {
       case InvestTab.Transactions:
         navigate(ROUTE_INVEST_TRANSACTIONS);
         break;
-      case InvestTab.Reports:
+      case InvestTab.Stats:
         navigate(ROUTE_INVEST_STATS);
+        break;
+      case InvestTab.Reports:
+        navigate(ROUTE_INVEST_REPORTS);
         break;
       case InvestTab.Summary:
       default:
@@ -61,8 +72,10 @@ const Invest = ({ defaultTab }: { defaultTab?: InvestTab }) => {
         return <InvestAssets />;
       case InvestTab.Transactions:
         return <InvestTransactions />;
-      case InvestTab.Reports:
+      case InvestTab.Stats:
         return <InvestStats />;
+      case InvestTab.Reports:
+        return <InvestReports />;
       default:
         return null;
     }
@@ -70,26 +83,55 @@ const Invest = ({ defaultTab }: { defaultTab?: InvestTab }) => {
 
   return (
     <Paper elevation={0} sx={{ p: theme.spacing(2), m: theme.spacing(2) }}>
-      <Box display="flex" justifyContent="space-between" flexDirection="column">
+      <Box
+        className="invest-app-controls"
+        display="flex"
+        justifyContent="space-between"
+        flexDirection="column"
+      >
         <PageHeader
           title={t('investments.investments')}
           subtitle={t('investments.strapLine')}
+          titleChipText={'Beta'}
         />
+        <Alert severity="info" variant="outlined" sx={{ mb: 1 }}>
+          <AlertTitle>{t('investments.betaAlertTitle')}</AlertTitle>
+          {t('investments.betaAlertIntro')}{' '}
+          <Link
+            href="https://myfinbudget.com/goto/wiki-investments"
+            target="_blank"
+            rel="noopener"
+          >
+            {t('investments.betaAlertDocText')}
+          </Link>{' '}
+          {t('investments.betaAlertPostDoc')}{' '}
+          <Link
+            href="https://myfinbudget.com/goto/gh-discussions"
+            target="_blank"
+            rel="noopener"
+          >
+            {t('investments.betaAlertContactText')}
+          </Link>
+          .
+        </Alert>
       </Box>
       <Grid container spacing={2}>
         {' '}
         <Grid size={12}>
-          <Tabs
-            selectionFollowsFocus
-            value={selectedTab}
-            onChange={handleTabChange}
-            variant="scrollable"
-          >
-            <Tab label={t('investments.summary')} />
-            <Tab label={t('investments.assets')} />
-            <Tab label={t('investments.transactions')} />
-            <Tab label={t('investments.reports')} />
-          </Tabs>
+          <Box className="invest-app-controls">
+            <Tabs
+              selectionFollowsFocus
+              value={selectedTab}
+              onChange={handleTabChange}
+              variant="scrollable"
+            >
+              <Tab label={t('investments.summary')} />
+              <Tab label={t('investments.assets')} />
+              <Tab label={t('investments.transactions')} />
+              <Tab label={t('investments.stats')} />
+              <Tab label={t('investments.reports')} />
+            </Tabs>
+          </Box>
           <Box mt={4}>{renderTabContent()}</Box>
         </Grid>
       </Grid>

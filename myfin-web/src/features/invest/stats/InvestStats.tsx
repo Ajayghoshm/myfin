@@ -9,6 +9,7 @@ import {
 } from '../../../providers/SnackbarProvider.tsx';
 import { useGetInvestStats } from '../../../services/invest/investHooks.ts';
 import {
+  AssetClassReturnStats,
   AssetType,
   GetInvestStatsResponse,
   InvestAsset,
@@ -33,12 +34,14 @@ import CombinedRoiByYearList, {
   CombinedRoiByYearData,
 } from './CombinedRoiByYearList.tsx';
 import PortfolioEvolutionChart from './PortfolioEvolutionChart.tsx';
+import AssetClassRoiList from './AssetClassRoiList.tsx';
 
 type UiState = {
   isLoading: boolean;
   distributionByAssetClassData?: ChartDataItem[];
   distributionByAssetData?: ChartDataItem[];
   assets?: InvestAsset[];
+  assetClassReturns?: AssetClassReturnStats[];
   combinedRoiByYearData?: CombinedRoiByYearData[];
   monthlySnapshots?: MonthlySnapshot[];
 };
@@ -66,17 +69,18 @@ const reduceState = (prevState: UiState, action: StateAction): UiState => {
   switch (action.type) {
     case StateActionType.DataLoaded: {
       const assetClassChartData =
-        action.payload.data.current_value_distribution.map((item, _index) => {
-          const [key, value] = Object.entries(item)[0];
-
-          return {
-            id: action.payload.getLocalizedAssetName(key as AssetType),
-            color: action.payload.getGradientColorForAssetType(
-              key as AssetType,
-            ),
-            value: value,
-          };
-        });
+        action.payload.data.current_value_distribution
+          .filter((item) => item.percentage > 0)
+          .map((item) => {
+            return {
+              id: action.payload.getLocalizedAssetName(item.type as AssetType),
+              color: action.payload.getGradientColorForAssetType(
+                item.type as AssetType,
+              ),
+              value: item.percentage,
+              altValue: formatNumberAsCurrency(item.value),
+            };
+          });
 
       const assetChartData = action.payload.data.top_performing_assets.map(
         (item) => {
@@ -103,6 +107,7 @@ const reduceState = (prevState: UiState, action: StateAction): UiState => {
         distributionByAssetClassData: assetClassChartData,
         distributionByAssetData: assetChartData,
         assets: action.payload.data.top_performing_assets,
+        assetClassReturns: action.payload.data.returns_by_asset_class,
         combinedRoiByYearData: combinedRoiByYear,
         monthlySnapshots: action.payload.data.monthly_snapshots,
       };
@@ -214,7 +219,7 @@ const InvestStats = () => {
       </Grid>
       <SectionHeader title={t('investments.returnsByAssetClass')} />
       <Grid size={12}>
-        <i>{t('common.soon')}...</i>
+        <AssetClassRoiList list={state.assetClassReturns ?? []} />
       </Grid>
       <SectionHeader title={t('investments.combinedPerformanceByYear')} />
       <Grid size={12}>

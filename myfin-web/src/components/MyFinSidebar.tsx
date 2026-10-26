@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Sidebar, Menu, MenuItem, SubMenu } from 'react-pro-sidebar';
+import { Menu, MenuItem, Sidebar, SubMenu } from 'react-pro-sidebar';
 import { NavLink } from 'react-router-dom';
 import {
   AccountBalanceWalletOutlined,
@@ -14,21 +14,23 @@ import {
   MenuOutlined,
   PaymentsOutlined,
   TipsAndUpdatesOutlined,
+  TrackChangesOutlined,
 } from '@mui/icons-material';
 import { alpha, useMediaQuery, useTheme } from '@mui/material';
+import { useTranslation } from 'react-i18next';
 import {
   ROUTE_ACCOUNTS,
   ROUTE_BUDGETS,
   ROUTE_CATEGORIES,
   ROUTE_DASHBOARD,
   ROUTE_ENTITIES,
+  ROUTE_GOALS,
   ROUTE_INVEST,
   ROUTE_RULES,
   ROUTE_STATS,
   ROUTE_TAGS,
   ROUTE_TRX,
 } from '../providers/RoutesProvider';
-import { useTranslation } from 'react-i18next';
 
 const MyFinSidebar = () => {
   const theme = useTheme();
@@ -82,6 +84,7 @@ const MyFinSidebar = () => {
                   ? '/res/logo_light_plain_transparentbg.png'
                   : '/res/logo_dark_transparentbg.png'
               }
+              alt={t('sidebar.logoAlt')}
               style={{ width: '70%' }}
             />
           </MenuItem>
@@ -120,6 +123,13 @@ const MyFinSidebar = () => {
           >
             {' '}
             {t('sidebar.investments')}
+          </MenuItem>
+          <MenuItem
+            icon={<TrackChangesOutlined />}
+            component={<NavLink to={ROUTE_GOALS} />}
+          >
+            {' '}
+            {t('sidebar.goals')}
           </MenuItem>
           <SubMenu label={t('sidebar.meta')} icon={<DisplaySettingsOutlined />}>
             <MenuItem

@@ -26,8 +26,12 @@ import {
   useImportTransactionsStep0,
 } from '../../../services/trx/trxHooks.ts';
 import { PhonePePreviewResponse } from '../../../services/trx/trxServices.ts';
+import { AccountStatus } from '../../../services/auth/authServices.ts';
 import { IdLabelPair } from '../AddEditTransactionDialog.tsx';
-import { ImportTrxStep1Result } from './ImportTrxStep1.tsx';
+import {
+  getImportSelectableAccounts,
+  ImportTrxStep1Result,
+} from './ImportTrxStep1.tsx';
 
 export type Props = {
   csv: string;
@@ -60,11 +64,22 @@ const ImportTrxPhonePeMapping = (props: Props) => {
 
   const accountOptions: IdLabelPair[] = useMemo(
     () =>
-      (importTrxStep0Request.data || []).map((acc) => ({
-        id: acc.account_id,
-        label: acc.name,
-      })),
-    [importTrxStep0Request.data],
+      (importTrxStep0Request.data || [])
+        // Hide inactive accounts, unless one is already remembered for an instrument
+        .filter(
+          (acc) =>
+            acc.status === AccountStatus.Active ||
+            props.preview.instruments.some(
+              (instrument) =>
+                instrument.account_id != null &&
+                String(instrument.account_id) === String(acc.account_id),
+            ),
+        )
+        .map((acc) => ({
+          id: acc.account_id,
+          label: acc.name,
+        })),
+    [importTrxStep0Request.data, props.preview.instruments],
   );
 
   // Loading
@@ -102,7 +117,14 @@ const ImportTrxPhonePeMapping = (props: Props) => {
         mappings,
       });
       props.onNext(
-        { ...result, duplicateRows: result.duplicate_rows },
+        {
+          ...result,
+          duplicateRows: result.duplicate_rows,
+          activeAccounts: getImportSelectableAccounts(
+            result.accounts,
+            result.fillData,
+          ),
+        },
         mappings,
       );
     } catch (_error) {

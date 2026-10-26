@@ -1,20 +1,3 @@
-import { useLoading } from '../../../providers/LoadingProvider.tsx';
-import {
-  AlertSeverity,
-  useSnackbar,
-} from '../../../providers/SnackbarProvider.tsx';
-import { useTranslation } from 'react-i18next';
-import {
-  useGetAssets,
-  useRemoveAsset,
-} from '../../../services/invest/investHooks.ts';
-import React, { useEffect, useMemo, useReducer } from 'react';
-import { InvestAsset } from '../../../services/invest/investServices.ts';
-import Grid from '@mui/material/Grid';
-import { GridColDef } from '@mui/x-data-grid';
-import { useGetLocalizedAssetType } from '../InvestUtilHooks.ts';
-import MyFinStaticTable from '../../../components/MyFinStaticTable.tsx';
-import Button from '@mui/material/Button';
 import {
   AddCircleOutline,
   Delete,
@@ -22,18 +5,37 @@ import {
   MonetizationOn,
   Search,
 } from '@mui/icons-material';
-import TextField from '@mui/material/TextField';
-import InputAdornment from '@mui/material/InputAdornment';
-import IconButton from '@mui/material/IconButton';
 import { Box, Checkbox, FormGroup, Tooltip, useTheme } from '@mui/material';
-import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
+import Button from '@mui/material/Button';
 import FormControlLabel from '@mui/material/FormControlLabel';
+import Grid from '@mui/material/Grid';
+import IconButton from '@mui/material/IconButton';
+import InputAdornment from '@mui/material/InputAdornment';
+import Stack from '@mui/material/Stack';
+import TextField from '@mui/material/TextField';
+import Typography from '@mui/material/Typography';
+import { GridColDef } from '@mui/x-data-grid';
+import React, { useEffect, useMemo, useReducer } from 'react';
+import { useTranslation } from 'react-i18next';
 import GenericConfirmationDialog from '../../../components/GenericConfirmationDialog.tsx';
-import UpdateAssetValueDialog from './UpdateAssetValueDialog.tsx';
-import AddEditInvestAssetDialog from './AddEditInvestAssetDialog.tsx';
+import MyFinStaticTable from '../../../components/MyFinStaticTable.tsx';
 import PercentageChip from '../../../components/PercentageChip.tsx';
+import { useLoading } from '../../../providers/LoadingProvider.tsx';
+import {
+  AlertSeverity,
+  useSnackbar,
+} from '../../../providers/SnackbarProvider.tsx';
+import {
+  useGetAssets,
+  useRemoveAsset,
+} from '../../../services/invest/investHooks.ts';
+import { InvestAsset } from '../../../services/invest/investServices.ts';
 import { useFormatNumberAsCurrency } from '../../../utils/textHooks.ts';
+import { useGetLocalizedAssetType } from '../InvestUtilHooks.ts';
+import ReturnMetricsDetails from '../ReturnMetricsDetails.tsx';
+import AddEditInvestAssetDialog from './AddEditInvestAssetDialog.tsx';
+import AssetValueHistoryDrawer from './AssetValueHistoryDrawer.tsx';
+import UpdateAssetValueDialog from './UpdateAssetValueDialog.tsx';
 
 type UiState = {
   assets?: InvestAsset[];
@@ -44,6 +46,12 @@ type UiState = {
   isEditDialogOpen: boolean;
   isRemoveDialogOpen: boolean;
   isUpdateAssetValueDialogOpen: boolean;
+
+  isHistoryDrawerOpen: boolean;
+  historyDrawerAssetId?: bigint;
+  historyDrawerAssetName?: string;
+  historyDrawerHighlightMonth?: number;
+  historyDrawerHighlightYear?: number;
 };
 
 const enum StateActionType {
@@ -56,6 +64,8 @@ const enum StateActionType {
   DialogDismissed,
   DialogConfirmationClick,
   DialogUpdateAssetValueClick,
+  OpenHistoryDrawer,
+  CloseHistoryDrawer,
 }
 
 type StateAction =
@@ -70,7 +80,20 @@ type StateAction =
   | { type: StateActionType.EditClick; payload: InvestAsset }
   | { type: StateActionType.RemoveClick; payload: InvestAsset }
   | { type: StateActionType.DialogConfirmationClick }
-  | { type: StateActionType.DialogUpdateAssetValueClick; payload: InvestAsset };
+  | {
+      type: StateActionType.DialogUpdateAssetValueClick;
+      payload: InvestAsset;
+    }
+  | {
+      type: StateActionType.OpenHistoryDrawer;
+      payload: {
+        assetId: bigint;
+        assetName: string;
+        highlightMonth?: number;
+        highlightYear?: number;
+      };
+    }
+  | { type: StateActionType.CloseHistoryDrawer };
 
 const createInitialState = (): UiState => {
   return {
@@ -79,6 +102,7 @@ const createInitialState = (): UiState => {
     isEditDialogOpen: false,
     isRemoveDialogOpen: false,
     isUpdateAssetValueDialogOpen: false,
+    isHistoryDrawerOpen: false,
   };
 };
 
@@ -174,6 +198,26 @@ const reduceState = (prevState: UiState, action: StateAction): UiState => {
         isUpdateAssetValueDialogOpen: false,
         actionableAsset: action.payload,
       };
+    case StateActionType.OpenHistoryDrawer:
+      return {
+        ...prevState,
+        isHistoryDrawerOpen: true,
+        historyDrawerAssetId: action.payload.assetId,
+        historyDrawerAssetName: action.payload.assetName,
+        historyDrawerHighlightMonth: action.payload.highlightMonth,
+        historyDrawerHighlightYear: action.payload.highlightYear,
+        // Close other dialogs if open, though usually this is called from within one
+        isUpdateAssetValueDialogOpen: false,
+      };
+    case StateActionType.CloseHistoryDrawer:
+      return {
+        ...prevState,
+        isHistoryDrawerOpen: false,
+        historyDrawerAssetId: undefined,
+        historyDrawerAssetName: undefined,
+        historyDrawerHighlightMonth: undefined,
+        historyDrawerHighlightYear: undefined,
+      };
   }
 };
 
@@ -231,6 +275,8 @@ const InvestAssets = () => {
         currentValue: asset,
         currentRoi: {
           absolute: asset.absolute_roi_value,
+          assetName: asset.name,
+          metrics: asset.return_metrics?.global,
           percentage: asset.relative_roi_percentage,
         },
         actions: asset,
@@ -335,28 +381,59 @@ const InvestAssets = () => {
     },
     {
       field: 'currentRoi',
-      headerName: t('investments.currentROI'),
-      minWidth: 120,
+      headerName: t('investments.returnMetrics.returnSinceStart'),
+      minWidth: 150,
       editable: false,
       sortable: false,
-      renderCell: (params) => (
-        <Box
-          sx={{
-            display: 'flex',
-            justifyContent: 'center',
-            flexDirection: 'column',
-          }}
-        >
-          {formatNumberAsCurrency.invoke(params.value.absolute)} <br />
-          <PercentageChip
-            percentage={params.value.percentage}
-            hideIcon
+      renderCell: (params) => {
+        const personalReturn =
+          params.value.metrics?.personal_return.annualized_percentage;
+        return (
+          <Box
             sx={{
-              '& .MuiChip-label': { fontSize: '0.9em' },
+              display: 'flex',
+              justifyContent: 'center',
+              flexDirection: 'column',
             }}
-          />
-        </Box>
-      ),
+          >
+            <Box>
+              {formatNumberAsCurrency.invoke(
+                params.value.metrics?.absolute_return_value ??
+                  params.value.absolute,
+              )}
+              {params.value.metrics && (
+                <ReturnMetricsDetails
+                  ariaLabel={t(
+                    'investments.returnMetrics.assetDetailsAriaLabel',
+                    {
+                      name: params.value.assetName,
+                    },
+                  )}
+                  metrics={params.value.metrics}
+                  performanceReturnHelp={t(
+                    'investments.returnMetrics.assetReturnHelp',
+                  )}
+                  performanceReturnLabel={t(
+                    'investments.returnMetrics.assetReturnTwr',
+                  )}
+                  title={t('investments.returnMetrics.assetDetailsTitle', {
+                    name: params.value.assetName,
+                  })}
+                />
+              )}
+            </Box>
+            {personalReturn !== null && personalReturn !== undefined && (
+              <PercentageChip
+                percentage={personalReturn}
+                hideIcon
+                sx={{
+                  '& .MuiChip-label': { fontSize: '0.9em' },
+                }}
+              />
+            )}
+          </Box>
+        );
+      },
     },
     {
       field: 'actions',
@@ -416,6 +493,27 @@ const InvestAssets = () => {
           assetId={state.actionableAsset?.asset_id || -1n}
           currentValue={state.actionableAsset?.current_value || 0}
           assetName={state.actionableAsset?.name || ''}
+          onViewHistory={() => {
+            if (state.actionableAsset) {
+              dispatch({
+                type: StateActionType.OpenHistoryDrawer,
+                payload: {
+                  assetId: state.actionableAsset.asset_id,
+                  assetName: state.actionableAsset.name,
+                },
+              });
+            }
+          }}
+        />
+      )}
+      {state.isHistoryDrawerOpen && state.historyDrawerAssetId && (
+        <AssetValueHistoryDrawer
+          isOpen={true}
+          onClose={() => dispatch({ type: StateActionType.CloseHistoryDrawer })}
+          assetId={state.historyDrawerAssetId}
+          assetName={state.historyDrawerAssetName || ''}
+          highlightMonth={state.historyDrawerHighlightMonth}
+          highlightYear={state.historyDrawerHighlightYear}
         />
       )}
       {state.isRemoveDialogOpen && (
@@ -483,18 +581,20 @@ const InvestAssets = () => {
           id="search"
           label={t('common.search')}
           variant="outlined"
-          InputProps={{
-            endAdornment: (
-              <InputAdornment position="end">
-                <Search />
-              </InputAdornment>
-            ),
-          }}
           onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
             dispatch({
               type: StateActionType.SearchQueryUpdated,
               payload: event.target.value,
             });
+          }}
+          slotProps={{
+            input: {
+              endAdornment: (
+                <InputAdornment position="end">
+                  <Search />
+                </InputAdornment>
+              ),
+            },
           }}
         />
       </Grid>

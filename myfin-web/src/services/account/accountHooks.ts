@@ -4,6 +4,7 @@ import AccountServices, {
   EditAccountRequest,
 } from './accountServices.ts';
 import { queryClient } from '../../data/react-query.ts';
+import { QUERY_KEY_GET_BUDGET_MATRIX } from '../budget/budgetHooks.ts';
 import { useUserData } from '../../providers/UserProvider.tsx';
 import { QUERY_KEY_IMPORT_TRANSACTIONS_STEP0 } from '../trx/trxHooks.ts';
 
@@ -33,6 +34,9 @@ export function useRemoveAccount() {
       queryKey: [QUERY_KEY_GET_ACCOUNTS],
     });
     void queryClient.invalidateQueries({
+      queryKey: [QUERY_KEY_GET_BUDGET_MATRIX],
+    });
+    void queryClient.invalidateQueries({
       queryKey: [QUERY_KEY_IMPORT_TRANSACTIONS_STEP0],
     });
     return result;
@@ -51,6 +55,9 @@ export function useAddAccount() {
       queryKey: [QUERY_KEY_GET_ACCOUNTS],
     });
     void queryClient.invalidateQueries({
+      queryKey: [QUERY_KEY_GET_BUDGET_MATRIX],
+    });
+    void queryClient.invalidateQueries({
       queryKey: [QUERY_KEY_IMPORT_TRANSACTIONS_STEP0],
     });
     return result;
@@ -67,6 +74,9 @@ export function useEditAccount() {
 
     void queryClient.invalidateQueries({
       queryKey: [QUERY_KEY_GET_ACCOUNTS],
+    });
+    void queryClient.invalidateQueries({
+      queryKey: [QUERY_KEY_GET_BUDGET_MATRIX],
     });
     void queryClient.invalidateQueries({
       queryKey: [QUERY_KEY_IMPORT_TRANSACTIONS_STEP0],

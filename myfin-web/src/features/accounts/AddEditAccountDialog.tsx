@@ -129,18 +129,50 @@ const AddEditAccountDialog = (props: Props) => {
       value={selectedColor}
       onChange={(event) => setColorValue(event.target.value)}
       label={t('accounts.color')}
+      SelectProps={{
+        renderValue: (value) => (
+          <div
+            style={{
+              margin: '0 auto',
+              background: cssGradients[value as ColorGradient] ?? '',
+              width: 28,
+              height: 28,
+              borderRadius: '50%',
+            }}
+          />
+        ),
+        MenuProps: {
+          PaperProps: {
+            sx: {
+              width: 264,
+              maxWidth: 'calc(100vw - 32px)',
+              '& .MuiList-root': {
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(36px, 1fr))',
+                gap: 0.5,
+                p: 1,
+              },
+              '& .MuiMenuItem-root': {
+                minHeight: 36,
+                p: 0,
+                borderRadius: 1,
+                justifyContent: 'center',
+              },
+            },
+          },
+        },
+      }}
     >
       {colorOptions.map((color) => (
         <MenuItem key={color} value={color}>
           <div
             style={{
-              margin: '0 auto',
               background: cssGradients[color] ?? '',
-              width: 60,
-              height: 20,
-              borderRadius: 20,
+              width: 28,
+              height: 28,
+              borderRadius: '50%',
             }}
-          ></div>
+          />
         </MenuItem>
       ))}
     </TextField>
@@ -180,32 +212,34 @@ const AddEditAccountDialog = (props: Props) => {
       maxWidth="md"
       open={props.isOpen}
       onClose={props.onClose}
-      PaperProps={{
-        component: 'form',
-        onSubmit: (event: React.FormEvent<HTMLFormElement>) => {
-          event.preventDefault();
-          if (isEditForm && props.account) {
-            // Update
-            editAccountRequest.mutate({
-              account_id: props.account.account_id,
-              new_name: nameValue,
-              new_type: typeValue as AccountType,
-              new_status: statusValue,
-              new_description: descriptionValue,
-              exclude_from_budgets: excludeFromBudgetsValue,
-              color_gradient: colorValue as ColorGradient,
-            });
-          } else {
-            // Create
-            addAccountRequest.mutate({
-              name: nameValue,
-              type: typeValue as AccountType,
-              status: statusValue,
-              description: descriptionValue,
-              exclude_from_budgets: excludeFromBudgetsValue,
-              color_gradient: colorValue as ColorGradient,
-            });
-          }
+      slotProps={{
+        paper: {
+          component: 'form',
+          onSubmit: (event: React.FormEvent<HTMLFormElement>) => {
+            event.preventDefault();
+            if (isEditForm && props.account) {
+              // Update
+              editAccountRequest.mutate({
+                account_id: props.account.account_id,
+                new_name: nameValue,
+                new_type: typeValue as AccountType,
+                new_status: statusValue,
+                new_description: descriptionValue,
+                exclude_from_budgets: excludeFromBudgetsValue,
+                color_gradient: colorValue as ColorGradient,
+              });
+            } else {
+              // Create
+              addAccountRequest.mutate({
+                name: nameValue,
+                type: typeValue as AccountType,
+                status: statusValue,
+                description: descriptionValue,
+                exclude_from_budgets: excludeFromBudgetsValue,
+                color_gradient: colorValue as ColorGradient,
+              });
+            }
+          },
         },
       }}
     >
@@ -287,12 +321,14 @@ const AddEditAccountDialog = (props: Props) => {
                 label={t('accounts.name')}
                 fullWidth
                 variant="outlined"
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <AccountCircle />
-                    </InputAdornment>
-                  ),
+                slotProps={{
+                  input: {
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <AccountCircle />
+                      </InputAdornment>
+                    ),
+                  },
                 }}
               />
             </Grid>
@@ -343,12 +379,14 @@ const AddEditAccountDialog = (props: Props) => {
                 label={t('common.description')}
                 fullWidth
                 variant="outlined"
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Description />
-                    </InputAdornment>
-                  ),
+                slotProps={{
+                  input: {
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Description />
+                      </InputAdornment>
+                    ),
+                  },
                 }}
               />
             </Grid>

@@ -6,6 +6,7 @@ import Profile from '../features/profile/Profile.tsx';
 import Transactions from '../features/transactions/Transactions.tsx';
 import BudgetList from '../features/budgets/list/BudgetList.tsx';
 import BudgetDetails from '../features/budgets/details/BudgetDetails.tsx';
+import BudgetMatrix from '../features/budgets/matrix/BudgetMatrix.tsx';
 import Accounts from '../features/accounts/Accounts.tsx';
 import Categories from '../features/categories/Categories.tsx';
 import Entities from '../features/entities/Entities.tsx';
@@ -16,6 +17,7 @@ import Invest, { InvestTab } from '../features/invest/Invest.tsx';
 import Stats, { StatTab } from '../features/stats/Stats.tsx';
 import RecoverPassword from '../features/auth/RecoverPassword.tsx';
 import Setup from '../features/setup/Setup.tsx';
+import Goals from '../features/goals/Goals.tsx';
 
 export const ROUTE_AUTH = '/auth';
 export const ROUTE_RECOVER_PASSWORD = '/recover-password';
@@ -23,6 +25,7 @@ export const ROUTE_DASHBOARD = '/dashboard';
 export const ROUTE_PROFILE = '/profile';
 export const ROUTE_TRX = '/transactions';
 export const ROUTE_BUDGETS = '/budgets';
+export const ROUTE_BUDGET_MATRIX = '/budgets/matrix';
 export const ROUTE_BUDGET_DETAILS = '/budget/:id';
 export const ROUTE_BUDGET_NEW = '/budget/new';
 export const ROUTE_ACCOUNTS = '/accounts';
@@ -36,12 +39,14 @@ export const ROUTE_INVEST_DASHBOARD = '/invest/dashboard';
 export const ROUTE_INVEST_ASSETS = '/invest/assets';
 export const ROUTE_INVEST_TRANSACTIONS = '/invest/transactions';
 export const ROUTE_INVEST_STATS = '/invest/stats';
+export const ROUTE_INVEST_REPORTS = '/invest/reports';
 export const ROUTE_STATS = '/stats';
 export const ROUTE_STATS_PATRIMONY_EVO = '/stats/patrimony';
 export const ROUTE_STATS_PROJECTIONS = '/stats/projections';
 export const ROUTE_STATS_EXPENSES = '/stats/expenses';
 export const ROUTE_STATS_INCOME = '/stats/income';
 export const ROUTE_STATS_YEAR_BY_YEAR = '/stats/year-by-year';
+export const ROUTE_GOALS = '/goals';
 export const ROUTE_SETUP = '/setup';
 
 const RoutesProvider = () => {
@@ -57,6 +62,7 @@ const RoutesProvider = () => {
           <Route path={ROUTE_PROFILE} element={<Profile />} />
           <Route path={ROUTE_TRX} element={<Transactions />} />
           <Route path={ROUTE_BUDGETS} element={<BudgetList />} />
+          <Route path={ROUTE_BUDGET_MATRIX} element={<BudgetMatrix />} />
           <Route path={ROUTE_BUDGET_DETAILS} element={<BudgetDetails />} />
           <Route path={ROUTE_BUDGET_NEW} element={<BudgetDetails />} />
           <Route path={ROUTE_ACCOUNTS} element={<Accounts />} />
@@ -65,6 +71,7 @@ const RoutesProvider = () => {
           <Route path={ROUTE_TAGS} element={<Tags />} />
           <Route path={ROUTE_IMPORT_TRX} element={<ImportTransactions />} />
           <Route path={ROUTE_RULES} element={<Rules />} />
+          <Route path={ROUTE_GOALS} element={<Goals />} />
           <Route path={ROUTE_INVEST} element={<Invest />} />
           <Route
             path={ROUTE_INVEST_DASHBOARD}
@@ -80,6 +87,10 @@ const RoutesProvider = () => {
           />
           <Route
             path={ROUTE_INVEST_STATS}
+            element={<Invest defaultTab={InvestTab.Stats} />}
+          />
+          <Route
+            path={ROUTE_INVEST_REPORTS}
             element={<Invest defaultTab={InvestTab.Reports} />}
           />
           <Route path={ROUTE_STATS} element={<Stats />} />

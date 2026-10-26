@@ -5,7 +5,10 @@ import Box from '@mui/material/Box';
 import PageHeader from '../../../components/PageHeader.tsx';
 import Paper from '@mui/material/Paper';
 import ImportTrxStep0 from './ImportTrxStep0.tsx';
-import ImportTrxStep1, { ImportTrxStep1Result } from './ImportTrxStep1.tsx';
+import ImportTrxStep1, {
+  getImportSelectableAccounts,
+  ImportTrxStep1Result,
+} from './ImportTrxStep1.tsx';
 import ImportTrxStep2, { ImportTrxStep2Result } from './ImportTrxStep2.tsx';
 import ImportTrxStep3 from './ImportTrxStep3.tsx';
 import ImportTrxPhonePeMapping from './ImportTrxPhonePeMapping.tsx';
@@ -124,7 +127,14 @@ const ImportTransactions = () => {
         })),
       });
       loader.hideLoading();
-      setStep1Result({ ...result, duplicateRows: result.duplicate_rows });
+      setStep1Result({
+        ...result,
+        duplicateRows: result.duplicate_rows,
+        activeAccounts: getImportSelectableAccounts(
+          result.accounts,
+          result.fillData,
+        ),
+      });
       setCurrentStep(2);
     } catch (_error) {
       loader.hideLoading();

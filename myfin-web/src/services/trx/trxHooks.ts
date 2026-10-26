@@ -1,5 +1,6 @@
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query';
 import { queryClient } from '../../data/react-query.ts';
+import { QUERY_KEY_GET_BUDGET_MATRIX } from '../budget/budgetHooks.ts';
 import TrxServices, {
   AddTransactionRequest,
   AutoCategorizeTransactionRequest,
@@ -68,6 +69,9 @@ export function useRemoveTransaction() {
     void queryClient.invalidateQueries({
       queryKey: [QUERY_KEY_GET_TRANSACTIONS],
     });
+    void queryClient.invalidateQueries({
+      queryKey: [QUERY_KEY_GET_BUDGET_MATRIX],
+    });
     return request;
   }
 
@@ -118,6 +122,9 @@ export function useAddTransactionStep1() {
     void queryClient.invalidateQueries({
       queryKey: [QUERY_KEY_GET_TRANSACTIONS],
     });
+    void queryClient.invalidateQueries({
+      queryKey: [QUERY_KEY_GET_BUDGET_MATRIX],
+    });
     return request;
   }
 
@@ -132,6 +139,9 @@ export function useEditTransaction() {
 
     void queryClient.invalidateQueries({
       queryKey: [QUERY_KEY_GET_TRANSACTIONS],
+    });
+    void queryClient.invalidateQueries({
+      queryKey: [QUERY_KEY_GET_BUDGET_MATRIX],
     });
     return request;
   }
@@ -200,6 +210,12 @@ export function useImportTransactionsStep1() {
 export function useImportTransactionsStep2() {
   async function importTransactionsStep2(list: AddTransactionRequest[]) {
     const data = await TrxServices.importTransactionsStep2(list);
+    void queryClient.invalidateQueries({
+      queryKey: [QUERY_KEY_GET_TRANSACTIONS],
+    });
+    void queryClient.invalidateQueries({
+      queryKey: [QUERY_KEY_GET_BUDGET_MATRIX],
+    });
     return data.data;
   }
 

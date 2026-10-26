@@ -4,10 +4,7 @@ import {
   DialogContent,
 } from '@mui/material';
 import { useLoading } from '../../../providers/LoadingProvider.tsx';
-import {
-  AlertSeverity,
-  useSnackbar,
-} from '../../../providers/SnackbarProvider.tsx';
+import { AlertSeverity, useSnackbar } from '../../../providers/SnackbarProvider.tsx';
 import { Trans, useTranslation } from 'react-i18next';
 import React, { useEffect, useMemo, useReducer } from 'react';
 import {
@@ -23,14 +20,7 @@ import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import Grid from '@mui/material/Grid';
 import InputAdornment from '@mui/material/InputAdornment';
-import {
-  AccountBalanceWalletOutlined,
-  Business,
-  ConfirmationNumber,
-  Folder,
-  Send,
-  Undo,
-} from '@mui/icons-material';
+import { AccountBalanceWalletOutlined, Business, ConfirmationNumber, Folder, Send, Undo } from '@mui/icons-material';
 import TextField from '@mui/material/TextField';
 import Button from '@mui/material/Button';
 import DialogActions from '@mui/material/DialogActions';
@@ -193,29 +183,31 @@ const AddEditInvestAssetDialog = (props: Props) => {
       maxWidth="md"
       open={props.isOpen}
       onClose={props.onClose}
-      PaperProps={{
-        component: 'form',
-        onSubmit: (event: React.FormEvent<HTMLFormElement>) => {
-          event.preventDefault();
-          dispatch({ type: StateActionType.RequestStarted });
-          if (isEditForm && props.asset) {
-            // Update
-            editAssetRequest.mutate({
-              name: state.nameInput,
-              broker: state.brokerInput,
-              ticker: state.tickerInput,
-              type: state.typeInput as AssetType,
-              asset_id: props.asset!.asset_id,
-            });
-          } else {
-            // Create
-            addAssetRequest.mutate({
-              name: state.nameInput,
-              broker: state.brokerInput,
-              ticker: state.tickerInput,
-              type: state.typeInput as AssetType,
-            });
-          }
+      slotProps={{
+        paper: {
+          component: 'form',
+          onSubmit: (event: React.FormEvent<HTMLFormElement>) => {
+            event.preventDefault();
+            dispatch({ type: StateActionType.RequestStarted });
+            if (isEditForm && props.asset) {
+              // Update
+              editAssetRequest.mutate({
+                name: state.nameInput,
+                broker: state.brokerInput,
+                ticker: state.tickerInput,
+                type: state.typeInput as AssetType,
+                asset_id: props.asset!.asset_id,
+              });
+            } else {
+              // Create
+              addAssetRequest.mutate({
+                name: state.nameInput,
+                broker: state.brokerInput,
+                ticker: state.tickerInput,
+                type: state.typeInput as AssetType,
+              });
+            }
+          },
         },
       }}
     >

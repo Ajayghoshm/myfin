@@ -1,3 +1,5 @@
+import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query';
+import { queryClient } from '../../data/react-query.ts';
 import investServices from './investServices.ts';
 import InvestServices, {
   AddAssetRequest,
@@ -5,13 +7,13 @@ import InvestServices, {
   EditAssetRequest,
   EditInvestTransactionRequest,
 } from './investServices.ts';
-import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query';
-import { queryClient } from '../../data/react-query.ts';
 
 const QUERY_KEY_GET_INVEST_STATS = 'QUERY_KEY_GET_INVEST_STATS';
 const QUERY_KEY_GET_ASSETS = 'QUERY_KEY_GET_ASSETS';
 const QUERY_KEY_GET_INVEST_TRX = 'QUERY_KEY_GET_INVEST_TRX';
 const QUERY_KEY_GET_ASSETS_SUMMARY = 'QUERY_KEY_GET_ASSETS_SUMMARY';
+const QUERY_KEY_GET_ANNUAL_INVESTMENT_REPORT =
+  'QUERY_KEY_GET_ANNUAL_INVESTMENT_REPORT';
 
 export function useGetInvestStats() {
   async function getInvestStats() {
@@ -58,20 +60,53 @@ export function useUpdateAssetValue() {
   async function updateAssetValue(request: {
     assetId: bigint;
     newValue: number;
+    month?: number;
+    year?: number;
   }) {
     const result = await InvestServices.updateAssetValue(
       request.assetId,
       request.newValue,
+      request.month,
+      request.year,
     );
 
     void queryClient.invalidateQueries({
       queryKey: [QUERY_KEY_GET_ASSETS],
+    });
+    void queryClient.invalidateQueries({
+      queryKey: [QUERY_KEY_GET_INVEST_STATS],
     });
     return result;
   }
 
   return useMutation({
     mutationFn: updateAssetValue,
+  });
+}
+
+export function useRemoveAssetValueSnapshot() {
+  async function removeAssetValueSnapshot(request: {
+    assetId: bigint;
+    month: number;
+    year: number;
+  }) {
+    const result = await InvestServices.removeAssetValueSnapshot(
+      request.assetId,
+      request.month,
+      request.year,
+    );
+
+    void queryClient.invalidateQueries({
+      queryKey: [QUERY_KEY_GET_ASSETS],
+    });
+    void queryClient.invalidateQueries({
+      queryKey: [QUERY_KEY_GET_INVEST_STATS],
+    });
+    return result;
+  }
+
+  return useMutation({
+    mutationFn: removeAssetValueSnapshot,
   });
 }
 
@@ -182,6 +217,20 @@ export function useGetAssetsSummary() {
   return useQuery({
     queryKey: [QUERY_KEY_GET_ASSETS_SUMMARY],
     queryFn: getAssetsSummary,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useGetAnnualInvestmentReport(year: number, enabled = true) {
+  async function getAnnualInvestmentReport() {
+    const data = await InvestServices.getAnnualInvestmentReport(year);
+    return data.data;
+  }
+
+  return useQuery({
+    queryKey: [QUERY_KEY_GET_ANNUAL_INVESTMENT_REPORT, year],
+    queryFn: getAnnualInvestmentReport,
+    enabled,
     placeholderData: keepPreviousData,
   });
 }
