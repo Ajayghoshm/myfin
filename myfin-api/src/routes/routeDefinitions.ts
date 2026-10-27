@@ -4,6 +4,7 @@ import AccountController from '../controllers/accountController.js';
 import BudgetController from '../controllers/budgetController.js';
 import CategoryController from '../controllers/categoryController.js';
 import EntityController from '../controllers/entityController.js';
+import FinancialProfileController from '../controllers/financialProfileController.js';
 import GoalController from '../controllers/goalController.js';
 import InsightsController from '../controllers/insightsController.js';
 import InvestAssetsController from '../controllers/investAssetsController.js';
@@ -60,6 +61,17 @@ export const routeGroups: RouteGroup[] = [
       },
       { method: 'get', path: '/backup', handlerName: 'backupUser' },
       { method: 'put', path: '/restore', handlerName: 'restoreUser' },
+    ],
+  },
+  {
+    tag: 'Financial Profile',
+    basePath: '/user',
+    controller: FinancialProfileController as ControllerModule,
+    controllerSourceBaseUrl: new URL('../controllers/financialProfileController', import.meta.url)
+      .href,
+    routes: [
+      { method: 'get', path: '/financial-profile', handlerName: 'getFinancialProfile' },
+      { method: 'put', path: '/financial-profile', handlerName: 'updateFinancialProfile' },
     ],
   },
   {

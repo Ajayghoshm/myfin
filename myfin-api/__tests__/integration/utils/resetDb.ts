@@ -21,6 +21,7 @@ export default async () => {
     prisma.accounts.deleteMany(),
     prisma.otp_codes.deleteMany(),
     prisma.payee_classifications.deleteMany(),
+    prisma.user_financial_profile.deleteMany(),
     prisma.users.deleteMany(),
   ]);
 };

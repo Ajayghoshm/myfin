@@ -38,6 +38,12 @@ export interface BackupData {
   transactions?: Prisma.transactionsGetPayload<object>[];
   /** Person/merchant corrections. Absent in backups made before insights. */
   payee_classifications?: { payee_key: string; kind: string }[];
+  /** Financial profile settings. Absent (or null) in older backups / when never set. */
+  financial_profile?: {
+    salary_category_id: bigint | null;
+    salary_cutoff_day: number;
+    updated_at: bigint;
+  } | null;
 }
 
 class BackupManager {
@@ -171,6 +177,12 @@ class BackupManager {
         select: { payee_key: true, kind: true },
         orderBy: { payee_key: 'asc' },
       }),
+      financial_profile: await dbClient.user_financial_profile
+        .findUnique({
+          where: { users_user_id: userId },
+          select: { salary_category_id: true, salary_cutoff_day: true, updated_at: true },
+        })
+        .then((row) => row ?? null),
     };
   }
 
@@ -255,6 +267,20 @@ class BackupManager {
           RestoreUserErrorCodes.MalformedBackup
         );
       }
+    }
+
+    // Validate financial profile before wiping anything
+    const profile = data.financial_profile ?? null;
+    if (
+      profile !== null &&
+      (!Number.isInteger(profile.salary_cutoff_day) ||
+        profile.salary_cutoff_day < 1 ||
+        profile.salary_cutoff_day > 28)
+    ) {
+      throw APIError.notAcceptable(
+        'Financial profile not recognized in backup',
+        RestoreUserErrorCodes.MalformedBackup
+      );
     }
 
     // Delete all previous records
@@ -635,6 +661,21 @@ class BackupManager {
           kind: c.kind,
         })),
         skipDuplicates: true,
+      });
+    }
+    // endregion
+
+    // region Financial profile
+    if (profile) {
+      const oldCategoryId = profile.salary_category_id;
+      await dbClient.user_financial_profile.create({
+        data: {
+          users_user_id: userId,
+          salary_category_id:
+            oldCategoryId != null ? (categoryIdMap.get(BigInt(oldCategoryId)) ?? null) : null,
+          salary_cutoff_day: profile.salary_cutoff_day,
+          updated_at: BigInt(profile.updated_at),
+        },
       });
     }
     // endregion

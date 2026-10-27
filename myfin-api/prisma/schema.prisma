@@ -266,6 +266,7 @@ model users {
   goals                      goals[]
   import_instrument_mappings import_instrument_mappings[]
   payee_classifications      payee_classifications[]
+  user_financial_profile     user_financial_profile?
   currency                   String                       @default("EUR")
 }
 
@@ -361,4 +362,12 @@ model payee_classifications {
   users             users  @relation(fields: [users_user_id], references: [user_id], onDelete: Cascade)
 
   @@unique([users_user_id, payee_key])
+}
+
+model user_financial_profile {
+  users_user_id      BigInt  @id
+  salary_category_id BigInt?
+  salary_cutoff_day  Int     @default(25)
+  updated_at         BigInt
+  users              users   @relation(fields: [users_user_id], references: [user_id], onDelete: Cascade)
 }

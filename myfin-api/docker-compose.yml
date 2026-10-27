@@ -41,6 +41,7 @@ services:
       - SMTP_FROM=
       # Application Configuration
       - PORT=3001
+      - TZ=Asia/Kolkata
       - LOGGING=true
       - BYPASS_SESSION_CHECK=false
       - ENABLE_USER_SIGNUP=true

@@ -533,6 +533,11 @@ const userService = {
           })
         );
 
+        // Delete financial profile (references a category)
+        await prismaTx.user_financial_profile.deleteMany({
+          where: { users_user_id: userId },
+        });
+
         // Delete import instrument mappings (they reference accounts)
         await prismaTx.import_instrument_mappings.deleteMany({
           where: { users_user_id: userId },

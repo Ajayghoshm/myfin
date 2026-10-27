@@ -26,6 +26,7 @@ import Utilities from './Utilities.tsx';
 import ChangePasswordForm from './ChangePasswordForm.tsx';
 import { useUserData } from '../../providers/UserProvider.tsx';
 import ChangeCurrencyForm from './ChangeCurrencyForm.tsx';
+import FinancialProfileForm from './FinancialProfileForm.tsx';
 import {
   MY_FIN_THEME_LABEL_KEYS,
   MY_FIN_THEME_NAMES,
@@ -175,6 +176,37 @@ const Profile = () => {
             </AccordionSummary>
             <AccordionDetails>
               <ChangeCurrencyForm />
+            </AccordionDetails>
+          </Accordion>
+          {/* Financial profile */}
+          <Accordion
+            sx={{
+              width: '100%',
+              maxWidth: '700px',
+              backgroundColor:
+                theme.palette.mode === 'dark'
+                  ? 'background.paper'
+                  : 'background.default',
+            }}
+          >
+            <AccordionSummary
+              expandIcon={<ExpandMoreIcon />}
+              aria-controls="financial-profile-content"
+              id="financial-profile-header"
+            >
+              <Grid container size={12}>
+                <Grid spacing={1} size={6}>
+                  <Typography>{t('profile.financialProfile')}</Typography>
+                </Grid>
+                <Grid>
+                  <Typography sx={{ color: 'text.secondary' }}>
+                    {t('profile.financialProfileStrapline')}
+                  </Typography>
+                </Grid>
+              </Grid>
+            </AccordionSummary>
+            <AccordionDetails>
+              <FinancialProfileForm />
             </AccordionDetails>
           </Accordion>
           {/* Change theme */}
