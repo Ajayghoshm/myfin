@@ -94,6 +94,8 @@ export async function writeOff(
   realBalance: number
 ): Promise<bigint> {
   return performDatabaseRequest(async (prismaTx) => {
+    // Serialise concurrent write-offs on this account: the balance must be read under the lock.
+    await prismaTx.$queryRaw`SELECT account_id FROM accounts WHERE account_id = ${accountId} FOR UPDATE`;
     const account = await ownedAccount(userId, accountId, prismaTx);
     const real = toCents(realBalance);
     const myfin = comparableCents(account);
@@ -118,6 +120,7 @@ export async function writeOff(
           users_user_id: userId,
           name: ADJUSTMENT_CATEGORY_NAME,
           type: ADJUSTMENT_CATEGORY_TYPE,
+          exclude_from_budgets: 1,
         },
       });
     }

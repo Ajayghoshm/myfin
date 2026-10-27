@@ -10,6 +10,14 @@ import { getMonthInsights } from '../../src/services/insights/insightsService.js
 import BalanceCheckService from '../../src/services/balanceCheckService.js';
 import DateTimeUtils from '../../src/utils/DateTimeUtils.js';
 
+/** Start of the previous IST month, so the opening row never falls in the current month. */
+const openingDate = () => {
+  const now = new Date(DateTimeUtils.getCurrentUnixTimestamp() * 1000 + 5.5 * 3600_000);
+  const m = now.getUTCMonth() + 1;
+  const prev = m === 1 ? { year: now.getUTCFullYear() - 1, month: 12 } : { year: now.getUTCFullYear(), month: m - 1 };
+  return monthRangeIST(prev).from + 3600;
+};
+
 /** Creates the account at 0 and moves it to `balance` with a plain transaction, so snapshots stay consistent. */
 const mkAccount = async (uid: bigint, name: string, type: string, balance: number) => {
   const account = await AccountService.createAccount(
@@ -31,7 +39,7 @@ const mkAccount = async (uid: bigint, name: string, type: string, balance: numbe
       description: 'Opening',
       account_to_id: balance > 0 ? account.account_id : undefined,
       account_from_id: balance < 0 ? account.account_id : undefined,
-      date_timestamp: DateTimeUtils.getCurrentUnixTimestamp() - 30 * 86400,
+      date_timestamp: openingDate(),
       is_essential: false,
     });
   }
@@ -73,7 +81,7 @@ describe('Balance check', () => {
       accounts_account_from_id: bank.account_id,
     });
     const cat = await prisma.categories.findFirst({ where: { users_user_id: uid, name: 'Balance adjustment' } });
-    expect(cat).toMatchObject({ type: 'M' });
+    expect(cat).toMatchObject({ type: 'M', exclude_from_budgets: 1 });
     expect(trx.categories_category_id).toBe(cat?.category_id);
     const check = await prisma.balance_checks.findFirstOrThrow({ where: { accounts_account_id: bank.account_id }, orderBy: { check_id: 'desc' } });
     expect(check).toMatchObject({ result: 'adjusted', adjustment_transaction_id: trxId });

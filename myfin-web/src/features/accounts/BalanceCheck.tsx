@@ -12,7 +12,7 @@ import {
   useTheme,
 } from '@mui/material';
 import { useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NumericFormat } from 'react-number-format';
 import GenericConfirmationDialog from '../../components/GenericConfirmationDialog.tsx';
@@ -30,6 +30,7 @@ import {
 import { BalanceCheckRow } from '../../services/account/accountServices.ts';
 import { AccountType } from '../../services/auth/authServices.ts';
 import { TransactionType } from '../../services/trx/trxServices.ts';
+import { useUserData } from '../../providers/UserProvider.tsx';
 import { useFormatNumberAsCurrency } from '../../utils/textHooks.ts';
 import AddEditTransactionDialog from '../transactions/AddEditTransactionDialog.tsx';
 
@@ -60,6 +61,7 @@ const BalanceCheck = () => {
   const [addFor, setAddFor] = useState<BalanceCheckRow | null>(null);
   const [writeOffFor, setWriteOffFor] = useState<BalanceCheckRow | null>(null);
 
+  const { userAccounts } = useUserData();
   const rows = request.data ?? [];
   const failed = () =>
     snackbar.showSnackbar(
@@ -72,18 +74,27 @@ const BalanceCheck = () => {
     ? gapOf(writeOffFor, inputs[writeOffFor.account_id] ?? 0)
     : 0;
 
+  // Stable object: the dialog resets its form whenever this identity changes.
+  const prefill = useMemo(() => {
+    if (!addFor) return undefined;
+    const account = userAccounts?.find(
+      (a) => String(a.account_id) === addFor.account_id,
+    );
+    return {
+      type: missingTransactionType(addFor, addGap),
+      amount: Math.abs(addGap),
+      accountId: account ? account.account_id : BigInt(addFor.account_id),
+      accountName: addFor.name,
+    };
+  }, [addFor, addGap, userAccounts]);
+
   return (
     <Paper elevation={0} sx={{ p: theme.spacing(2), m: theme.spacing(2) }}>
       {addFor && (
         <AddEditTransactionDialog
           isOpen
           transaction={null}
-          prefill={{
-            type: missingTransactionType(addFor, addGap),
-            amount: Math.abs(addGap),
-            accountId: BigInt(addFor.account_id),
-            accountName: addFor.name,
-          }}
+          prefill={prefill}
           onClose={() => setAddFor(null)}
           onNegativeClick={() => setAddFor(null)}
           onPositiveClick={() => {
@@ -223,6 +234,7 @@ const BalanceCheck = () => {
                         <Button
                           size="small"
                           color="warning"
+                          disabled={writeOff.isPending}
                           onClick={() => setWriteOffFor(row)}
                         >
                           {t('accounts.writeOff')}
