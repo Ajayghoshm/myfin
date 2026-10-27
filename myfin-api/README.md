@@ -80,6 +80,20 @@ if you want to deploy this solution to your own server.
 [Here](https://github.com/afaneca/myfin-api/wiki/Getting-started) you can find the full documentation on the
 first steps to get started.
 
+# 🔐 Encrypted backups to a synced folder
+
+Set `BACKUP_DIR` to a folder the API can write to. In **Profile > Encrypted backups** you can then back up with a password
+(AES-256-GCM, key derived with scrypt) and restore later; the newest 30 files (`myfin-backup-YYYY-MM-DD-HHmm.myfin`) are kept.
+**A forgotten password means the backup cannot be restored.** The password is never stored.
+
+Point the folder at something your cloud client already syncs:
+
+- **macOS** (Google Drive for desktop): `~/Library/CloudStorage/GoogleDrive-<you>/My Drive/MyFin backups`
+- **Windows** (Google Drive for desktop): `G:\My Drive\MyFin backups`
+- **Linux**: Google Drive for desktop is not available. Use a Dropbox folder, or mount a remote with
+  [rclone](https://rclone.org/) (`rclone mount gdrive:"MyFin backups" ~/myfin-backups`, or `rclone sync` the folder on a schedule).
+- **Docker**: map the host folder to a path in the container and set `BACKUP_DIR` to that path (see the commented lines in `docker-compose.yml`).
+
 # 🙋‍♂️ Contributing
 
 This was never meant to be anything other than a little passion project of mine. However, if you're interested in taking

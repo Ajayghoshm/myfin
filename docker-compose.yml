@@ -44,6 +44,11 @@ services:
       - ENABLE_USER_SIGNUP=true
       # Reverse proxy trust for Express (1 = trust the first proxy hop)
       - TRUST_PROXY=1
+      # Encrypted backups folder (path inside the container; map it below)
+      # - BACKUP_DIR=/backups
+    # Map a host folder synced with Google Drive for desktop / Dropbox / rclone, then enable BACKUP_DIR above:
+    # volumes:
+    #   - "$HOME/Library/CloudStorage/GoogleDrive-you@gmail.com/My Drive/MyFin backups:/backups"
     depends_on:
       db:
         condition: service_healthy

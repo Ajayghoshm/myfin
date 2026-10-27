@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import joi from 'joi';
 import { MYFIN } from '../consts.js';
 import APIError from '../errorHandling/apiError.js';
+import FolderBackupService from '../services/folderBackupService.js';
 import UserService from '../services/userService.js';
 import Logger from '../utils/Logger.js';
 import { BackupData } from '../utils/backupManager.js';
@@ -220,6 +221,47 @@ const restoreUser = async (req: Request, res: Response, next: NextFunction) => {
   }
 };
 
+const listFolderBackups = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await CommonsController.checkAuthSessionValidity(req);
+    const status = await FolderBackupService.status();
+    res.json({ ...status, backups: status.available ? await FolderBackupService.list() : [] });
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
+const folderBackupSchema = joi.object({
+  password: joi.string().min(8).required(),
+});
+const createFolderBackup = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    const data = await folderBackupSchema.validateAsync(req.body);
+    res.json(await FolderBackupService.create(sessionData.userId, data.password));
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
+const restoreFolderBackupSchema = joi.object({
+  file: joi.string().required(),
+  password: joi.string().min(8).required(),
+});
+const restoreFolderBackup = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    const data = await restoreFolderBackupSchema.validateAsync(req.body);
+    await FolderBackupService.restore(sessionData.userId, data.file, data.password);
+    res.json('Restoration was successful!');
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
 export default {
   createOne,
   attemptLogin,
@@ -232,4 +274,7 @@ export default {
   changeCurrency,
   backupUser,
   restoreUser,
+  listFolderBackups,
+  createFolderBackup,
+  restoreFolderBackup,
 };

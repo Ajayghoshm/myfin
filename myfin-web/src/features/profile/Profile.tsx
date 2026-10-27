@@ -27,6 +27,7 @@ import ChangePasswordForm from './ChangePasswordForm.tsx';
 import { useUserData } from '../../providers/UserProvider.tsx';
 import ChangeCurrencyForm from './ChangeCurrencyForm.tsx';
 import FinancialProfileForm from './FinancialProfileForm.tsx';
+import FolderBackups from './FolderBackups.tsx';
 import {
   MY_FIN_THEME_LABEL_KEYS,
   MY_FIN_THEME_NAMES,
@@ -324,6 +325,37 @@ const Profile = () => {
             </AccordionSummary>
             <AccordionDetails>
               <Utilities />
+            </AccordionDetails>
+          </Accordion>
+          {/* Folder backups */}
+          <Accordion
+            sx={{
+              width: '100%',
+              maxWidth: '700px',
+              backgroundColor:
+                theme.palette.mode === 'dark'
+                  ? 'background.paper'
+                  : 'background.default',
+            }}
+          >
+            <AccordionSummary
+              expandIcon={<ExpandMoreIcon />}
+              aria-controls="folder-backups-content"
+              id="folder-backups-header"
+            >
+              <Grid container size={12}>
+                <Grid spacing={1} size={6}>
+                  <Typography>{t('profile.folderBackups.title')}</Typography>
+                </Grid>
+                <Grid>
+                  <Typography sx={{ color: 'text.secondary' }}>
+                    {t('profile.folderBackups.strapLine')}
+                  </Typography>
+                </Grid>
+              </Grid>
+            </AccordionSummary>
+            <AccordionDetails>
+              <FolderBackups />
             </AccordionDetails>
           </Accordion>
           {/* Stats for nerds */}
