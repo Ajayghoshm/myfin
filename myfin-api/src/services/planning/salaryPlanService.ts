@@ -4,7 +4,13 @@ import { MYFIN } from '../../consts.js';
 import APIError from '../../errorHandling/apiError.js';
 import { type AccountRole, assertEarmarkAllowed, emergencyAccountIds } from '../earmarkService.js';
 import { getFinancialProfile } from '../financialProfileService.js';
-import { cutoffOf, effectiveMonthOf, formatYearMonth, salaryRuleFor } from '../insights/analyticsRules.js';
+import {
+  countingRowWhere,
+  cutoffOf,
+  effectiveMonthOf,
+  formatYearMonth,
+  salaryRuleFor,
+} from '../insights/analyticsRules.js';
 import { IST_OFFSET_SECONDS, type YearMonth, shiftMonth } from '../insights/insightsPrimitives.js';
 import { typicalMonth } from '../insights/typicalMonth.js';
 import { emergencyTopupGapCents } from './emergencyFundService.js';
@@ -199,6 +205,8 @@ export async function currentSalaryPlan(userId: bigint, now: number = nowSeconds
       categories_category_id: rule.salaryCategoryId,
       date_timestamp: { gte: now - TRIGGER_WINDOW_DAYS * DAY, lte: now },
       accounts_transactions_accounts_account_to_idToaccounts: { users_user_id: userId },
+      // Only incomes that count (no write-offs, no money borrowed or repaid)
+      ...countingRowWhere,
     },
     orderBy: [{ date_timestamp: 'asc' }, { transaction_id: 'asc' }],
   });

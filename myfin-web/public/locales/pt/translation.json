@@ -976,6 +976,8 @@
     "notNow": "Agora não"
   },
   "debts": {
+    "loading": "A carregar…",
+    "loadFailed": "Não foi possível carregar as dívidas. Tente novamente.",
     "title": "Dívidas",
     "subtitle": "Dinheiro que emprestou ou pediu emprestado, e quanto ainda está em dívida.",
     "tabPeople": "Pessoas",

@@ -135,7 +135,7 @@ export async function listYearlyCosts(userId: bigint): Promise<YearlyCost[]> {
 }
 
 /** The user's own expense transaction; throws 401 / 400 otherwise. */
-async function assertLinkable(userId: bigint, transactionId: bigint) {
+async function assertLinkable(userId: bigint, transactionId: bigint, linking = true) {
   const trx = await prisma.transactions.findFirst({
     where: {
       transaction_id: transactionId,
@@ -144,10 +144,13 @@ async function assertLinkable(userId: bigint, transactionId: bigint) {
         { accounts_transactions_accounts_account_to_idToaccounts: { users_user_id: userId } },
       ],
     },
-    select: { type: true },
+    select: { type: true, debt_id: true },
   });
   if (!trx) throw APIError.notAuthorized();
   if (trx.type !== MYFIN.TRX_TYPES.EXPENSE) throw APIError.badRequest('Only expense transactions can be linked.');
+  // A row is either a yearly cost or a debt, never both
+  if (linking && trx.debt_id != null)
+    throw APIError.badRequest('This transaction is linked to a debt. Unlink it from the debt first.');
 }
 
 export async function createYearlyCost(
@@ -354,7 +357,7 @@ export async function linkTransaction(
   transactionId: bigint,
   yearlyCostId: bigint | null
 ): Promise<void> {
-  await assertLinkable(userId, transactionId);
+  await assertLinkable(userId, transactionId, yearlyCostId != null);
   if (yearlyCostId != null) await ownedCost(userId, yearlyCostId);
   await prisma.transactions.update({
     where: { transaction_id: transactionId },

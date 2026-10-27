@@ -902,6 +902,8 @@
     "notNow": "Pas maintenant"
   },
   "debts": {
+    "loading": "Chargement…",
+    "loadFailed": "Impossible de charger vos dettes. Réessayez.",
     "title": "Dettes",
     "subtitle": "L’argent prêté ou emprunté, et ce qui reste dû.",
     "tabPeople": "Personnes",

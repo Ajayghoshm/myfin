@@ -9,15 +9,17 @@ import {
   QUERY_KEY_GET_SMALL_SPENDS,
 } from '../insights/insightsHooks.ts';
 import { QUERY_KEY_GET_TRANSACTIONS } from '../trx/trxHooks.ts';
+import {
+  QUERY_KEY_GET_DEBTS,
+  QUERY_KEY_GET_REPAYMENT_SUGGESTIONS,
+} from './debtQueryKeys.ts';
 import debtServices, {
   DebtUpdateInput,
   PeopleDebtInput,
   RepaymentInput,
 } from './debtServices.ts';
 
-export const QUERY_KEY_GET_DEBTS = 'QUERY_KEY_GET_DEBTS';
-export const QUERY_KEY_GET_REPAYMENT_SUGGESTIONS =
-  'QUERY_KEY_GET_REPAYMENT_SUGGESTIONS';
+export { QUERY_KEY_GET_DEBTS, QUERY_KEY_GET_REPAYMENT_SUGGESTIONS };
 
 // Linking rows to debts changes what counts as spending and income
 const invalidateAll = () => {

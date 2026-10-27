@@ -974,6 +974,8 @@
     "notNow": "Not now"
   },
   "debts": {
+    "loading": "Loading…",
+    "loadFailed": "Could not load your debts. Try again.",
     "title": "Debts",
     "subtitle": "Money you lent or borrowed, and how much is still owed.",
     "tabPeople": "People",

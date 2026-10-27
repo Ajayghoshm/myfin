@@ -11,6 +11,15 @@ const DAY_SECONDS = 86_400;
  */
 export const countsForAnalyticsSql: Prisma.Sql = Prisma.sql`transactions.type IN ('E','I') AND transactions.is_adjustment = false AND (transactions.debt_role IS NULL OR transactions.debt_role = 'interest')`;
 
+/**
+ * Prisma `where` mirror of `countsForAnalyticsSql` minus the type check (callers pick E or I):
+ * not an adjustment and no debt role other than interest.
+ */
+export const countingRowWhere = {
+  is_adjustment: false,
+  OR: [{ debt_role: null }, { debt_role: 'interest' }],
+} satisfies Prisma.transactionsWhereInput;
+
 export type SalaryRule = { salaryCategoryId: bigint | null; cutoffDay: number };
 
 /** `cutoffDay` is unused while `salaryCategoryId` is null. */

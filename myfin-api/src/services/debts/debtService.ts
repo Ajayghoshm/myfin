@@ -92,8 +92,16 @@ const nowSeconds = () => Math.floor(Date.now() / 1000);
 const cents = (currency: number) => ConvertUtils.convertFloatToBigInteger(currency);
 const currency = (c: bigint | number) => ConvertUtils.convertBigIntegerToFloat(BigInt(c));
 
-/** Hand-made counterparty key: the name upper-cased with spaces collapsed (like `payeeKeySql`). */
-export const nameKey = (name: string) => name.trim().replace(/\s+/g, ' ').toUpperCase();
+/**
+ * Hand-made counterparty key, built exactly like `payeeKeySql`: upper-cased, spaces collapsed and
+ * the PAID TO / RECEIVED FROM / REQUESTED BY / PAYMENT TO prefix removed.
+ */
+export const nameKey = (name: string) =>
+  name
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase()
+    .replace(/^(PAID TO|RECEIVED FROM|REQUESTED BY|PAYMENT TO) /, '');
 
 /** principal − Σ principal_part, in cents (may be ≤ 0 once over-repaid). */
 export function outstandingCents(
@@ -131,10 +139,12 @@ async function ownedTransaction(userId: bigint, transactionId: bigint, db: DbCli
       date_timestamp: bigint;
       is_adjustment: unknown;
       debt_id: bigint | null;
+      yearly_cost_id: bigint | null;
       payee_key: string | null;
     }>
   >`SELECT transactions.transaction_id, transactions.type, transactions.amount,
            transactions.date_timestamp, transactions.is_adjustment, transactions.debt_id,
+           transactions.yearly_cost_id,
            ${payeeKeySql} AS payee_key
     ${ownershipSql(userId)}
       AND transactions.transaction_id = ${transactionId}
@@ -143,13 +153,15 @@ async function ownedTransaction(userId: bigint, transactionId: bigint, db: DbCli
   const row = rows[0];
   if (Number(row.is_adjustment) === 1) throw APIError.badRequest('A balance adjustment cannot be linked to a debt.');
   if (row.debt_id != null) throw APIError.badRequest('This transaction is already linked to a debt.');
+  if (row.yearly_cost_id != null)
+    throw APIError.badRequest('This transaction is linked to a yearly cost. Unlink it from the yearly cost first.');
   return row;
 }
 
 /** Links a transaction to a debt, failing with 400 if another request linked it first. */
 async function linkTransaction(db: DbClient, transactionId: bigint, debtId: bigint, role: DebtRole) {
   const { count } = await db.transactions.updateMany({
-    where: { transaction_id: transactionId, debt_id: null },
+    where: { transaction_id: transactionId, debt_id: null, yearly_cost_id: null },
     data: { debt_id: debtId, debt_role: role },
   });
   if (count === 0) throw APIError.badRequest('This transaction is already linked to a debt.');
@@ -387,6 +399,11 @@ export async function deleteDebt(userId: bigint, debtId: bigint): Promise<void> 
   });
 }
 
+function assertNotBeforeStart(debt: DebtRow, date: number) {
+  if (date < Number(debt.start_date))
+    throw APIError.badRequest('A repayment cannot be dated before the entry started.');
+}
+
 /** A repayment: linked to a transaction (its amount and date), or manual (e.g. cash). */
 export async function addRepayment(userId: bigint, debtId: bigint, input: RepaymentInput): Promise<Debt> {
   const debt = await ownedDebt(userId, debtId);
@@ -401,6 +418,7 @@ export async function addRepayment(userId: bigint, debtId: bigint, input: Repaym
             ? 'A repayment of money lent must be an income.'
             : 'A repayment of money borrowed must be an expense.'
         );
+      assertNotBeforeStart(debt, Number(trx.date_timestamp));
       await linkTransaction(tx, trxId, debtId, 'repayment');
       await tx.debt_payments.create({
         data: {
@@ -415,6 +433,7 @@ export async function addRepayment(userId: bigint, debtId: bigint, input: Repaym
     } else {
       if (input.amount == null || !(input.amount > 0)) throw APIError.badRequest('amount must be positive.');
       if (input.date == null) throw APIError.badRequest('date is required.');
+      assertNotBeforeStart(debt, input.date);
       const amount = cents(input.amount);
       await tx.debt_payments.create({
         data: { debts_debt_id: debtId, date: input.date, amount, principal_part: amount, manual: true },
@@ -476,6 +495,34 @@ export async function repaymentSuggestions(userId: bigint, debtId: bigint): Prom
 }
 
 /**
+ * After a debt-linked transaction is edited (same prismaTx): an origin row (lend/borrow) sets the
+ * entry's principal and start date; a repayment row sets its payment's amount, principal part and
+ * date. Then the entry's status is refreshed. Other roles are left to their own flows.
+ */
+export async function syncEditedTransaction(
+  trx: { transaction_id: bigint; debt_id: bigint | null; debt_role: string | null },
+  amountCents: number | bigint,
+  date: number | bigint,
+  db: DbClient = prisma
+): Promise<void> {
+  if (trx.debt_id == null) return;
+  if (trx.debt_role === 'lend' || trx.debt_role === 'borrow') {
+    await db.debts.update({
+      where: { debt_id: trx.debt_id },
+      data: { principal: BigInt(amountCents), start_date: BigInt(date) },
+    });
+  } else if (trx.debt_role === 'repayment') {
+    await db.debt_payments.updateMany({
+      where: { debts_debt_id: trx.debt_id, transaction_id: trx.transaction_id },
+      data: { amount: BigInt(amountCents), principal_part: BigInt(amountCents), date: BigInt(date) },
+    });
+  } else {
+    return;
+  }
+  await refreshDebtStatus(trx.debt_id, db);
+}
+
+/**
  * Before transactions are deleted: drop repayments they backed (so they stop reducing what is
  * owed) and refresh those entries' status. Lend/borrow rows are unlinked by the FK.
  */
@@ -504,4 +551,5 @@ export default {
   repaymentSuggestions,
   refreshDebtStatus,
   forgetDeletedTransactions,
+  syncEditedTransaction,
 };

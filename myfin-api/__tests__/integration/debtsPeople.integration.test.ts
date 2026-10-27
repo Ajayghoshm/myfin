@@ -19,6 +19,13 @@ import { getMonthInsights } from '../../src/services/insights/insightsService.js
 import { monthRangeIST, type YearMonth } from '../../src/services/insights/insightsPrimitives.js';
 import TransactionService from '../../src/services/transactionService.js';
 import UserService from '../../src/services/userService.js';
+import { updateFinancialProfile } from '../../src/services/financialProfileService.js';
+import { currentSalaryPlan } from '../../src/services/planning/salaryPlanService.js';
+import {
+  createYearlyCost,
+  linkTransaction as linkYearlyCost,
+} from '../../src/services/planning/yearlyCostService.js';
+import BackupManager from '../../src/utils/backupManager.js';
 import { expectThrowErrorCode } from './utils/testUtils.js';
 
 const DAY = 86_400;
@@ -327,5 +334,116 @@ describe('debts: people (lent / borrowed)', () => {
     expect(String(repRow.debt_id)).toBe(lent.debt_id);
     expect(lent.payments[0].transaction_id).toBe(String(repRow.transaction_id));
     expect((await getMonthInsights(ctx.uid, OCT)).summary).toMatchObject({ spending: 0, income: 0 });
+  });
+
+  const edit = (id: bigint, type: string, amount: number, date: number, description: string) =>
+    TransactionService.updateTransaction(ctx.uid, {
+      new_amount: amount,
+      new_account_from_id: type === E ? ctx.bank.account_id : null,
+      new_account_to_id: type === I ? ctx.bank.account_id : null,
+      new_entity_id: null,
+      new_category_id: null,
+      new_type: type,
+      new_description: description,
+      new_date_timestamp: date,
+      new_is_essential: false,
+      tags: [],
+      is_split: false,
+      split_tags: null,
+      transaction_id: id,
+    } as never);
+
+  test('editing linked transactions updates the debt (ruling D2)', async () => {
+    const paid = await ctx.add(E, 'PAID TO RAHUL', 5000, 5);
+    const debt = await createPeopleDebt(ctx.uid, { kind: 'lent', name: 'Rahul', transaction_id: Number(paid) });
+    const back = await ctx.add(I, 'RECEIVED FROM RAHUL', 2000, 15);
+    await addRepayment(ctx.uid, BigInt(debt.debt_id), { transaction_id: Number(back) });
+
+    // Repayment edited up to the full amount: settles
+    await edit(back, I, 5000, at(OCT, 16), 'RECEIVED FROM RAHUL');
+    let d = (await listDebts(ctx.uid, NOW)).debts[0];
+    expect(d).toMatchObject({ outstanding: 0, status: 'settled' });
+    expect(d.payments[0]).toMatchObject({ amount: 5000, principal_part: 5000, date: at(OCT, 16) });
+
+    // Origin edited up: principal and start follow, entry re-opens
+    await edit(paid, E, 6000, at(OCT, 4), 'PAID TO RAHUL');
+    d = (await listDebts(ctx.uid, NOW)).debts[0];
+    expect(d).toMatchObject({ principal: 6000, start_date: at(OCT, 4), outstanding: 1000, status: 'open' });
+  });
+
+  test('changing the type of a debt-linked transaction gives 400 (ruling D4)', async () => {
+    const paid = await ctx.add(E, 'PAID TO RAHUL', 5000, 5);
+    await createPeopleDebt(ctx.uid, { kind: 'lent', name: 'Rahul', transaction_id: Number(paid) });
+    await expectThrowErrorCode(() => edit(paid, I, 5000, at(OCT, 5), 'PAID TO RAHUL'), 400);
+    const row = await prisma.transactions.findUniqueOrThrow({ where: { transaction_id: paid } });
+    expect(row.type).toBe(E);
+  });
+
+  test('hand-made names drop UPI prefixes from the key', async () => {
+    const debt = await createPeopleDebt(ctx.uid, { kind: 'lent', name: 'Paid  to   Rahul', amount: 100, date: at(OCT, 1) });
+    expect(debt.counterparty_key).toBe('RAHUL');
+  });
+
+  test('a repayment dated before the entry started gives 400', async () => {
+    const debt = await createPeopleDebt(ctx.uid, { kind: 'lent', name: 'Rahul', amount: 1000, date: at(OCT, 10) });
+    await expectThrowErrorCode(
+      () => addRepayment(ctx.uid, BigInt(debt.debt_id), { amount: 100, date: at(OCT, 5) }),
+      400
+    );
+    const early = await ctx.add(I, 'RECEIVED FROM RAHUL', 100, 5);
+    await expectThrowErrorCode(
+      () => addRepayment(ctx.uid, BigInt(debt.debt_id), { transaction_id: Number(early) }),
+      400
+    );
+  });
+
+  test('a row is never both a yearly cost and a debt', async () => {
+    const cost = await createYearlyCost(ctx.uid, { name: 'Insurance', amount: 5000, due_month: 10 });
+    const yearlyRow = await ctx.add(E, 'PAID TO RAHUL', 5000, 5);
+    await linkYearlyCost(ctx.uid, yearlyRow, BigInt(cost.yearly_cost_id));
+    await expectThrowErrorCode(
+      () => createPeopleDebt(ctx.uid, { kind: 'lent', name: 'Rahul', transaction_id: Number(yearlyRow) }),
+      400
+    );
+    const lentRow = await ctx.add(E, 'PAID TO RAHUL', 3000, 6);
+    await createPeopleDebt(ctx.uid, { kind: 'lent', name: 'Rahul', transaction_id: Number(lentRow) });
+    await expectThrowErrorCode(() => linkYearlyCost(ctx.uid, lentRow, BigInt(cost.yearly_cost_id)), 400);
+
+    const borrowed = await createPeopleDebt(ctx.uid, { kind: 'borrowed', name: 'Amit', amount: 1000, date: at(OCT, 1) });
+    const cost2 = await createYearlyCost(ctx.uid, { name: 'Club', amount: 1000, due_month: 10 });
+    const paidAmit = await ctx.add(E, 'PAID TO AMIT', 1000, 7);
+    await linkYearlyCost(ctx.uid, paidAmit, BigInt(cost2.yearly_cost_id));
+    await expectThrowErrorCode(
+      () => addRepayment(ctx.uid, BigInt(borrowed.debt_id), { transaction_id: Number(paidAmit) }),
+      400
+    );
+  });
+
+  test('salary plan ignores a salary-category income that is money borrowed', async () => {
+    const salaryCat = await prisma.categories.create({ data: { name: 'Salary', type: I, users_user_id: ctx.uid } });
+    await updateFinancialProfile(ctx.uid, { salary_category_id: Number(salaryCat.category_id) });
+    await TransactionService.createTransaction(ctx.uid, {
+      account_to_id: ctx.bank.account_id,
+      amount: 40000,
+      type: I,
+      description: 'RECEIVED FROM AMIT',
+      date_timestamp: at({ year: 2026, month: 11 }, 3),
+      is_essential: false,
+      category_id: salaryCat.category_id,
+    } as never);
+    const row = await prisma.transactions.findFirstOrThrow({ orderBy: { transaction_id: 'desc' } });
+    expect((await currentSalaryPlan(ctx.uid, NOW)).state).not.toBe('none');
+    await createPeopleDebt(ctx.uid, { kind: 'borrowed', name: 'Amit', transaction_id: Number(row.transaction_id) });
+    expect((await currentSalaryPlan(ctx.uid, NOW)).state).toBe('none');
+  });
+
+  test('restore refuses an unknown debt_role with 406', async () => {
+    const paid = await ctx.add(E, 'PAID TO RAHUL', 5000, 5);
+    await createPeopleDebt(ctx.uid, { kind: 'lent', name: 'Rahul', transaction_id: Number(paid) });
+    const backup = JSON.parse(JSON.stringify(await BackupManager.createBackup(ctx.uid)));
+    backup.transactions[0].debt_role = 'gift';
+    await expectThrowErrorCode(() => UserService.restoreUser(ctx.uid, backup), 406);
+    // Nothing was wiped
+    expect(await prisma.debts.count({ where: { users_user_id: ctx.uid } })).toBe(1);
   });
 });

@@ -466,6 +466,15 @@ class BackupManager {
       }
     }
     const debtIdsInBackup = new Set(debts.map((d) => String(d.debt_id)));
+    const DEBT_ROLES = ['lend', 'borrow', 'repayment', 'disbursement', 'interest', 'principal'];
+    for (const trx of data.transactions ?? []) {
+      if (trx?.debt_role != null && !DEBT_ROLES.includes(trx.debt_role)) {
+        throw APIError.notAcceptable(
+          `Debt role not recognized for transaction #${trx.transaction_id}`,
+          RestoreUserErrorCodes.MalformedBackup
+        );
+      }
+    }
     const debtPayments = data.debt_payments ?? [];
     for (const p of debtPayments) {
       if (

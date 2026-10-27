@@ -17,6 +17,10 @@ import {
   QUERY_KEY_GET_SAFE_TO_SPEND,
 } from '../insights/insightsHooks.ts';
 import { QUERY_KEY_GET_SALARY_PLAN } from '../salaryPlan/salaryPlanHooks.ts';
+import {
+  QUERY_KEY_GET_DEBTS,
+  QUERY_KEY_GET_REPAYMENT_SUGGESTIONS,
+} from '../debts/debtQueryKeys.ts';
 import { useUserData } from '../../providers/UserProvider.tsx';
 
 export const QUERY_KEY_GET_TRANSACTIONS = 'QUERY_KEY_GET_TRANSACTIONS';
@@ -37,12 +41,14 @@ const MUTATION_KEY_AUTO_CATEGORIZE_TRANSACTION = [
 const QUERY_KEY_GET_TRX_FOR_CATEGORY_IN_MONTH =
   'QUERY_KEY_GET_TRX_FOR_CATEGORY_IN_MONTH';
 
-/** Planning figures that depend on real transactions. */
+/** Planning figures (and debts, whose linked rows can change) that depend on real transactions. */
 function invalidatePlanningFigures() {
   for (const key of [
     QUERY_KEY_GET_SAFE_TO_SPEND,
     QUERY_KEY_GET_SALARY_PLAN,
     QUERY_KEY_GET_EMERGENCY_FUND,
+    QUERY_KEY_GET_DEBTS,
+    QUERY_KEY_GET_REPAYMENT_SUGGESTIONS,
   ])
     void queryClient.invalidateQueries({ queryKey: [key] });
 }

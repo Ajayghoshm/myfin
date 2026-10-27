@@ -20,7 +20,7 @@ import {
   formatYearMonth,
 } from './insights/analyticsRules.js';
 import { type YearMonth, dayStartIST, payeeKeySql } from './insights/insightsPrimitives.js';
-import { forgetDeletedTransactions } from './debts/debtService.js';
+import { forgetDeletedTransactions, syncEditedTransaction } from './debts/debtService.js';
 
 const getTransactionsForUser = async (
   userId: bigint,
@@ -682,6 +682,11 @@ const updateTransaction = async (
     });
 
     const oldType = outdatedTrx.type;
+    // A debt row's type decides its meaning (lent vs repaid): it must be unlinked before changing
+    if (outdatedTrx.debt_id != null && trx.new_type !== oldType)
+      throw APIError.badRequest(
+        'This transaction is linked to a debt. Unlink it from the debt first to change its type.'
+      );
     const oldTimestamp = outdatedTrx.date_timestamp;
     const oldAccountTo = outdatedTrx.accounts_account_to_id;
     const oldAccountFrom = outdatedTrx.accounts_account_from_id;
@@ -775,6 +780,8 @@ const updateTransaction = async (
         is_essential: trx.new_is_essential,
       },
     });
+    // Keep the linked debt (principal or repayment) in step with the edited amount and date
+    await syncEditedTransaction(outdatedTrx, trx.new_amount, trx.new_date_timestamp, prismaTx);
 
     await UserService.setupLastUpdateTimestamp(
       userId,

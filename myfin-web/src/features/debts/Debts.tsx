@@ -1,6 +1,8 @@
+import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Tab from '@mui/material/Tab';
 import Tabs from '@mui/material/Tabs';
+import Typography from '@mui/material/Typography';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import PageHeader from '../../components/PageHeader.tsx';
@@ -14,9 +16,7 @@ export enum DebtsTab {
 const Debts = () => {
   const { t } = useTranslation();
   const [tab, setTab] = useState<DebtsTab>(DebtsTab.People);
-  const debtsRequest = useGetDebts();
-  const debts = debtsRequest.data?.debts ?? [];
-  const totals = debtsRequest.data?.totals ?? { owed_to_you: 0, you_owe: 0 };
+  const { data, isLoading, isError } = useGetDebts();
 
   return (
     <Box>
@@ -30,7 +30,13 @@ const Debts = () => {
       >
         <Tab label={t('debts.tabPeople')} value={DebtsTab.People} />
       </Tabs>
-      {tab === DebtsTab.People && <PeopleTab debts={debts} totals={totals} />}
+      {isError && <Alert severity="error">{t('debts.loadFailed')}</Alert>}
+      {isLoading && !data && (
+        <Typography color="text.secondary">{t('debts.loading')}</Typography>
+      )}
+      {data && tab === DebtsTab.People && (
+        <PeopleTab debts={data.debts} totals={data.totals} />
+      )}
     </Box>
   );
 };
