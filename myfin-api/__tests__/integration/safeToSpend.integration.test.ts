@@ -10,7 +10,7 @@ import { createYearlyCost } from '../../src/services/planning/yearlyCostService.
 import { safeToSpend } from '../../src/services/planning/safeToSpendService.js';
 import { salaryRuleFor } from '../../src/services/insights/analyticsRules.js';
 import { toTransactionFilter } from '../../src/controllers/transactionController.js';
-import { listPlanned, markDone } from '../../src/services/planning/plannedTransactionService.js';
+import { listPlanned, markDone, skip } from '../../src/services/planning/plannedTransactionService.js';
 import { confirmSalaryPlan } from '../../src/services/planning/salaryPlanService.js';
 
 const DAY = 86_400;
@@ -253,5 +253,21 @@ describe('safe to spend with a salary plan (late salary)', () => {
     expect(r.yearly_setaside).toBe(0);
     expect(r.yearly_deducted).toBe(0);
     expect(r.safe_to_spend).toBe(withoutPlan.safe_to_spend + 1000);
+  });
+
+  test('B8: a skipped plan bucket is no longer reserved; money already moved still deducts', async () => {
+    const ctx = await salarySetup();
+    await ctx.confirm();
+    const before = await safeToSpend(ctx.uid, NOW);
+    expect(before.savings_deducted).toBe(20000);
+    const savingsRow = (await listPlanned(ctx.uid)).find((p) => p.bucket === 'savings')!;
+    await skip(ctx.uid, BigInt(savingsRow.planned_id));
+    const r = await safeToSpend(ctx.uid, NOW);
+    expect(r).toMatchObject({ savings_target: 0, savings_deducted: 0 });
+    expect(r.safe_to_spend).toBe(before.safe_to_spend + 20000);
+    // A manual transfer after skipping still counts as set aside
+    const savingsAcc = await prisma.accounts.findFirstOrThrow({ where: { users_user_id: ctx.uid, name: 'Savings' } });
+    await ctx.add({ type: T, amount: 5000, ym: NOV, day: 6, description: 'To savings', to: savingsAcc.account_id });
+    expect((await safeToSpend(ctx.uid, NOW)).savings_deducted).toBe(5000);
   });
 });

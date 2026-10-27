@@ -32,7 +32,7 @@ export type SafeToSpend = {
 
 const DAY = 86_400;
 
-type StoredBucket = { bucket: string; amount: number; account_to_id: string | null };
+type StoredBucket = { bucket: string; amount: number; account_to_id: string | null; state?: string };
 
 /** Bucket amounts (cents) and target accounts of the confirmed salary plan for `month` (YYYYMM), if any. */
 async function planBuckets(userId: bigint, month: number): Promise<Map<string, StoredBucket> | null> {
@@ -123,6 +123,12 @@ export async function safeToSpend(
       ? range
       : { from: cutoffOf(shiftMonth(ym, -1), rule), to: cutoffOf(ym, rule) };
   const plan = await planBuckets(userId, ym.year * 100 + ym.month);
+  // Ruling B8: a skipped bucket is not reserved (target 0); money already moved still deducts.
+  const planTarget = (bucket: string): number | undefined => {
+    const b = plan?.get(bucket);
+    if (!b) return undefined;
+    return b.state === 'skipped' ? 0 : b.amount;
+  };
   const planAccount = (bucket: string): bigint[] => {
     const id = plan?.get(bucket)?.account_to_id;
     return id == null ? [] : [BigInt(id)];
@@ -133,15 +139,15 @@ export async function safeToSpend(
   const sinkingAccount = await activeRoleAccount(userId, profile.sinking_fund_account_id);
   // Targets (ruling B6): the confirmed plan's bucket for this month when there is one, else the settings.
   const savingsTargetFull =
-    plan?.get('savings')?.amount ??
+    planTarget('savings') ??
     (profile.savings_target_mode === 'percent'
       ? Math.round((profile.savings_target_value * expectedIncome) / 100)
       : Math.round(profile.savings_target_value * 100));
-  const yearlyTarget = plan?.get('yearly')?.amount ?? yearlyMonthly;
+  const yearlyTarget = planTarget('yearly') ?? yearlyMonthly;
   // Same month basis as the salary plan (the effective month); here the cap is a percentage of the
   // expected income, while the plan uses a percentage of the salary itself.
   const emergencyTarget =
-    plan?.get('emergency')?.amount ??
+    planTarget('emergency') ??
     (gapCents > 0 ? Math.min(gapCents, Math.round((profile.emergency_topup_percent * expectedIncome) / 100)) : 0);
 
   const savings = setAside(
