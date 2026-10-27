@@ -1002,7 +1002,7 @@
     "loadError": "Não foi possível carregar estes dados.",
     "title": "Taxa de poupança",
     "headline": "Taxa de poupança: {{rate}}",
-    "target": "(meta {{target}} {{mark}})",
+    "target": "(meta {{target}}{{mark}})",
     "average": "média de 12 meses {{average}}",
     "vsLastMonth": "{{pts}} pp vs mês anterior",
     "sparkline": "Taxa de poupança nos últimos 12 meses"

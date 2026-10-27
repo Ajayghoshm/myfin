@@ -91,7 +91,7 @@ const SavingsRateCard = () => {
               <Typography component="span" variant="body1" sx={{ ml: 1 }}>
                 {t('savingsRate.target', {
                   target: fmt(target),
-                  mark: onTarget == null ? '' : onTarget ? '✓' : '✗',
+                  mark: onTarget == null ? '' : onTarget ? ' ✓' : ' ✗',
                 })}
               </Typography>
             )}

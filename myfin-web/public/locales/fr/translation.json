@@ -928,7 +928,7 @@
     "loadError": "Impossible de charger ces données.",
     "title": "Taux d'épargne",
     "headline": "Taux d'épargne : {{rate}}",
-    "target": "(objectif {{target}} {{mark}})",
+    "target": "(objectif {{target}}{{mark}})",
     "average": "moyenne sur 12 mois {{average}}",
     "vsLastMonth": "{{pts}} pts vs mois dernier",
     "sparkline": "Taux d'épargne sur les 12 derniers mois"

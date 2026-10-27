@@ -1000,7 +1000,7 @@
     "loadError": "Could not load this data.",
     "title": "Savings rate",
     "headline": "Savings rate: {{rate}}",
-    "target": "(target {{target}} {{mark}})",
+    "target": "(target {{target}}{{mark}})",
     "average": "12-month average {{average}}",
     "vsLastMonth": "{{pts}} pts vs last month",
     "sparkline": "Savings rate over the last 12 months"
