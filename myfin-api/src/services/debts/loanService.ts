@@ -1,15 +1,23 @@
-import type { Prisma } from '../../generated/prisma/client.js';
+import { Prisma } from '../../generated/prisma/client.js';
 import { prisma } from '../../config/prisma.js';
 import { MYFIN } from '../../consts.js';
 import APIError from '../../errorHandling/apiError.js';
 import ConvertUtils from '../../utils/convertUtils.js';
 import AccountService from '../accountService.js';
-import { IST_OFFSET_SECONDS, dayStartIST } from '../insights/insightsPrimitives.js';
 import { ownershipSql } from '../insights/typicalMonth.js';
 import TransactionService from '../transactionService.js';
 import { nameKey, refreshDebtStatus } from './debtService.js';
-import { type AccountRecalcs, addRecalc, recalcAccounts, undoLoanPayment } from './loanLedger.js';
-import { type ScheduleRow, emiFor, firstEmiDate, prepaymentWhatIf, schedule } from './loanMath.js';
+import {
+  type AccountRecalcs,
+  addRecalc,
+  dateEpoch,
+  loanSchedule,
+  recalcAccounts,
+  undoLoanPayment,
+} from './loanLedger.js';
+import { emiFor, prepaymentWhatIf } from './loanMath.js';
+
+export { loanSchedule };
 
 /**
  * Formal loans (debts.kind = 'loan'): a per-loan LOANAC account opened at −principal, an amortisation
@@ -74,7 +82,16 @@ export type Loan = {
   /** Date of the last scheduled EMI (YYYY-MM-DD). */
   end_date: string;
   next_due: { n: number; date: string; emi: number } | null;
+  /** The income the loan was paid out into, if linked. */
+  disbursement: TransactionRef | null;
   schedule: Installment[];
+};
+
+export type TransactionRef = {
+  transaction_id: string;
+  description: string;
+  amount: number;
+  date: number;
 };
 
 export type LoanInput = {
@@ -94,6 +111,9 @@ export type LoanInput = {
   disbursement_transaction_id?: number | string | bigint | null;
 };
 
+/** Expenses and incomes that may be linked are never on a loan or investment account. */
+const NOT_LOAN_OR_INVEST = [MYFIN.ACCOUNT_TYPES.LOAN, MYFIN.ACCOUNT_TYPES.INVESTING];
+
 export type MatchSuggestion = {
   n: number;
   transaction_id: string;
@@ -105,23 +125,6 @@ export type MatchSuggestion = {
 const nowSeconds = () => Math.floor(Date.now() / 1000);
 const cents = (amount: number) => ConvertUtils.convertFloatToBigInteger(amount);
 const currency = (c: bigint | number) => ConvertUtils.convertBigIntegerToFloat(BigInt(c));
-
-/** IST calendar parts of an epoch-seconds instant. */
-function istParts(epoch: number) {
-  const d = new Date((epoch + IST_OFFSET_SECONDS) * 1000);
-  return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate() };
-}
-
-const dateEpoch = (date: string) => dayStartIST(date) as number;
-
-/** The loan's schedule in cents: the first EMI is in the start date's IST month, on the EMI day. */
-export function loanSchedule(debt: DebtRow): ScheduleRow[] {
-  const { year, month } = istParts(Number(debt.start_date));
-  const day = debt.emi_day ?? 1;
-  const months = debt.tenure_months ?? 1;
-  const emi = debt.emi != null ? Number(debt.emi) : emiFor(Number(debt.principal), Number(debt.rate), months);
-  return schedule(Number(debt.principal), Number(debt.rate), months, emi, firstEmiDate(year, month, day), day);
-}
 
 async function ownedLoan(userId: bigint, debtId: bigint, db: Tx | typeof prisma = prisma) {
   const debt = await db.debts.findFirst({ where: { debt_id: debtId, users_user_id: userId } });
@@ -147,13 +150,22 @@ async function interestCategory(userId: bigint, tx: Tx) {
     where: { users_user_id: userId, name: INTEREST_CATEGORY_NAME, type: MYFIN.TRX_TYPES.EXPENSE },
   });
   if (found) return found.category_id;
-  const created = await tx.categories.create({
-    data: { users_user_id: userId, name: INTEREST_CATEGORY_NAME, type: MYFIN.TRX_TYPES.EXPENSE },
-  });
-  return created.category_id;
+  try {
+    const created = await tx.categories.create({
+      data: { users_user_id: userId, name: INTEREST_CATEGORY_NAME, type: MYFIN.TRX_TYPES.EXPENSE },
+    });
+    return created.category_id;
+  } catch (err) {
+    // Another request created it first (unique user/type/name): use that one
+    if ((err as { code?: string })?.code !== 'P2002') throw err;
+    const again = await tx.categories.findFirstOrThrow({
+      where: { users_user_id: userId, name: INTEREST_CATEGORY_NAME, type: MYFIN.TRX_TYPES.EXPENSE },
+    });
+    return again.category_id;
+  }
 }
 
-function toLoan(debt: DebtRow, payments: PaymentRow[], now: number): Loan {
+function toLoan(debt: DebtRow, payments: PaymentRow[], disbursement: TransactionRef | null, now: number): Loan {
   const rows = loanSchedule(debt);
   const byN = new Map(payments.filter((p) => p.installment_no != null).map((p) => [p.installment_no, p]));
   const missedBefore = now - MISSED_AFTER_DAYS * DAY;
@@ -199,23 +211,45 @@ function toLoan(debt: DebtRow, payments: PaymentRow[], now: number): Loan {
     missed_count: unpaid.filter((r) => r.status === 'missed').length,
     end_date: rows[rows.length - 1]?.date ?? '',
     next_due: next ? { n: next.n, date: next.date, emi: next.emi } : null,
+    disbursement,
     schedule,
   };
 }
 
+const toRef = (t: {
+  transaction_id: bigint;
+  description: string | null;
+  amount: bigint;
+  date_timestamp: bigint;
+}): TransactionRef => ({
+  transaction_id: t.transaction_id.toString(),
+  description: t.description ?? '',
+  amount: currency(t.amount),
+  date: Number(t.date_timestamp),
+});
+
 async function loansDto(rows: DebtRow[], now: number): Promise<Loan[]> {
   if (rows.length === 0) return [];
-  const payments = await prisma.debt_payments.findMany({
-    where: { debts_debt_id: { in: rows.map((r) => r.debt_id) } },
-    orderBy: [{ installment_no: 'asc' }, { payment_id: 'asc' }],
-  });
-  return rows.map((d) =>
-    toLoan(
+  const ids = rows.map((r) => r.debt_id);
+  const [payments, disbursements] = await Promise.all([
+    prisma.debt_payments.findMany({
+      where: { debts_debt_id: { in: ids } },
+      orderBy: [{ installment_no: 'asc' }, { payment_id: 'asc' }],
+    }),
+    prisma.transactions.findMany({
+      where: { debt_id: { in: ids }, debt_role: 'disbursement' },
+      orderBy: { transaction_id: 'asc' },
+    }),
+  ]);
+  return rows.map((d) => {
+    const disb = disbursements.find((t) => t.debt_id === d.debt_id);
+    return toLoan(
       d,
       payments.filter((p) => p.debts_debt_id === d.debt_id),
+      disb ? toRef(disb) : null,
       now
-    )
-  );
+    );
+  });
 }
 
 export async function getLoan(userId: bigint, debtId: bigint, now: number = nowSeconds()): Promise<Loan> {
@@ -261,7 +295,7 @@ export async function createLoan(userId: bigint, input: LoanInput, now: number =
 
       const loanAccount = await AccountService.createAccount(
         {
-          name: lender,
+          name: await freeAccountName(userId, lender, tx),
           type: MYFIN.ACCOUNT_TYPES.LOAN,
           description: 'Loan',
           status: MYFIN.ACCOUNT_STATUS.ACTIVE,
@@ -309,24 +343,117 @@ export async function createLoan(userId: bigint, input: LoanInput, now: number =
         tx as never
       );
 
-      if (disbursementId != null) {
-        const rows = await tx.$queryRaw<Array<{ type: string; is_adjustment: unknown }>>`
-          SELECT transactions.type, transactions.is_adjustment
-          ${ownershipSql(userId)} AND transactions.transaction_id = ${disbursementId} LIMIT 1`;
-        if (rows.length === 0) throw APIError.notAuthorized();
-        if (rows[0].type !== MYFIN.TRX_TYPES.INCOME || Number(rows[0].is_adjustment) === 1)
-          throw APIError.badRequest('Only an income can be the loan disbursement.');
-        const { count } = await tx.transactions.updateMany({
-          where: { transaction_id: disbursementId, debt_id: null, yearly_cost_id: null },
-          data: { debt_id: debt.debt_id, debt_role: 'disbursement' },
-        });
-        if (count === 0) throw APIError.badRequest('This transaction is already linked to a debt or yearly cost.');
-      }
+      if (disbursementId != null) await linkDisbursementInTx(userId, debt.debt_id, disbursementId, tx);
       return debt.debt_id;
     },
     { timeout: 30_000 }
   );
   return getLoan(userId, debtId, now);
+}
+
+/** Account names are unique per user: "<lender>", else "<lender> loan", "<lender> loan 2", … */
+async function freeAccountName(userId: bigint, lender: string, tx: Tx) {
+  const taken = new Set(
+    (
+      await tx.accounts.findMany({
+        where: { users_user_id: userId, name: { startsWith: lender } },
+        select: { name: true },
+      })
+    ).map((a) => a.name.toLowerCase())
+  );
+  const candidates = [lender, `${lender} loan`];
+  for (let i = 2; i < 1000; i++) candidates.push(`${lender} loan ${i}`);
+  const name = candidates.find((c) => !taken.has(c.toLowerCase()));
+  if (!name) throw APIError.badRequest('Pick a different lender name.');
+  return name;
+}
+
+/** Marks the user's own unlinked, non-adjustment income as the loan's disbursement. */
+async function linkDisbursementInTx(userId: bigint, debtId: bigint, transactionId: bigint, tx: Tx) {
+  const rows = await tx.$queryRaw<Array<{ type: string; is_adjustment: unknown }>>`
+    SELECT transactions.type, transactions.is_adjustment
+    ${ownershipSql(userId)} AND transactions.transaction_id = ${transactionId} LIMIT 1`;
+  if (rows.length === 0) throw APIError.notAuthorized();
+  if (rows[0].type !== MYFIN.TRX_TYPES.INCOME || Number(rows[0].is_adjustment) === 1)
+    throw APIError.badRequest('Only an income can be the loan disbursement.');
+  const { count } = await tx.transactions.updateMany({
+    where: { transaction_id: transactionId, debt_id: null, yearly_cost_id: null },
+    data: { debt_id: debtId, debt_role: 'disbursement' },
+  });
+  if (count === 0) throw APIError.badRequest('This transaction is already linked to a debt or yearly cost.');
+}
+
+/** Links (or replaces) the income the loan was paid out into; it stops counting as income. */
+export async function linkDisbursement(
+  userId: bigint,
+  debtId: bigint,
+  transactionId: number | string | bigint,
+  now: number = nowSeconds()
+): Promise<Loan> {
+  await prisma.$transaction(async (tx) => {
+    await lockLoan(userId, debtId, tx);
+    await tx.transactions.updateMany({
+      where: { debt_id: debtId, debt_role: 'disbursement' },
+      data: { debt_id: null, debt_role: null },
+    });
+    await linkDisbursementInTx(userId, debtId, BigInt(transactionId), tx);
+  });
+  return getLoan(userId, debtId, now);
+}
+
+/** Unlinks the disbursement; it counts as income again. */
+export async function unlinkDisbursement(userId: bigint, debtId: bigint, now: number = nowSeconds()): Promise<Loan> {
+  await prisma.$transaction(async (tx) => {
+    await lockLoan(userId, debtId, tx);
+    await tx.transactions.updateMany({
+      where: { debt_id: debtId, debt_role: 'disbursement' },
+      data: { debt_id: null, debt_role: null },
+    });
+  });
+  return getLoan(userId, debtId, now);
+}
+
+/** Unlinked, non-adjustment incomes within 30 days of `date` (any amount): the loan's payout. */
+export async function disbursementCandidates(userId: bigint, date: number): Promise<TransactionRef[]> {
+  const window = 30 * DAY;
+  const rows = await prisma.$queryRaw<
+    Array<{ transaction_id: bigint; description: string | null; amount: bigint; date_timestamp: bigint }>
+  >`SELECT transactions.transaction_id, transactions.description, transactions.amount, transactions.date_timestamp
+    ${ownershipSql(userId)}
+      AND transactions.type = ${MYFIN.TRX_TYPES.INCOME}
+      AND transactions.debt_id IS NULL
+      AND transactions.yearly_cost_id IS NULL
+      AND transactions.is_adjustment = false
+      AND transactions.date_timestamp BETWEEN ${date - window} AND ${date + window}
+    ORDER BY transactions.amount DESC, transactions.date_timestamp ASC
+    LIMIT 50`;
+  return rows.map(toRef);
+}
+
+/**
+ * Expenses that could be installment `n`: unlinked, non-adjustment, not a yearly cost, from any
+ * account that is not a loan or investment account, within ±₹1 of its EMI and 45 days of its date.
+ */
+export async function installmentCandidates(userId: bigint, debtId: bigint, n: number): Promise<TransactionRef[]> {
+  const debt = await ownedLoan(userId, debtId);
+  const row = installment(debt, n);
+  const at = dateEpoch(row.date);
+  const window = 45 * DAY;
+  const rows = await prisma.$queryRaw<
+    Array<{ transaction_id: bigint; description: string | null; amount: bigint; date_timestamp: bigint }>
+  >`SELECT transactions.transaction_id, transactions.description, transactions.amount, transactions.date_timestamp
+    ${ownershipSql(userId)}
+      AND transactions.type = ${MYFIN.TRX_TYPES.EXPENSE}
+      AND transactions.debt_id IS NULL
+      AND transactions.yearly_cost_id IS NULL
+      AND transactions.is_adjustment = false
+      AND transactions.amount BETWEEN ${row.emi - MATCH_TOLERANCE_CENTS} AND ${row.emi + MATCH_TOLERANCE_CENTS}
+      AND transactions.date_timestamp BETWEEN ${at - window} AND ${at + window + DAY}
+      AND EXISTS (SELECT 1 FROM accounts src WHERE src.account_id = transactions.accounts_account_from_id
+                    AND src.type NOT IN (${Prisma.join(NOT_LOAN_OR_INVEST)}))
+    ORDER BY ABS(CAST(transactions.date_timestamp AS SIGNED) - ${at}) ASC, transactions.transaction_id ASC
+    LIMIT 50`;
+  return rows.map(toRef);
 }
 
 async function assertUnpaid(tx: Tx, debtId: bigint, n: number) {
@@ -363,6 +490,9 @@ export async function matchInstallment(
       if (trx.type !== MYFIN.TRX_TYPES.EXPENSE || trx.accounts_account_from_id == null)
         throw APIError.badRequest('Only an expense can be matched to an EMI.');
       if (trx.is_adjustment) throw APIError.badRequest('A balance adjustment cannot be matched to an EMI.');
+      const source = await tx.accounts.findUniqueOrThrow({ where: { account_id: trx.accounts_account_from_id } });
+      if (NOT_LOAN_OR_INVEST.includes(source.type))
+        throw APIError.badRequest('An EMI must be paid from a bank, card or cash account, not a loan or investment account.');
       const original = Number(trx.amount);
       if (Math.abs(original - row.emi) > MATCH_TOLERANCE_CENTS)
         throw APIError.badRequest('The amount must be within ₹1 of the EMI.');
@@ -665,4 +795,8 @@ export default {
   matchSuggestions,
   prepayment,
   deleteLoan,
+  linkDisbursement,
+  unlinkDisbursement,
+  disbursementCandidates,
+  installmentCandidates,
 };

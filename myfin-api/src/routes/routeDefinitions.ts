@@ -167,7 +167,11 @@ export const routeGroups: RouteGroup[] = [
     routes: [
       { method: 'get', path: '/', handlerName: 'getLoans' },
       { method: 'post', path: '/', handlerName: 'createLoan' },
+      { method: 'get', path: '/disbursement-candidates', handlerName: 'getDisbursementCandidates' },
       { method: 'get', path: '/:id', handlerName: 'getLoan' },
+      { method: 'post', path: '/:id/disbursement', handlerName: 'linkDisbursement' },
+      { method: 'delete', path: '/:id/disbursement', handlerName: 'unlinkDisbursement' },
+      { method: 'get', path: '/:id/installments/:n/candidates', handlerName: 'getInstallmentCandidates' },
       { method: 'get', path: '/:id/match-suggestions', handlerName: 'getMatchSuggestions' },
       { method: 'get', path: '/:id/prepayment', handlerName: 'getPrepayment' },
       { method: 'post', path: '/:id/mark-past-paid', handlerName: 'markPastInstallmentsPaid' },

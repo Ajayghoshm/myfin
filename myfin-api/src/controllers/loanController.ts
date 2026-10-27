@@ -34,6 +34,14 @@ const prepaymentQuerySchema = joi
   })
   .unknown(true);
 
+const disbursementSchema = joi.object({
+  transaction_id: joi.number().integer().positive().required(),
+});
+
+const disbursementCandidatesQuerySchema = joi
+  .object({ date: epoch().required() })
+  .unknown(true);
+
 const loanParamsSchema = joi
   .object({
     id: joi.number().integer().positive().required(),
@@ -103,7 +111,31 @@ const getPrepayment = handler(async (userId, req) => {
   return LoanService.prepayment(userId, id, Number(q.amount), Number(q.after_installment));
 });
 
+const linkDisbursement = handler(async (userId, req) => {
+  const { id } = await params(req);
+  const body = await disbursementSchema.validateAsync(req.body);
+  return LoanService.linkDisbursement(userId, id, body.transaction_id);
+});
+
+const unlinkDisbursement = handler(async (userId, req) =>
+  LoanService.unlinkDisbursement(userId, (await params(req)).id)
+);
+
+const getDisbursementCandidates = handler(async (userId, req) => {
+  const q = await disbursementCandidatesQuerySchema.validateAsync(req.query);
+  return LoanService.disbursementCandidates(userId, Number(q.date));
+});
+
+const getInstallmentCandidates = handler(async (userId, req) => {
+  const { id, n } = await installmentParams(req);
+  return LoanService.installmentCandidates(userId, id, n);
+});
+
 export default {
+  linkDisbursement,
+  unlinkDisbursement,
+  getDisbursementCandidates,
+  getInstallmentCandidates,
   getLoans,
   createLoan,
   getLoan,
@@ -116,4 +148,11 @@ export default {
 };
 
 // Exported for tests
-export { createLoanSchema, matchSchema, markPaidSchema, prepaymentQuerySchema };
+export {
+  createLoanSchema,
+  matchSchema,
+  markPaidSchema,
+  prepaymentQuerySchema,
+  disbursementSchema,
+  disbursementCandidatesQuerySchema,
+};

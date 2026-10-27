@@ -3,6 +3,8 @@ import { prisma } from '../../config/prisma.js';
 import APIError from '../../errorHandling/apiError.js';
 import DateTimeUtils from '../../utils/DateTimeUtils.js';
 import AccountService from '../accountService.js';
+import { IST_OFFSET_SECONDS, dayStartIST } from '../insights/insightsPrimitives.js';
+import { type ScheduleRow, emiFor, firstEmiDate, schedule } from './loanMath.js';
 
 /**
  * Low-level loan bookkeeping shared by the loan service and the transaction/account services.
@@ -11,6 +13,48 @@ import AccountService from '../accountService.js';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 type PaymentRow = Prisma.debt_paymentsGetPayload<object>;
+type DebtRow = Prisma.debtsGetPayload<object>;
+
+/** IST calendar parts of an epoch-seconds instant. */
+function istParts(epoch: number) {
+  const d = new Date((epoch + IST_OFFSET_SECONDS) * 1000);
+  return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate() };
+}
+
+export const dateEpoch = (date: string) => dayStartIST(date) as number;
+
+/** The loan's schedule in cents: the first EMI is in the start date's IST month, on the EMI day. */
+export function loanSchedule(debt: DebtRow): ScheduleRow[] {
+  const { year, month } = istParts(Number(debt.start_date));
+  const day = debt.emi_day ?? 1;
+  const months = debt.tenure_months ?? 1;
+  const emi = debt.emi != null ? Number(debt.emi) : emiFor(Number(debt.principal), Number(debt.rate), months);
+  return schedule(Number(debt.principal), Number(debt.rate), months, emi, firstEmiDate(year, month, day), day);
+}
+
+/** Loans only: installments paid (by number) against the schedule's length. */
+export async function loanFullyPaid(debt: DebtRow, db: DbClient): Promise<boolean> {
+  const rows = loanSchedule(debt);
+  const paid = await db.debt_payments.count({
+    where: { debts_debt_id: debt.debt_id, installment_no: { in: rows.map((r) => r.n) } },
+  });
+  return rows.length > 0 && paid >= rows.length;
+}
+
+/**
+ * The loan's opening balance can't be deleted on its own (it would leave the loan account wrong):
+ * a principal adjustment no payment points at. Delete the loan instead.
+ */
+export async function assertLoanRowDeletable(
+  trx: { transaction_id: bigint; debt_id: bigint | null; debt_role: string | null; is_adjustment: boolean },
+  db: DbClient
+): Promise<void> {
+  if (trx.debt_id == null || trx.debt_role !== 'principal' || !trx.is_adjustment) return;
+  const backs = await db.debt_payments.count({ where: { principal_transaction_id: trx.transaction_id } });
+  if (backs === 0)
+    throw APIError.badRequest("This is a loan's opening balance. Delete the loan instead.");
+}
+
 
 /** Accounts whose balance must be recalculated, keyed by id, from the earliest affected date. */
 export type AccountRecalcs = Map<string, { accountId: bigint; from: number }>;

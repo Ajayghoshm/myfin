@@ -5,7 +5,10 @@ import APIError from '../../errorHandling/apiError.js';
 import ConvertUtils from '../../utils/convertUtils.js';
 import { payeeKeySql } from '../insights/insightsPrimitives.js';
 import { ownershipSql } from '../insights/typicalMonth.js';
-import { type AccountRecalcs, addRecalc, undoLoanPayment } from './loanLedger.js';
+import { type AccountRecalcs, addRecalc, loanFullyPaid, undoLoanPayment } from './loanLedger.js';
+
+/** A paid-off loan may leave this much principal (matched debits within ±₹1 of the EMI). */
+const LOAN_RESIDUAL_CENTS = 100;
 
 /**
  * Role of a transaction linked to a debt (`transactions.debt_role`). Only `interest` counts in
@@ -173,7 +176,11 @@ export async function refreshDebtStatus(debtId: bigint, db: DbClient = prisma): 
   const debt = await db.debts.findUnique({ where: { debt_id: debtId } });
   if (!debt) return;
   const payments = await db.debt_payments.findMany({ where: { debts_debt_id: debtId } });
-  const status: DebtStatus = outstandingCents(debt, payments) <= 0 ? 'settled' : 'open';
+  const left = outstandingCents(debt, payments);
+  // A loan whose every EMI is paid is settled even with a rounding residual of up to ₹1
+  const settled =
+    left <= 0 || (debt.kind === 'loan' && left <= LOAN_RESIDUAL_CENTS && (await loanFullyPaid(debt, db)));
+  const status: DebtStatus = settled ? 'settled' : 'open';
   if (status !== debt.status) await db.debts.update({ where: { debt_id: debtId }, data: { status } });
 }
 

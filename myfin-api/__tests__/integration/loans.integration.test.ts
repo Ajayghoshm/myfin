@@ -9,7 +9,11 @@ import AccountService from '../../src/services/accountService.js';
 import { deleteDebt } from '../../src/services/debts/debtService.js';
 import {
   createLoan,
+  disbursementCandidates,
   getLoan,
+  installmentCandidates,
+  linkDisbursement,
+  unlinkDisbursement,
   listLoans,
   markInstallmentPaid,
   markPastInstallmentsPaid,
@@ -422,5 +426,129 @@ describe('debts: formal loans and EMIs', () => {
     await unpayInstallment(ctx.uid, BigInt(after.debt_id), 1, NOW);
     const debitRow = await prisma.transactions.findFirstOrThrow({ where: { description: 'NACH HDFC EMI' } });
     expect(debitRow.amount).toBe(1066185n);
+  });
+
+  const accountOf = async (type: string, name: string) =>
+    AccountService.createAccount(
+      {
+        name,
+        type,
+        description: '',
+        status: MYFIN.ACCOUNT_STATUS.ACTIVE,
+        exclude_from_budgets: false,
+        current_balance: 0,
+        users_user_id: ctx.uid,
+      } as never,
+      ctx.uid
+    );
+  const expenseFrom = async (accountId: bigint, amount: number, day: number) =>
+    (
+      await TransactionService.createTransaction(ctx.uid, {
+        account_from_id: accountId,
+        amount,
+        type: E,
+        description: 'NACH HDFC EMI',
+        date_timestamp: at(OCT, day),
+        is_essential: false,
+      } as never)
+    ).transaction_id as bigint;
+
+  test('disbursement can be linked later and unlinked; candidates are nearby incomes', async () => {
+    const credit = await ctx.add(I, 'LOAN DISBURSAL HDFC', 120000, 2);
+    await ctx.add(I, 'Salary', 50000, 28, { year: 2026, month: 12 });
+    const loan = await newLoan(ctx.uid, ctx.bank.account_id);
+    expect(loan.disbursement).toBeNull();
+    const cands = await disbursementCandidates(ctx.uid, at(OCT, 1));
+    expect(cands.map((c) => c.transaction_id)).toEqual([String(credit)]);
+
+    const linked = await linkDisbursement(ctx.uid, BigInt(loan.debt_id), Number(credit), NOW);
+    expect(linked.disbursement).toMatchObject({ transaction_id: String(credit), amount: 120000 });
+    expect((await getMonthInsights(ctx.uid, OCT)).summary.income).toBe(0);
+    expect(await disbursementCandidates(ctx.uid, at(OCT, 1))).toEqual([]);
+
+    // Through HTTP: unlink, then link again
+    const login = await UserService.attemptLogin('ln', '123', false);
+    const headers = { authusername: 'ln', sessionkey: login.sessionkey, 'content-type': 'application/json' };
+    const del = await fetch(`${baseUrl}/debts/loans/${loan.debt_id}/disbursement`, { method: 'DELETE', headers });
+    expect(del.status).toBe(200);
+    expect((await del.json()).disbursement).toBeNull();
+    expect((await getMonthInsights(ctx.uid, OCT)).summary.income).toBe(120000);
+    const httpCands = await fetch(`${baseUrl}/debts/loans/disbursement-candidates?date=${at(OCT, 1)}`, { headers });
+    expect((await httpCands.json()).map((c: { transaction_id: string }) => c.transaction_id)).toEqual([
+      String(credit),
+    ]);
+    const relink = await fetch(`${baseUrl}/debts/loans/${loan.debt_id}/disbursement`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ transaction_id: Number(credit) }),
+    });
+    expect(relink.status).toBe(200);
+    expect((await getMonthInsights(ctx.uid, OCT)).summary.income).toBe(0);
+
+    // Unlink again so the row counts; another user can't link it
+    await unlinkDisbursement(ctx.uid, BigInt(loan.debt_id), NOW);
+    const other = await setup('ln2');
+    await expectThrowErrorCode(() => linkDisbursement(other.uid, BigInt(loan.debt_id), Number(credit), NOW), 401);
+  });
+
+  test('installment candidates come from any bank or card account within ±₹1 and 45 days', async () => {
+    const card = await accountOf(MYFIN.ACCOUNT_TYPES.CREDIT, 'Card');
+    const loan = await newLoan(ctx.uid, ctx.bank.account_id);
+    const fromCard = await expenseFrom(card.account_id, 10661.5, 30); // 25 days late, other account
+    await expenseFrom(card.account_id, 10700, 6); // amount out of range
+    const cands = await installmentCandidates(ctx.uid, BigInt(loan.debt_id), 1);
+    expect(cands.map((c) => c.transaction_id)).toEqual([String(fromCard)]);
+    // Not offered by the automatic suggestions (other account), but it can be matched
+    expect(await matchSuggestions(ctx.uid, BigInt(loan.debt_id), NOW)).toEqual([]);
+    const cardBefore = await ctx.balance(card.account_id);
+    const matched = await matchInstallment(ctx.uid, BigInt(loan.debt_id), 1, Number(fromCard), NOW);
+    expect(matched.schedule[0].status).toBe('paid');
+    expect(await ctx.balance(card.account_id)).toBe(cardBefore);
+
+    const login = await UserService.attemptLogin('ln', '123', false);
+    const headers = { authusername: 'ln', sessionkey: login.sessionkey };
+    const res = await fetch(`${baseUrl}/debts/loans/${loan.debt_id}/installments/2/candidates`, { headers });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([]);
+  });
+
+  test('a debit from a loan or investment account cannot be an EMI', async () => {
+    const loan = await newLoan(ctx.uid, ctx.bank.account_id);
+    const invest = await accountOf(MYFIN.ACCOUNT_TYPES.INVESTING, 'Broker');
+    const fromInvest = await expenseFrom(invest.account_id, 10661.85, 5);
+    const fromLoan = await expenseFrom(BigInt(loan.loan_account_id!), 10661.85, 5);
+    await expectThrowErrorCode(() => matchInstallment(ctx.uid, BigInt(loan.debt_id), 1, Number(fromInvest), NOW), 400);
+    await expectThrowErrorCode(() => matchInstallment(ctx.uid, BigInt(loan.debt_id), 1, Number(fromLoan), NOW), 400);
+    expect(await installmentCandidates(ctx.uid, BigInt(loan.debt_id), 1)).toEqual([]);
+  });
+
+  test('a paid-off loan with a residual of up to ₹1 is settled', async () => {
+    const loan = await newLoan(ctx.uid, ctx.bank.account_id, { principal: 300, rate: 0, tenure_months: 3 });
+    expect(loan.emi).toBe(100);
+    await markInstallmentPaid(ctx.uid, BigInt(loan.debt_id), 1, {}, NOW);
+    await markInstallmentPaid(ctx.uid, BigInt(loan.debt_id), 2, {}, NOW);
+    const debit = await ctx.add(E, 'NACH HDFC EMI', 99.5, 25);
+    const last = await matchInstallment(ctx.uid, BigInt(loan.debt_id), 3, Number(debit), NOW);
+    expect(last).toMatchObject({ outstanding_principal: 0.5, status: 'settled', emis_left: 0 });
+    // Unpaying re-opens it
+    const back = await unpayInstallment(ctx.uid, BigInt(loan.debt_id), 3, NOW);
+    expect(back).toMatchObject({ status: 'open', emis_left: 1 });
+  });
+
+  test("the opening balance can't be deleted on its own; a clashing lender name gets a free account name", async () => {
+    const loan = await newLoan(ctx.uid, ctx.bank.account_id, { lender: 'Bank' });
+    const acc = await prisma.accounts.findUniqueOrThrow({ where: { account_id: BigInt(loan.loan_account_id!) } });
+    expect(acc.name).toBe('Bank loan');
+    const opening = await prisma.transactions.findFirstOrThrow({ where: { description: 'Loan opening balance' } });
+    await expectThrowErrorCode(() => TransactionService.deleteTransaction(ctx.uid, Number(opening.transaction_id)), 400);
+    expect(await ctx.balance(acc.account_id)).toBe(-120000);
+    // A manual principal adjustment can still be deleted: it unpays its installment
+    await markInstallmentPaid(ctx.uid, BigInt(loan.debt_id), 1, { date: at(OCT, 6) }, NOW);
+    const manual = await prisma.transactions.findFirstOrThrow({
+      where: { debt_id: BigInt(loan.debt_id), type: I },
+    });
+    await TransactionService.deleteTransaction(ctx.uid, Number(manual.transaction_id));
+    expect((await getLoan(ctx.uid, BigInt(loan.debt_id), NOW)).emis_left).toBe(12);
+    expect(await ctx.balance(acc.account_id)).toBe(-120000);
   });
 });

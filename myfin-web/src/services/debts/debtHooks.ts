@@ -12,6 +12,8 @@ import {
 import { QUERY_KEY_GET_TRANSACTIONS } from '../trx/trxHooks.ts';
 import {
   QUERY_KEY_GET_DEBTS,
+  QUERY_KEY_GET_DISBURSEMENT_CANDIDATES,
+  QUERY_KEY_GET_INSTALLMENT_CANDIDATES,
   QUERY_KEY_GET_LOAN_MATCH_SUGGESTIONS,
   QUERY_KEY_GET_LOAN_PREPAYMENT,
   QUERY_KEY_GET_LOANS,
@@ -41,6 +43,8 @@ const invalidateAll = () => {
     QUERY_KEY_GET_LOANS,
     QUERY_KEY_GET_LOAN_MATCH_SUGGESTIONS,
     QUERY_KEY_GET_LOAN_PREPAYMENT,
+    QUERY_KEY_GET_DISBURSEMENT_CANDIDATES,
+    QUERY_KEY_GET_INSTALLMENT_CANDIDATES,
     // Loans own an account whose balance moves with every EMI
     QUERY_KEY_GET_ACCOUNTS,
   ])
@@ -179,6 +183,40 @@ export function useMarkPastInstallmentsPaid() {
   return useMutation({
     mutationFn: async (id: string) =>
       (await debtServices.markPastInstallmentsPaid(id)).data,
+    onSuccess: invalidateAll,
+  });
+}
+
+export function useGetDisbursementCandidates(date: number | null) {
+  return useQuery({
+    queryKey: [QUERY_KEY_GET_DISBURSEMENT_CANDIDATES, date],
+    queryFn: async () =>
+      (await debtServices.getDisbursementCandidates(date as number)).data,
+    enabled: date !== null,
+  });
+}
+
+export function useGetInstallmentCandidates(id: string, n: number | null) {
+  return useQuery({
+    queryKey: [QUERY_KEY_GET_INSTALLMENT_CANDIDATES, id, n],
+    queryFn: async () =>
+      (await debtServices.getInstallmentCandidates(id, n as number)).data,
+    enabled: n !== null,
+  });
+}
+
+export function useLinkDisbursement() {
+  return useMutation({
+    mutationFn: async (input: { id: string; transactionId: number }) =>
+      (await debtServices.linkDisbursement(input.id, input.transactionId)).data,
+    onSuccess: invalidateAll,
+  });
+}
+
+export function useUnlinkDisbursement() {
+  return useMutation({
+    mutationFn: async (id: string) =>
+      (await debtServices.unlinkDisbursement(id)).data,
     onSuccess: invalidateAll,
   });
 }

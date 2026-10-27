@@ -20,10 +20,13 @@ import {
   AccountStatus,
   AccountType,
 } from '../../services/auth/authServices.ts';
-import { useCreateLoan } from '../../services/debts/debtHooks.ts';
+import {
+  useCreateLoan,
+  useGetDisbursementCandidates,
+} from '../../services/debts/debtHooks.ts';
 import { apiErrorMessage } from '../../utils/apiErrorMessage.ts';
 import { useFormatNumberAsCurrency } from '../../utils/textHooks.ts';
-import { toEpoch } from './debtDates.ts';
+import { formatDay, toEpoch } from './debtDates.ts';
 
 /** EMI in currency for a principal, annual rate (%) and months; 0 % splits evenly. */
 export const estimateEmi = (
@@ -59,9 +62,13 @@ const LoanDialog = (props: { onClose: () => void }) => {
   const [emi, setEmi] = useState('');
   const [emiDay, setEmiDay] = useState('5');
   const [accountId, setAccountId] = useState('');
+  const [disbursementId, setDisbursementId] = useState('');
   const [firstMonth, setFirstMonth] = useState<Dayjs | null>(
     dayjs().startOf('month'),
   );
+
+  const startEpoch = toEpoch(firstMonth ? firstMonth.startOf('month') : null);
+  const disbursementCandidates = useGetDisbursementCandidates(startEpoch);
 
   const estimate = estimateEmi(Number(principal), Number(rate), Number(tenure));
 
@@ -98,6 +105,8 @@ const LoanDialog = (props: { onClose: () => void }) => {
         emi_day: day,
         account_id: Number(accountId),
         start_date: start,
+        disbursement_transaction_id:
+          disbursementId === '' ? null : Number(disbursementId),
       },
       {
         onSuccess: () => {
@@ -194,6 +203,20 @@ const LoanDialog = (props: { onClose: () => void }) => {
             {payingAccounts.map((a) => (
               <MenuItem key={String(a.account_id)} value={String(a.account_id)}>
                 {a.name}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            select
+            label={t('debts.loans.disbursementPicker')}
+            value={disbursementId}
+            onChange={(e) => setDisbursementId(e.target.value)}
+            helperText={t('debts.loans.disbursementPickerHelp')}
+          >
+            <MenuItem value="">{t('debts.loans.noDisbursement')}</MenuItem>
+            {(disbursementCandidates.data ?? []).map((c) => (
+              <MenuItem key={c.transaction_id} value={c.transaction_id}>
+                {`${c.description} · ${formatCurrency.invoke(c.amount)} · ${formatDay(c.date)}`}
               </MenuItem>
             ))}
           </TextField>

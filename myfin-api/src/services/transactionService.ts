@@ -21,7 +21,7 @@ import {
 } from './insights/analyticsRules.js';
 import { type YearMonth, dayStartIST, payeeKeySql } from './insights/insightsPrimitives.js';
 import { forgetDeletedTransactions, syncEditedTransaction } from './debts/debtService.js';
-import { assertLoanRowEditable, recalcAccounts } from './debts/loanLedger.js';
+import { assertLoanRowDeletable, assertLoanRowEditable, recalcAccounts } from './debts/loanLedger.js';
 
 const getTransactionsForUser = async (
   userId: bigint,
@@ -588,6 +588,7 @@ const deleteTransaction = async (userId: bigint, transactionId: number, dbClient
       },
     });
 
+    await assertLoanRowDeletable(trx, prismaTx);
     // Repayments backed by this transaction stop counting towards their debt; a loan EMI is unpaid
     const debtRecalcs =
       trx.debt_id != null ? await forgetDeletedTransactions([trx.transaction_id], prismaTx) : new Map();

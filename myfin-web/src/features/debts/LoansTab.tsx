@@ -22,12 +22,16 @@ import {
 } from '../../providers/SnackbarProvider.tsx';
 import {
   useDeleteDebt,
+  useGetDisbursementCandidates,
+  useGetInstallmentCandidates,
   useGetLoanMatchSuggestions,
   useGetLoans,
   useGetPrepayment,
+  useLinkDisbursement,
   useMarkInstallmentPaid,
   useMarkPastInstallmentsPaid,
   useMatchInstallment,
+  useUnlinkDisbursement,
   useUnpayInstallment,
 } from '../../services/debts/debtHooks.ts';
 import type {
@@ -40,6 +44,7 @@ import { apiErrorMessage } from '../../utils/apiErrorMessage.ts';
 import { useFormatNumberAsCurrency } from '../../utils/textHooks.ts';
 import { formatDay } from './debtDates.ts';
 import LoanDialog from './LoanDialog.tsx';
+import TransactionPickerDialog from './TransactionPickerDialog.tsx';
 
 /** "2026-10-05" → "05/10/2026". */
 const formatDate = (date: string) => dayjs(date).format('DD/MM/YYYY');
@@ -123,6 +128,40 @@ const PrepaymentWhatIf = ({ loan }: { loan: Loan }) => {
   );
 };
 
+/** Pick any nearby expense within ±₹1 of the EMI and match it to the installment. */
+const LinkInstallmentDialog = (props: {
+  loan: Loan;
+  row: Installment;
+  onClose: () => void;
+}) => {
+  const { t } = useTranslation();
+  const showError = useShowError();
+  const match = useMatchInstallment();
+  const { data, isLoading } = useGetInstallmentCandidates(
+    props.loan.debt_id,
+    props.row.n,
+  );
+  return (
+    <TransactionPickerDialog
+      title={t('debts.loans.linkInstallmentTitle', {
+        n: props.row.n,
+        date: formatDate(props.row.date),
+      })}
+      help={t('debts.loans.linkInstallmentHelp')}
+      candidates={data}
+      isLoading={isLoading}
+      isPending={match.isPending}
+      onPick={(transactionId) =>
+        match.mutate(
+          { id: props.loan.debt_id, n: props.row.n, transactionId },
+          { onSuccess: props.onClose, onError: showError },
+        )
+      }
+      onClose={props.onClose}
+    />
+  );
+};
+
 const ScheduleRow = (props: {
   loan: Loan;
   row: Installment;
@@ -136,6 +175,7 @@ const ScheduleRow = (props: {
   const markPaid = useMarkInstallmentPaid();
   const unpay = useUnpayInstallment();
   const busy = match.isPending || markPaid.isPending || unpay.isPending;
+  const [linking, setLinking] = useState(false);
 
   const statusLabel =
     row.status === 'paid'
@@ -211,9 +251,23 @@ const ScheduleRow = (props: {
               >
                 {t('debts.loans.markPaid')}
               </Button>
+              <Button
+                size="small"
+                disabled={busy}
+                onClick={() => setLinking(true)}
+              >
+                {t('debts.loans.linkTransaction')}
+              </Button>
             </>
           )}
         </Stack>
+        {linking && (
+          <LinkInstallmentDialog
+            loan={loan}
+            row={row}
+            onClose={() => setLinking(false)}
+          />
+        )}
       </TableCell>
     </TableRow>
   );
@@ -280,13 +334,41 @@ const LoanDetail = ({ loan }: { loan: Loan }) => {
   );
 };
 
+/** Pick the income the loan was paid out into (within 30 days of its start). */
+const LinkDisbursementDialog = (props: { loan: Loan; onClose: () => void }) => {
+  const { t } = useTranslation();
+  const showError = useShowError();
+  const link = useLinkDisbursement();
+  const { data, isLoading } = useGetDisbursementCandidates(
+    props.loan.start_date,
+  );
+  return (
+    <TransactionPickerDialog
+      title={t('debts.loans.disbursementTitle', { name: props.loan.lender })}
+      help={t('debts.loans.disbursementHelp')}
+      candidates={data}
+      isLoading={isLoading}
+      isPending={link.isPending}
+      onPick={(transactionId) =>
+        link.mutate(
+          { id: props.loan.debt_id, transactionId },
+          { onSuccess: props.onClose, onError: showError },
+        )
+      }
+      onClose={props.onClose}
+    />
+  );
+};
+
 const LoanCard = (props: { loan: Loan; onDelete: () => void }) => {
   const { loan } = props;
   const { t } = useTranslation();
   const formatCurrency = useFormatNumberAsCurrency();
   const showError = useShowError();
   const markPast = useMarkPastInstallmentsPaid();
+  const unlinkDisbursement = useUnlinkDisbursement();
   const [open, setOpen] = useState(false);
+  const [linkingDisbursement, setLinkingDisbursement] = useState(false);
   const today = dayjs().format('YYYY-MM-DD');
   const pastUnpaid = loan.schedule.filter(
     (r) => r.status !== 'paid' && r.date <= today,
@@ -333,6 +415,15 @@ const LoanCard = (props: { loan: Loan; onDelete: () => void }) => {
               date: loan.end_date ? formatDate(loan.end_date) : '—',
             })}
           </Typography>
+          {loan.disbursement && (
+            <Typography variant="body2" color="text.secondary">
+              {t('debts.loans.disbursedInto', {
+                description: loan.disbursement.description,
+                amount: formatCurrency.invoke(loan.disbursement.amount),
+                date: formatDay(loan.disbursement.date),
+              })}
+            </Typography>
+          )}
         </Stack>
         <Stack alignItems={{ xs: 'flex-start', sm: 'flex-end' }} gap={0.5}>
           <Typography variant="h6">
@@ -359,12 +450,33 @@ const LoanCard = (props: { loan: Loan; onDelete: () => void }) => {
             {t('debts.loans.markPastPaid', { count: pastUnpaid })}
           </Button>
         )}
+        {loan.disbursement ? (
+          <Button
+            size="small"
+            disabled={unlinkDisbursement.isPending}
+            onClick={() =>
+              unlinkDisbursement.mutate(loan.debt_id, { onError: showError })
+            }
+          >
+            {t('debts.loans.unlinkDisbursement')}
+          </Button>
+        ) : (
+          <Button size="small" onClick={() => setLinkingDisbursement(true)}>
+            {t('debts.loans.linkDisbursement')}
+          </Button>
+        )}
         <Button size="small" color="error" onClick={props.onDelete}>
           {t('common.delete')}
         </Button>
       </Stack>
 
       {open && <LoanDetail loan={loan} />}
+      {linkingDisbursement && (
+        <LinkDisbursementDialog
+          loan={loan}
+          onClose={() => setLinkingDisbursement(false)}
+        />
+      )}
     </DataCard>
   );
 };

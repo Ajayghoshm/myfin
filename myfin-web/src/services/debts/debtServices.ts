@@ -122,6 +122,8 @@ export type Loan = {
   missed_count: number;
   end_date: string;
   next_due: { n: number; date: string; emi: number } | null;
+  /** The income the loan was paid out into, if linked. */
+  disbursement: TransactionRef | null;
   schedule: Installment[];
 };
 
@@ -135,6 +137,13 @@ export type LoanInput = {
   account_id: number;
   start_date: number;
   disbursement_transaction_id?: number | null;
+};
+
+export type TransactionRef = {
+  transaction_id: string;
+  description: string;
+  amount: number;
+  date: number;
 };
 
 export type LoanMatchSuggestion = {
@@ -173,7 +182,26 @@ const getPrepayment = (id: string, amount: number, afterInstallment: number) =>
     params: { amount, after_installment: afterInstallment },
   });
 
+const getDisbursementCandidates = (date: number) =>
+  axios.get<TransactionRef[]>('/debts/loans/disbursement-candidates', {
+    params: { date },
+  });
+const linkDisbursement = (id: string, transactionId: number) =>
+  axios.post<Loan>(`/debts/loans/${id}/disbursement`, {
+    transaction_id: transactionId,
+  });
+const unlinkDisbursement = (id: string) =>
+  axios.delete<Loan>(`/debts/loans/${id}/disbursement`);
+const getInstallmentCandidates = (id: string, n: number) =>
+  axios.get<TransactionRef[]>(
+    `/debts/loans/${id}/installments/${n}/candidates`,
+  );
+
 export default {
+  getDisbursementCandidates,
+  linkDisbursement,
+  unlinkDisbursement,
+  getInstallmentCandidates,
   getLoans,
   createLoan,
   getLoanMatchSuggestions,
