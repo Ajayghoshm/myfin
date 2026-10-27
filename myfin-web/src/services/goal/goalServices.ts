@@ -7,6 +7,19 @@ export type FundingAccount = {
   current_funding?: number;
 };
 
+export type FundingAsset = {
+  asset_id: number;
+  funding_type: 'absolute' | 'relative';
+  funding_amount: number;
+};
+
+export type GoalAssetFunding = {
+  asset_id: string;
+  match_type: 'absolute' | 'relative';
+  match_value: number;
+  funded: number;
+};
+
 export type Goal = {
   goal_id: bigint;
   name: string;
@@ -19,6 +32,10 @@ export type Goal = {
   is_underfunded: boolean;
   is_underfunded_by_priority: boolean;
   funding_accounts: FundingAccount[];
+  assets: GoalAssetFunding[];
+  asset_funding: number;
+  monthly_sip: number;
+  on_track: boolean | null;
 };
 
 export type GoalFundingSummary = {
@@ -30,6 +47,11 @@ export type GoalFundingSummary = {
       amount: number;
     }>;
   };
+  unallocated_assets: Array<{
+    asset_id: string;
+    value: number;
+    amount: number;
+  }>;
 };
 
 export type CreateGoalRequest = {
@@ -39,6 +61,7 @@ export type CreateGoalRequest = {
   amount: number;
   due_date?: number | null;
   funding_accounts: Omit<FundingAccount, 'current_funding'>[];
+  funding_assets: FundingAsset[];
 };
 
 export type UpdateGoalRequest = CreateGoalRequest & {

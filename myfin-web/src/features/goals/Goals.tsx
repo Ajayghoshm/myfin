@@ -366,6 +366,20 @@ const GoalCard = ({
             </Typography>
           )}
           <Box sx={{ flex: 1 }} />
+          {goal.on_track !== null &&
+            goal.due_date &&
+            goal.assets.length > 0 && (
+              <Typography
+                variant="caption"
+                color={goal.on_track ? 'success.main' : 'warning.main'}
+              >
+                {t(goal.on_track ? 'goals.sipOnTrack' : 'goals.sipBehind', {
+                  funded: formatCurrency(goal.currently_funded_amount),
+                  amount: formatCurrency(goal.amount),
+                  date: new Date(goal.due_date * 1000).toLocaleDateString(),
+                })}
+              </Typography>
+            )}
           {goal.is_underfunded && (
             <UnderfundedIndicator
               isUnderfundedByPriority={goal.is_underfunded_by_priority}

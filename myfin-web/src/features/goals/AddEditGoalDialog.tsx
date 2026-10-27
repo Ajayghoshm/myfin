@@ -39,7 +39,7 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { DatePicker } from '@mui/x-date-pickers';
 import dayjs, { Dayjs } from 'dayjs';
-import React, { useEffect, useMemo, useReducer } from 'react';
+import React, { useEffect, useMemo, useReducer, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { NumericFormat } from 'react-number-format';
 import CurrencyIcon from '../../components/CurrencyIcon.tsx';
@@ -50,8 +50,13 @@ import {
 } from '../../providers/SnackbarProvider.tsx';
 import { useGetAccounts } from '../../services/account/accountHooks.ts';
 import { Account } from '../../services/auth/authServices.ts';
-import { useCreateGoal, useUpdateGoal } from '../../services/goal/goalHooks.ts';
+import {
+  useCreateGoal,
+  useGetGoals,
+  useUpdateGoal,
+} from '../../services/goal/goalHooks.ts';
 import { Goal } from '../../services/goal/goalServices.ts';
+import { useGetAssets } from '../../services/invest/investHooks.ts';
 import { useFormatNumberAsCurrency } from '../../utils/textHooks.ts';
 import { PriorityTooltip } from './GoalIndicators.tsx';
 
@@ -63,6 +68,18 @@ type AccountOption = {
 
 type FundingAccountInput = {
   account: AccountOption | null;
+  funding_type: 'absolute' | 'relative';
+  funding_amount: number | '';
+};
+
+type AssetOption = {
+  id: number;
+  label: string;
+  value: number;
+};
+
+type FundingAssetInput = {
+  asset: AssetOption | null;
   funding_type: 'absolute' | 'relative';
   funding_amount: number | '';
 };
@@ -248,6 +265,11 @@ const AddEditGoalDialog = (props: Props) => {
   const createGoalRequest = useCreateGoal();
   const updateGoalRequest = useUpdateGoal();
   const getAccountsRequest = useGetAccounts();
+  const getAssetsRequest = useGetAssets();
+  const getAllGoalsRequest = useGetGoals(false);
+
+  const [fundingAssets, setFundingAssets] = useState<FundingAssetInput[]>([]);
+  const [assetsInitialised, setAssetsInitialised] = useState(false);
 
   const [state, dispatch] = useReducer(
     reduceState,
@@ -265,6 +287,56 @@ const AddEditGoalDialog = (props: Props) => {
       })) ?? []
     );
   }, [state.accounts]);
+
+  const assetOptions: AssetOption[] = useMemo(
+    () =>
+      (getAssetsRequest.data ?? []).map((asset) => ({
+        id: Number(asset.asset_id),
+        label: asset.name,
+        value: asset.current_value,
+      })),
+    [getAssetsRequest.data],
+  );
+
+  // Fill the investment rows once the asset list is known (edit form)
+  useEffect(() => {
+    if (assetsInitialised || assetOptions.length === 0) return;
+    setAssetsInitialised(true);
+    setFundingAssets(
+      (props.goal?.assets ?? []).map((link) => ({
+        asset: assetOptions.find((o) => o.id === Number(link.asset_id)) ?? null,
+        funding_type: link.match_type,
+        funding_amount: link.match_value,
+      })),
+    );
+  }, [assetOptions, assetsInitialised, props.goal]);
+
+  // Value of an asset not claimed by other goals (this goal's own share is excluded)
+  const unallocatedFor = (assetId: number): number => {
+    const unallocated =
+      getAllGoalsRequest.data?.unallocated_assets.find(
+        (a) => Number(a.asset_id) === assetId,
+      )?.amount ?? 0;
+    const own =
+      props.goal?.assets.find((a) => Number(a.asset_id) === assetId)?.funded ??
+      0;
+    return unallocated + own;
+  };
+
+  const validateFundingAsset = (fa: FundingAssetInput): string | null => {
+    if (fa.asset == null || fa.funding_amount === '') return null;
+    if (fa.funding_type === 'relative') {
+      if (fa.funding_amount < 0 || fa.funding_amount > 100) {
+        return t('goals.percentageMustBeBetween0And100');
+      }
+      return null;
+    }
+    if (fa.funding_amount < 0) return t('goals.amountMustBePositive');
+    if (fa.funding_amount > unallocatedFor(fa.asset.id) + 0.005) {
+      return t('goals.amountExceedsUnallocated');
+    }
+    return null;
+  };
 
   // Validation helper for funding accounts
   const validateFundingAccount = (
@@ -311,8 +383,16 @@ const AddEditGoalDialog = (props: Props) => {
       }
     }
 
+    for (const fa of fundingAssets) {
+      if (fa.asset != null) {
+        if (fa.funding_amount === '' || fa.funding_amount <= 0) return false;
+        if (validateFundingAsset(fa)) return false;
+      }
+    }
+
     return true;
-  }, [state]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, fundingAssets, getAllGoalsRequest.data]);
 
   // Loading
   useEffect(() => {
@@ -364,6 +444,14 @@ const AddEditGoalDialog = (props: Props) => {
       return;
     }
 
+    const fundingAssetsRequest = fundingAssets
+      .filter((fa) => fa.asset != null && fa.funding_amount !== '')
+      .map((fa) => ({
+        asset_id: fa.asset!.id,
+        funding_type: fa.funding_type,
+        funding_amount: fa.funding_amount as number,
+      }));
+
     const dueDateTimestamp =
       state.hasDueDate && state.dueDateInput ? state.dueDateInput.unix() : null;
 
@@ -388,6 +476,7 @@ const AddEditGoalDialog = (props: Props) => {
           due_date: dueDateTimestamp,
           is_archived: state.isArchivedInput,
           funding_accounts: fundingAccounts,
+          funding_assets: fundingAssetsRequest,
         },
       });
     } else {
@@ -398,6 +487,7 @@ const AddEditGoalDialog = (props: Props) => {
         amount: state.amountInput as number,
         due_date: dueDateTimestamp,
         funding_accounts: fundingAccounts,
+        funding_assets: fundingAssetsRequest,
       });
     }
   };
@@ -846,6 +936,189 @@ const AddEditGoalDialog = (props: Props) => {
                       }
                     >
                       {t('goals.addFundingAccount')}
+                    </Button>
+                  </Grid>
+                </Grid>
+              </AccordionDetails>
+            </Accordion>
+          </Grid>
+          {/* Investments Section - Accordion */}
+          <Grid size={12}>
+            <Accordion defaultExpanded={(props.goal?.assets.length ?? 0) > 0}>
+              <AccordionSummary expandIcon={<ExpandMore />}>
+                <Grid container size={12}>
+                  <Grid size={6}>
+                    <Typography>{t('goals.investments')}</Typography>
+                  </Grid>
+                  <Grid>
+                    <Typography sx={{ color: 'text.secondary' }}>
+                      {t('goals.investmentsDescription')}
+                    </Typography>
+                  </Grid>
+                </Grid>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Grid container spacing={2}>
+                  {fundingAssets.length === 0 && (
+                    <Grid size={12}>
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ textAlign: 'center', py: 2 }}
+                      >
+                        {t('goals.noInvestments')}
+                      </Typography>
+                    </Grid>
+                  )}
+
+                  {fundingAssets.map((fa, index) => {
+                    const error = validateFundingAsset(fa);
+                    const update = (patch: Partial<FundingAssetInput>) =>
+                      setFundingAssets((prev) =>
+                        prev.map((item, i) =>
+                          i === index ? { ...item, ...patch } : item,
+                        ),
+                      );
+                    return (
+                      <Grid size={12} key={index}>
+                        <Grid container spacing={2} alignItems="center">
+                          <Grid size={{ xs: 12, md: 4 }}>
+                            <Autocomplete
+                              id={`asset-${index}`}
+                              options={assetOptions}
+                              value={fa.asset}
+                              onChange={(_event, value) =>
+                                update({ asset: value })
+                              }
+                              isOptionEqualToValue={(option, value) =>
+                                option.id === value.id
+                              }
+                              getOptionLabel={(option) =>
+                                `${option.label} (${t(
+                                  'goals.unallocatedShare',
+                                  {
+                                    amount: formatNumberAsCurrency.invoke(
+                                      unallocatedFor(option.id),
+                                    ),
+                                  },
+                                )})`
+                              }
+                              renderInput={(params) => (
+                                <TextField
+                                  {...params}
+                                  fullWidth
+                                  margin="dense"
+                                  label={t('goals.asset')}
+                                  helperText=" "
+                                />
+                              )}
+                            />
+                          </Grid>
+
+                          <Grid size={{ xs: 12, md: 3 }}>
+                            <FormControl fullWidth margin="dense">
+                              <InputLabel id={`asset-type-label-${index}`}>
+                                {t('goals.fundingType')}
+                              </InputLabel>
+                              <Select
+                                labelId={`asset-type-label-${index}`}
+                                value={fa.funding_type}
+                                label={t('goals.fundingType')}
+                                onChange={(event) => {
+                                  const type = event.target.value as
+                                    | 'absolute'
+                                    | 'relative';
+                                  update({
+                                    funding_type: type,
+                                    ...(type === 'relative'
+                                      ? { funding_amount: 100 }
+                                      : {}),
+                                  });
+                                }}
+                              >
+                                <MenuItem value="absolute">
+                                  {t('goals.fundingTypeAbsolute')}
+                                </MenuItem>
+                                <MenuItem value="relative">
+                                  {t('goals.fundingTypeRelative')}
+                                </MenuItem>
+                              </Select>
+                              <FormHelperText> </FormHelperText>
+                            </FormControl>
+                          </Grid>
+
+                          <Grid size={{ xs: 12, md: 4 }}>
+                            <NumericFormat
+                              required
+                              fullWidth
+                              margin="dense"
+                              error={!!error}
+                              helperText={error || ' '}
+                              label={
+                                fa.funding_type === 'absolute'
+                                  ? t('goals.fundingAmount')
+                                  : t('goals.fundingPercentage')
+                              }
+                              customInput={TextField}
+                              variant="outlined"
+                              decimalScale={2}
+                              fixedDecimalScale
+                              thousandSeparator
+                              value={fa.funding_amount}
+                              onValueChange={(values) =>
+                                update({
+                                  funding_amount: Number(
+                                    values.floatValue ?? 0,
+                                  ),
+                                })
+                              }
+                              onFocus={(event) => {
+                                event.target.select();
+                              }}
+                            />
+                          </Grid>
+
+                          <Grid
+                            size={{ xs: 12, md: 1 }}
+                            sx={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              pb: '22px',
+                            }}
+                          >
+                            <IconButton
+                              color="error"
+                              onClick={() =>
+                                setFundingAssets((prev) =>
+                                  prev.filter((_, i) => i !== index),
+                                )
+                              }
+                            >
+                              <Delete />
+                            </IconButton>
+                          </Grid>
+                        </Grid>
+                      </Grid>
+                    );
+                  })}
+
+                  <Grid size={12} display="flex" justifyContent="flex-start">
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<Add />}
+                      onClick={() =>
+                        setFundingAssets((prev) => [
+                          ...prev,
+                          {
+                            asset: null,
+                            funding_type: 'relative',
+                            funding_amount: 100,
+                          },
+                        ])
+                      }
+                    >
+                      {t('goals.addInvestment')}
                     </Button>
                   </Grid>
                 </Grid>

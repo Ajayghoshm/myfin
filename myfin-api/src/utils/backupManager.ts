@@ -35,6 +35,7 @@ export interface BackupData {
   rules?: Prisma.rulesGetPayload<object>[];
   goals?: Prisma.goalsGetPayload<object>[];
   goal_has_accounts?: Prisma.goal_has_accountGetPayload<object>[];
+  goal_has_assets?: Prisma.goal_has_assetGetPayload<object>[];
   transactions?: Prisma.transactionsGetPayload<object>[];
   /** Balance checks. Absent in backups made before balance check. */
   balance_checks?: Prisma.balance_checksGetPayload<object>[];
@@ -149,6 +150,7 @@ class BackupManager {
       rules,
       goals,
       goalHasAccounts,
+      goalHasAssets,
       transactions,
     ] = await Promise.all([
       // Accounts
@@ -226,6 +228,10 @@ class BackupManager {
         where: { goals: { users_user_id: userId } },
       }),
 
+      dbClient.goal_has_asset.findMany({
+        where: { goals: { users_user_id: userId } },
+      }),
+
       // Transactions
       dbClient.transactions.findMany({
         where: {
@@ -257,6 +263,7 @@ class BackupManager {
       rules,
       goals,
       goal_has_accounts: goalHasAccounts,
+      goal_has_assets: goalHasAssets,
       transactions,
       balance_checks: await dbClient.balance_checks.findMany({
         where: { accounts: { users_user_id: userId } },
@@ -965,6 +972,19 @@ class BackupManager {
     });
     // endregion
 
+    // region Goal Assets (old backups have none)
+    const goalAssetsPromises = (data.goal_has_assets ?? []).map((link) =>
+      dbClient.goal_has_asset.create({
+        data: {
+          invest_assets_asset_id: assetIdMap.get(link.invest_assets_asset_id),
+          goals_goal_id: goalIdMap.get(link.goals_goal_id),
+          match_type: link.match_type,
+          match_value: link.match_value,
+        },
+      })
+    );
+    // endregion
+
     // region Balance checks (the adjustment transaction id is not remapped: it is dropped)
     for (const check of data.balance_checks ?? []) {
       const accountId = accountIdMap.get(check.accounts_account_id);
@@ -1129,6 +1149,7 @@ class BackupManager {
       ...budgetCategoriesPromises,
       ...assetEvoSnapshots,
       ...goalAccountsPromises,
+      ...goalAssetsPromises,
     ]);
     Logger.addLog('BackupManager > Restore | Balances successfully recalculated!');
 

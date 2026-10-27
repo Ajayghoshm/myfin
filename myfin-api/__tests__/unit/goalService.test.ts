@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test } from 'vitest';
 import GoalService from '../../src/services/goalService.js';
 import { mockedPrisma } from './prisma.mock.js';
 
@@ -35,6 +35,12 @@ const goal = (
 });
 
 describe('goalService', () => {
+  beforeEach(() => {
+    mockedPrisma.goal_has_asset.findMany.mockResolvedValue([] as never);
+    mockedPrisma.invest_assets.findMany.mockResolvedValue([] as never);
+    mockedPrisma.invest_transactions.groupBy.mockResolvedValue([] as never);
+  });
+
   describe('createGoal', () => {
     test('rejects funding accounts that do not belong to the user', async () => {
       mockedPrisma.accounts.count.mockResolvedValue(1);

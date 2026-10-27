@@ -28,7 +28,27 @@ const validateFundingAccounts = (
   }
 };
 
+const validateFundingAssets = (
+  fundingAssets: Array<{ asset_id: number; funding_type: string; funding_amount: number }>
+) => {
+  const ids = fundingAssets.map((fa) => fa.asset_id);
+  if (ids.length !== new Set(ids).size) {
+    throw APIError.badRequest('Duplicate investments are not allowed in funding investments list');
+  }
+  for (const fa of fundingAssets) {
+    if (fa.funding_type === 'relative' && fa.funding_amount > 100) {
+      throw APIError.badRequest('Percentage funding amount cannot exceed 100%');
+    }
+  }
+};
+
 // CREATE
+const fundingAssetSchema = joi.object({
+  asset_id: joi.number().integer().positive().required(),
+  funding_type: joi.string().valid('absolute', 'relative').required(),
+  funding_amount: joi.number().min(0).required(),
+});
+
 const fundingAccountSchema = joi.object({
   account_id: joi.number().integer().positive().required(),
   funding_type: joi.string().valid('absolute', 'relative').required(),
@@ -42,6 +62,7 @@ const createGoalSchema = joi.object({
   amount: joi.number().positive().required(),
   due_date: joi.number().integer().allow(null).optional(),
   funding_accounts: joi.array().items(fundingAccountSchema).required(),
+  funding_assets: joi.array().items(fundingAssetSchema).default([]),
 });
 
 const createGoal = async (req: Request, res: Response, next: NextFunction) => {
@@ -49,6 +70,7 @@ const createGoal = async (req: Request, res: Response, next: NextFunction) => {
     const sessionData = await CommonsController.checkAuthSessionValidity(req);
     const goal = await createGoalSchema.validateAsync(req.body);
     validateFundingAccounts(goal.funding_accounts, goal.amount);
+    validateFundingAssets(goal.funding_assets);
     await GoalService.createGoal(goal, sessionData.userId);
     res.json('Goal successfully created');
   } catch (err) {
@@ -89,6 +111,7 @@ const updateGoalBodySchema = joi.object({
   due_date: joi.number().integer().allow(null).optional(),
   is_archived: joi.boolean().optional(),
   funding_accounts: joi.array().items(fundingAccountSchema).required(),
+  funding_assets: joi.array().items(fundingAssetSchema).optional(),
 });
 
 const updateGoal = async (req: Request, res: Response, next: NextFunction) => {
@@ -102,6 +125,7 @@ const updateGoal = async (req: Request, res: Response, next: NextFunction) => {
     }
 
     validateFundingAccounts(goalData.funding_accounts, goalData.amount);
+    validateFundingAssets(goalData.funding_assets ?? []);
 
     await GoalService.updateGoal(
       {

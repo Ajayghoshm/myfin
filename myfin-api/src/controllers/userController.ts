@@ -203,6 +203,7 @@ const restoreUserSchema = joi.object({
   rules: joi.array().items(joi.object().pattern(joi.string(), joi.any())).required(),
   goals: joi.array().items(joi.object().pattern(joi.string(), joi.any())).required(),
   goal_has_accounts: joi.array().items(joi.object().pattern(joi.string(), joi.any())).required(),
+  goal_has_assets: joi.array().items(joi.object().pattern(joi.string(), joi.any())).optional(),
   transactions: joi.array().items(joi.object().pattern(joi.string(), joi.any())).required(),
   balance_checks: joi.array().items(joi.object().pattern(joi.string(), joi.any())).optional(),
   payee_classifications: joi
