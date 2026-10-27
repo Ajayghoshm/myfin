@@ -39,6 +39,39 @@ const editAccount = (request: EditAccountRequest) => {
   return axios.put('/accounts', { current_balance: 0, ...request });
 };
 
+export type BalanceCheckRow = {
+  account_id: string;
+  name: string;
+  type: AccountType;
+  /** Comparable form: the amount owed (positive) for credit cards. */
+  myfin_balance: number;
+  last_check: { checked_at: number; result: string; gap: number } | null;
+};
+
+const getBalanceCheck = () => {
+  return axios.get<BalanceCheckRow[]>('/accounts/balance-check');
+};
+
+const saveBalanceCheck = (request: {
+  account_id: string;
+  real_balance: number;
+}) => {
+  return axios.post<{ gap: number; result: string }>(
+    '/accounts/balance-check',
+    request,
+  );
+};
+
+const writeOffBalanceGap = (request: {
+  account_id: string;
+  real_balance: number;
+}) => {
+  return axios.post<{ transaction_id: string }>(
+    '/accounts/balance-check/write-off',
+    request,
+  );
+};
+
 const recalculateAllBalances = () => {
   return axios.get('/accounts/recalculate-balance/all');
 };
@@ -52,6 +85,9 @@ export default {
   removeAccount,
   addAccount,
   editAccount,
+  getBalanceCheck,
+  saveBalanceCheck,
+  writeOffBalanceGap,
   recalculateAllBalances,
   autoPopulateWithDemoData,
 };

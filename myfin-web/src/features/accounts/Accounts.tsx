@@ -9,8 +9,11 @@ import Paper from '@mui/material/Paper';
 import Box from '@mui/material/Box';
 import PageHeader from '../../components/PageHeader.tsx';
 import Grid from '@mui/material/Grid';
+import { Link as RouterLink } from 'react-router-dom';
+import { ROUTE_BALANCE_CHECK } from '../../providers/RoutesProvider.tsx';
 import {
   useGetAccounts,
+  useGetBalanceCheck,
   useRemoveAccount,
 } from '../../services/account/accountHooks.ts';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -39,10 +42,21 @@ const Accounts = () => {
   const theme = useTheme();
   const loader = useLoading();
   const snackbar = useSnackbar();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   const getAccountsRequest = useGetAccounts();
   const removeAccountRequest = useRemoveAccount();
+  const balanceCheckRequest = useGetBalanceCheck();
+  const lastCheckByAccount = useMemo(
+    () =>
+      new Map(
+        (balanceCheckRequest.data ?? []).map((row) => [
+          String(row.account_id),
+          row.last_check,
+        ]),
+      ),
+    [balanceCheckRequest.data],
+  );
 
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [selectedTab, setSelectedTab] = useState(0);
@@ -142,7 +156,12 @@ const Accounts = () => {
       accountType: account.type,
       colorGradient: account.color_gradient,
     },
-    name: { name: account.name, status: account.status, type: account.type },
+    name: {
+      name: account.name,
+      status: account.status,
+      type: account.type,
+      lastCheck: lastCheckByAccount.get(String(account.account_id)) ?? null,
+    },
     balance: account.balance,
     status: account.status,
     actions: account,
@@ -183,6 +202,21 @@ const Accounts = () => {
             <Typography variant="caption" color={theme.palette.text.secondary}>
               {t(`accounts.${params.value.type.toLowerCase()}`)}
             </Typography>
+            {params.value.lastCheck && (
+              <Typography
+                variant="caption"
+                color={theme.palette.text.secondary}
+              >
+                {t('accounts.checkedOn', {
+                  date: new Date(
+                    params.value.lastCheck.checked_at * 1000,
+                  ).toLocaleDateString(i18n.language),
+                  result: t(
+                    `accounts.result${params.value.lastCheck.result.charAt(0).toUpperCase()}${params.value.lastCheck.result.slice(1)}`,
+                  ),
+                })}
+              </Typography>
+            )}
           </Stack>
 
           /*<p>{params.value}</p>*/
@@ -312,6 +346,14 @@ const Accounts = () => {
         }}
       >
         {t('accounts.addAccount')}
+      </Button>
+      <Button
+        variant="outlined"
+        sx={{ mb: 2, ml: 1 }}
+        component={RouterLink}
+        to={ROUTE_BALANCE_CHECK}
+      >
+        {t('accounts.balanceCheck')}
       </Button>
       <Grid container spacing={2}>
         <Grid

@@ -36,6 +36,8 @@ export interface BackupData {
   goals?: Prisma.goalsGetPayload<object>[];
   goal_has_accounts?: Prisma.goal_has_accountGetPayload<object>[];
   transactions?: Prisma.transactionsGetPayload<object>[];
+  /** Balance checks. Absent in backups made before balance check. */
+  balance_checks?: Prisma.balance_checksGetPayload<object>[];
   /** Person/merchant corrections. Absent in backups made before insights. */
   payee_classifications?: { payee_key: string; kind: string }[];
   /** Financial profile settings. Absent (or null) in older backups / when never set. */
@@ -172,6 +174,10 @@ class BackupManager {
       goals,
       goal_has_accounts: goalHasAccounts,
       transactions,
+      balance_checks: await dbClient.balance_checks.findMany({
+        where: { accounts: { users_user_id: userId } },
+        orderBy: { check_id: 'asc' },
+      }),
       payee_classifications: await dbClient.payee_classifications.findMany({
         where: { users_user_id: userId },
         select: { payee_key: true, kind: true },
@@ -653,6 +659,23 @@ class BackupManager {
 
       return newGoalAccount;
     });
+    // endregion
+
+    // region Balance checks (the adjustment transaction id is not remapped: it is dropped)
+    for (const check of data.balance_checks ?? []) {
+      const accountId = accountIdMap.get(check.accounts_account_id);
+      if (accountId == null) continue;
+      await dbClient.balance_checks.create({
+        data: {
+          accounts_account_id: accountId,
+          checked_at: BigInt(check.checked_at),
+          real_balance: BigInt(check.real_balance),
+          myfin_balance: BigInt(check.myfin_balance),
+          result: check.result,
+          adjustment_transaction_id: null,
+        },
+      });
+    }
     // endregion
 
     // region Payee classifications

@@ -78,6 +78,13 @@ interface Props {
   onPositiveClick: () => void;
   onNegativeClick: () => void;
   transaction: Transaction | null;
+  /** Pre-fills a new transaction (e.g. from a balance check). Ignored when editing. */
+  prefill?: {
+    type: TransactionType;
+    amount: number;
+    accountId: bigint;
+    accountName: string;
+  };
 }
 
 export type IdLabelPair = {
@@ -198,27 +205,36 @@ const AddEditTransactionDialog = (props: Props) => {
 
   useEffect(() => {
     setTransactionType(
-      inferTrxType(props.transaction) || TransactionType.Expense,
+      inferTrxType(props.transaction) ||
+        props.prefill?.type ||
+        TransactionType.Expense,
     );
     setEssentialValue(props.transaction?.is_essential == 1);
-    setAmountValue(props.transaction?.amount || null);
+    setAmountValue(props.transaction?.amount || props.prefill?.amount || null);
     setDateValue(
       props.transaction?.date_timestamp != null
         ? dayjs.unix(props.transaction.date_timestamp)
         : dayjs(),
     );
     setDescriptionValue(props.transaction?.description || '');
+    const prefillAccount =
+      !props.transaction && props.prefill
+        ? getInitialIdLabelPair(
+            props.prefill.accountId,
+            props.prefill.accountName,
+          )
+        : null;
     setAccountFromValue(
       getInitialIdLabelPair(
         props.transaction?.accounts_account_from_id,
         props.transaction?.account_from_name,
-      ),
+      ) ?? (props.prefill?.type === TransactionType.Expense ? prefillAccount : null),
     );
     setAccountToValue(
       getInitialIdLabelPair(
         props.transaction?.accounts_account_to_id,
         props.transaction?.account_to_name,
-      ),
+      ) ?? (props.prefill?.type === TransactionType.Income ? prefillAccount : null),
     );
     setCategoryValue(
       getInitialIdLabelPair(
@@ -233,7 +249,7 @@ const AddEditTransactionDialog = (props: Props) => {
       ),
     );
     setSelectedTags(props.transaction?.tags?.map((tag) => tag.name) || []);
-  }, [props.transaction]);
+  }, [props.transaction, props.prefill]);
 
   useEffect(() => {
     if (!props.isOpen) return;

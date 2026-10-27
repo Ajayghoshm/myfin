@@ -18,6 +18,7 @@ export default async () => {
     prisma.import_instrument_mappings.deleteMany(),
     prisma.goal_has_account.deleteMany(),
     prisma.goals.deleteMany(),
+    prisma.balance_checks.deleteMany(),
     prisma.accounts.deleteMany(),
     prisma.otp_codes.deleteMany(),
     prisma.payee_classifications.deleteMany(),

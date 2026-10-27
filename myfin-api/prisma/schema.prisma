@@ -25,6 +25,7 @@ model accounts {
   transactions_transactions_accounts_account_from_idToaccounts transactions[]      @relation("transactions_accounts_account_from_idToaccounts")
   goal_has_account                                             goal_has_account[]
   import_instrument_mappings                                   import_instrument_mappings[]
+  balance_checks                                               balance_checks[]
 
   @@unique([name, users_user_id], map: "name_UNIQUE")
   @@index([users_user_id], map: "fk_accounts_users1_idx")
@@ -372,4 +373,17 @@ model user_financial_profile {
   salary_cutoff_day  Int     @default(25)
   updated_at         BigInt
   users              users   @relation(fields: [users_user_id], references: [user_id], onDelete: Cascade)
+}
+
+model balance_checks {
+  check_id                  BigInt   @id @default(autoincrement())
+  accounts_account_id       BigInt
+  checked_at                BigInt
+  real_balance              BigInt
+  myfin_balance             BigInt
+  result                    String   @db.VarChar(16)
+  adjustment_transaction_id BigInt?
+  accounts                  accounts @relation(fields: [accounts_account_id], references: [account_id], onDelete: Cascade)
+
+  @@index([accounts_account_id, checked_at], map: "idx_balance_checks_account")
 }

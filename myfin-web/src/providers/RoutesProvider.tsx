@@ -8,6 +8,7 @@ import BudgetList from '../features/budgets/list/BudgetList.tsx';
 import BudgetDetails from '../features/budgets/details/BudgetDetails.tsx';
 import BudgetMatrix from '../features/budgets/matrix/BudgetMatrix.tsx';
 import Accounts from '../features/accounts/Accounts.tsx';
+import BalanceCheck from '../features/accounts/BalanceCheck.tsx';
 import Categories from '../features/categories/Categories.tsx';
 import Entities from '../features/entities/Entities.tsx';
 import Tags from '../features/tags/Tags.tsx';
@@ -30,6 +31,7 @@ export const ROUTE_BUDGET_MATRIX = '/budgets/matrix';
 export const ROUTE_BUDGET_DETAILS = '/budget/:id';
 export const ROUTE_BUDGET_NEW = '/budget/new';
 export const ROUTE_ACCOUNTS = '/accounts';
+export const ROUTE_BALANCE_CHECK = '/accounts/balance-check';
 export const ROUTE_CATEGORIES = '/categories';
 export const ROUTE_ENTITIES = '/entities';
 export const ROUTE_TAGS = '/tags';
@@ -68,6 +70,7 @@ const RoutesProvider = () => {
           <Route path={ROUTE_BUDGET_DETAILS} element={<BudgetDetails />} />
           <Route path={ROUTE_BUDGET_NEW} element={<BudgetDetails />} />
           <Route path={ROUTE_ACCOUNTS} element={<Accounts />} />
+          <Route path={ROUTE_BALANCE_CHECK} element={<BalanceCheck />} />
           <Route path={ROUTE_CATEGORIES} element={<Categories />} />
           <Route path={ROUTE_ENTITIES} element={<Entities />} />
           <Route path={ROUTE_TAGS} element={<Tags />} />

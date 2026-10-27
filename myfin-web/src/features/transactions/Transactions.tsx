@@ -368,6 +368,14 @@ const Transactions = () => {
         <Stack direction="column" gap={1} p={2}>
           <Stack direction="row" alignItems="center" gap={0}>
             {params.value.description ?? t('common.externalAccount')}
+            {params.value.isAdjustment && (
+              <Chip
+                size="small"
+                variant="outlined"
+                sx={{ ml: 1 }}
+                label={t('transactions.adjustment')}
+              />
+            )}
             {params.value.countedIn && (
               <Chip
                 size="small"
@@ -636,6 +644,7 @@ const Transactions = () => {
           category: result.category_name,
           category_icon_key: result.category_icon_key,
           tags: result.tags,
+          isAdjustment: !!result.is_adjustment,
           countedIn:
             result.effective_month &&
             result.date_timestamp != null &&

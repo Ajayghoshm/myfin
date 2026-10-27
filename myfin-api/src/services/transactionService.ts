@@ -246,6 +246,7 @@ const getFilteredTransactionsByForUser = async (
   // main query for list of results (limited by pageSize and offsetValue)
   const mainQuery = prisma.$queryRaw`SELECT transaction_id,
                                             transactions.is_essential,
+                                            transactions.is_adjustment,
                                             transactions.date_timestamp,
                                             (transactions.amount / 100) as amount,
                                             transactions.type,
@@ -348,6 +349,8 @@ export type CreateTransactionType = {
   is_essential: boolean;
   tags?: Array<string>;
   external_id?: string;
+  /** Set only by the balance-check write-off; never exposed on the HTTP endpoints. */
+  is_adjustment?: boolean;
 };
 /** Accounts whose balance a transaction moves: `to` for income, `from` for expense, both for a transfer. */
 const accountsAffectedBy = (trx: { type: string; account_from_id?: bigint; account_to_id?: bigint }) => {
@@ -401,6 +404,7 @@ const createTransaction = async (
         categories_category_id: trx.category_id,
         is_essential: trx.is_essential,
         external_id: trx.external_id || undefined,
+        is_adjustment: trx.is_adjustment ?? false,
       },
     });
 

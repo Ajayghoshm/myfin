@@ -110,3 +110,38 @@ export function useAutoPopulateWithDemoData() {
     mutationFn: autoPopulateWithDemoData,
   });
 }
+
+export const QUERY_KEY_BALANCE_CHECK = 'QUERY_KEY_BALANCE_CHECK';
+
+export function useGetBalanceCheck() {
+  return useQuery({
+    queryKey: [QUERY_KEY_BALANCE_CHECK],
+    queryFn: async () => (await AccountServices.getBalanceCheck()).data,
+  });
+}
+
+function invalidateBalanceData() {
+  void queryClient.invalidateQueries({ queryKey: [QUERY_KEY_BALANCE_CHECK] });
+  void queryClient.invalidateQueries({ queryKey: [QUERY_KEY_GET_ACCOUNTS] });
+}
+
+export function useSaveBalanceCheck() {
+  return useMutation({
+    mutationFn: async (request: { account_id: string; real_balance: number }) => {
+      const result = await AccountServices.saveBalanceCheck(request);
+      invalidateBalanceData();
+      return result.data;
+    },
+  });
+}
+
+export function useWriteOffBalanceGap() {
+  return useMutation({
+    mutationFn: async (request: { account_id: string; real_balance: number }) => {
+      const result = await AccountServices.writeOffBalanceGap(request);
+      invalidateBalanceData();
+      void queryClient.invalidateQueries({ queryKey: ['QUERY_KEY_GET_TRANSACTIONS'] });
+      return result.data;
+    },
+  });
+}

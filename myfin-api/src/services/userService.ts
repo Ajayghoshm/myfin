@@ -543,6 +543,11 @@ const userService = {
           where: { users_user_id: userId },
         });
 
+        // Delete balance checks (they reference accounts)
+        await prismaTx.balance_checks.deleteMany({
+          where: { accounts: { users_user_id: userId } },
+        });
+
         // Delete all current accounts
         promises.push(AccountService.deleteBalanceSnapshotsForUser(userId, prismaTx));
         promises.push(

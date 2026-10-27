@@ -24,6 +24,8 @@ export type Transaction = {
   entity_id?: bigint;
   entity_name?: string;
   is_essential: 0 | 1;
+  /** Balance-check write-off: not counted as spending or income. */
+  is_adjustment?: 0 | 1 | boolean;
   tag_names?: Array<string>;
   tags?: Array<Tag>;
   /** 'YYYY-MM' the row counts in for analytics (late salary counts in the next month). */

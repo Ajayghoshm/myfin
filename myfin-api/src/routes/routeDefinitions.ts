@@ -1,6 +1,7 @@
 import express from 'express';
 import type { Express, RequestHandler } from 'express-serve-static-core';
 import AccountController from '../controllers/accountController.js';
+import BalanceCheckController from '../controllers/balanceCheckController.js';
 import BudgetController from '../controllers/budgetController.js';
 import CategoryController from '../controllers/categoryController.js';
 import EntityController from '../controllers/entityController.js';
@@ -100,6 +101,17 @@ export const routeGroups: RouteGroup[] = [
     routes: [
       { method: 'get', path: '/month', handlerName: 'getMonthInsights' },
       { method: 'put', path: '/payee-classification', handlerName: 'setPayeeClassification' },
+    ],
+  },
+  {
+    tag: 'Balance Check',
+    basePath: '/accounts/balance-check',
+    controller: BalanceCheckController as ControllerModule,
+    controllerSourceBaseUrl: new URL('../controllers/balanceCheckController', import.meta.url).href,
+    routes: [
+      { method: 'get', path: '/', handlerName: 'getBalanceCheck' },
+      { method: 'post', path: '/', handlerName: 'recordBalanceCheck' },
+      { method: 'post', path: '/write-off', handlerName: 'writeOffBalanceGap' },
     ],
   },
   {
