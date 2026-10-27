@@ -28,6 +28,17 @@ export function useGetSafeToSpend() {
 
 export const QUERY_KEY_GET_SMALL_SPENDS = 'QUERY_KEY_GET_SMALL_SPENDS';
 
+export const QUERY_KEY_GET_NET_WORTH = 'QUERY_KEY_GET_NET_WORTH';
+
+/** `ym` is 'YYYY-MM'. */
+export function useGetNetWorth(ym: string) {
+  return useQuery({
+    queryKey: [QUERY_KEY_GET_NET_WORTH, ym],
+    queryFn: async () => (await insightsServices.getNetWorth(ym)).data,
+    placeholderData: keepPreviousData,
+  });
+}
+
 export const QUERY_KEY_GET_DAILY_SPEND = 'QUERY_KEY_GET_DAILY_SPEND';
 
 export function useGetDailySpend(

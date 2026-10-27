@@ -28,6 +28,7 @@ import ForecastCard from './ForecastCard.tsx';
 import FixedFlexibleCard from './FixedFlexibleCard.tsx';
 import SmallSpendsCard from './SmallSpendsCard.tsx';
 import SpendingCalendar from './SpendingCalendar.tsx';
+import NetWorthCard from './NetWorthCard.tsx';
 import PaymentMix from './PaymentMix.tsx';
 import SummaryCards from './SummaryCards.tsx';
 import TrendChart from './TrendChart.tsx';
@@ -151,6 +152,9 @@ const Insights = () => {
           </Grid>
         </Grid>
       )}
+      <Box mt={2}>
+        <NetWorthCard ym={ym} onSelectMonth={selectMonth} />
+      </Box>
     </Paper>
   );
 };

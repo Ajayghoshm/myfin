@@ -13,6 +13,7 @@ import { dayStartIST } from '../services/insights/insightsPrimitives.js';
 import { smallSpends } from '../services/insights/smallSpendService.js';
 import { safeToSpend } from '../services/planning/safeToSpendService.js';
 import InsightsService from '../services/insights/insightsService.js';
+import { netWorthChange } from '../services/wealth/netWorthService.js';
 import Logger from '../utils/Logger.js';
 import CommonsController from './commonsController.js';
 
@@ -121,6 +122,17 @@ const getForecastBudgetCompare = async (req: Request, res: Response, next: NextF
   }
 };
 
+const getNetWorth = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    const input = await forecastQuerySchema.validateAsync(req.query);
+    res.json(await netWorthChange(sessionData.userId, parseForecastMonth(input.month)));
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
 const createBudgetFromForecast = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const sessionData = await CommonsController.checkAuthSessionValidity(req);
@@ -158,6 +170,7 @@ export default {
   getForecast,
   getForecastBudgetCompare,
   createBudgetFromForecast,
+  getNetWorth,
   setPayeeClassification,
 };
 

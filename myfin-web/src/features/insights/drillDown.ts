@@ -8,6 +8,8 @@ export type TransactionsLinkParams = {
   cost?: 'fixed' | 'flexible'; // fixed / flexible expense split
   yearly_cost?: 'linked' | 'unlinked'; // linked to a yearly cost or not
   below?: number; // amounts strictly below this, in cents
+  range?: { from: number; to: number }; // calendar range, epoch seconds [from, to)
+  adjustment?: 'write_off'; // only #17 write-offs (non-debt balance adjustments)
 };
 
 /** API limit for payee keys in filters and classifications (joi max 255). */
@@ -30,5 +32,9 @@ export function buildTransactionsLink(params: TransactionsLinkParams): string {
   if (params.cost) search.set('cost', params.cost);
   if (params.yearly_cost) search.set('yearly_cost', params.yearly_cost);
   if (params.below !== undefined) search.set('below', String(params.below));
+  if (params.range) {
+    search.set('range', `${params.range.from}-${params.range.to}`);
+  }
+  if (params.adjustment) search.set('adjustment', params.adjustment);
   return `/transactions?${search.toString()}`;
 }

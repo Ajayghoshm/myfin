@@ -186,6 +186,40 @@ const getDailySpend = (from: string, to: string, flexibleOnly: boolean) =>
     params: { from, to, flexible_only: flexibleOnly ? 1 : 0 },
   });
 
+export type NetWorthParts = {
+  saved: number;
+  investment_growth: number;
+  write_offs: number;
+  other: number;
+};
+
+/** #17: currency amounts; `parts` sum exactly to `change`. */
+export type NetWorthChange = {
+  month: string;
+  /** Epoch seconds: the month's start and its end (clamped to now). */
+  from: number;
+  to: number;
+  start: number;
+  end: number;
+  change: number;
+  parts: NetWorthParts;
+  /** Informational; overlaps with the parts. */
+  debt_paid_down: number;
+  /** account_id 'investments' / 'people' are the holdings and lent − borrowed lines. */
+  accounts: Array<{
+    account_id: string;
+    name: string;
+    type: string;
+    start: number;
+    end: number;
+    change: number;
+  }>;
+  trend: Array<{ year: number; month: number; change: number } & NetWorthParts>;
+};
+
+const getNetWorth = (month: string) =>
+  axios.get<NetWorthChange>('/insights/net-worth', { params: { month } });
+
 const getSmallSpends = (month: string) =>
   axios.get<SmallSpends>('/insights/small-spends', { params: { month } });
 
@@ -212,6 +246,7 @@ export default {
   getEmergencyFund,
   getSafeToSpend,
   getSmallSpends,
+  getNetWorth,
   getDailySpend,
   getForecast,
   getForecastBudgetCompare,

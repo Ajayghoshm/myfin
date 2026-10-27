@@ -58,6 +58,7 @@ const structuredFilterKeys = {
   cost_kind: joi.string().valid('fixed', 'flexible', 'unsorted').empty(''),
   yearly_cost: joi.string().valid('linked', 'unlinked').empty(''),
   amount_lt: joi.number().integer().positive().empty(''),
+  adjustment: joi.string().valid('write_off').empty(''),
 };
 
 type StructuredFilterInput = {
@@ -71,6 +72,7 @@ type StructuredFilterInput = {
   cost_kind?: 'fixed' | 'flexible' | 'unsorted';
   yearly_cost?: 'linked' | 'unlinked';
   amount_lt?: number;
+  adjustment?: 'write_off';
   type?: string;
 };
 
@@ -85,13 +87,18 @@ const toTransactionFilter = (input: StructuredFilterInput) => ({
         : BigInt(input.category_id),
   payeeKey: input.payee_key,
   accountId: input.account_id === undefined ? undefined : BigInt(input.account_id),
-  // An income/expense month drill-down mirrors Insights, which never counts balance adjustments or
-  // debt principal rows (lent/borrowed/repaid); a plain month view still lists them.
+  // An income/expense drill-down (an effective month, a day, or a full calendar date range as used
+  // by #17 "saved") mirrors Insights, which never counts balance adjustments or debt principal rows
+  // (lent/borrowed/repaid); a plain month view, or the write-offs list, still lists them.
   excludeAdjustments:
-    (input.effective_month !== undefined || input.day !== undefined) &&
+    (input.effective_month !== undefined ||
+      input.day !== undefined ||
+      (input.date_from !== undefined && input.date_to !== undefined)) &&
+    input.adjustment === undefined &&
     (input.type === MYFIN.TRX_TYPES.EXPENSE || input.type === MYFIN.TRX_TYPES.INCOME)
       ? true
       : undefined,
+  adjustment: input.adjustment,
   day: input.day,
   costKind: input.cost_kind,
   yearlyCost: input.yearly_cost,

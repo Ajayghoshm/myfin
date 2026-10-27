@@ -12,6 +12,15 @@ const DAY_SECONDS = 86_400;
 export const countsForAnalyticsSql: Prisma.Sql = Prisma.sql`transactions.type IN ('E','I') AND transactions.is_adjustment = false AND (transactions.debt_role IS NULL OR transactions.debt_role = 'interest')`;
 
 /**
+ * Write-offs (#17): balance adjustments that are not debt bookkeeping (loan opening / manual
+ * principal rows carry a debt_id), on an account that counts in net worth (active, not investing).
+ * Only uses `transactions.*` (plus a subquery), so the list filter can reuse it as the drill-down.
+ */
+export const writeOffRowSql: Prisma.Sql = Prisma.sql`transactions.type IN ('E','I') AND transactions.is_adjustment = true AND transactions.debt_id IS NULL
+  AND COALESCE(transactions.accounts_account_from_id, transactions.accounts_account_to_id) IN
+    (SELECT wo_acc.account_id FROM accounts wo_acc WHERE wo_acc.type <> ${MYFIN.ACCOUNT_TYPES.INVESTING} AND wo_acc.status = ${MYFIN.ACCOUNT_STATUS.ACTIVE})`;
+
+/**
  * Prisma `where` mirror of `countsForAnalyticsSql` minus the type check (callers pick E or I):
  * not an adjustment and no debt role other than interest.
  */

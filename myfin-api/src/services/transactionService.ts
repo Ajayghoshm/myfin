@@ -18,6 +18,7 @@ import {
   effectiveMonthOf,
   effectiveMonthSql,
   formatYearMonth,
+  writeOffRowSql,
 } from './insights/analyticsRules.js';
 import { type YearMonth, dayStartIST, payeeKeySql } from './insights/insightsPrimitives.js';
 import { forgetDeletedTransactions, syncEditedTransaction } from './debts/debtService.js';
@@ -141,6 +142,8 @@ export type TransactionFilter = {
   yearlyCost?: 'linked' | 'unlinked';
   /** Cents: only rows with an amount strictly below this. */
   amountLt?: number;
+  /** 'write_off': only #17 write-offs (non-debt balance adjustments on net-worth accounts). */
+  adjustment?: 'write_off';
 };
 
 export type TransactionListOptions = Omit<TransactionFilter, 'query'> & {
@@ -197,6 +200,7 @@ export function structuredFilterSql(filter: TransactionFilter): Prisma.Sql {
   if (filter.yearlyCost === 'linked') parts.push(Prisma.sql`transactions.yearly_cost_id IS NOT NULL`);
   else if (filter.yearlyCost === 'unlinked') parts.push(Prisma.sql`transactions.yearly_cost_id IS NULL`);
   if (filter.amountLt != null) parts.push(Prisma.sql`transactions.amount < ${filter.amountLt}`);
+  if (filter.adjustment === 'write_off') parts.push(writeOffRowSql);
   if (parts.length === 0) return Prisma.empty;
   return Prisma.sql`AND ${Prisma.join(parts, ' AND ')}`;
 }
@@ -252,6 +256,7 @@ const getFilteredTransactionsByForUser = async (
     costKind: options.costKind,
     yearlyCost: options.yearlyCost,
     amountLt: options.amountLt,
+    adjustment: options.adjustment,
   };
   // ORDER BY can't be parameterised, so only whitelisted fragments are interpolated
   const sortDir = Prisma.raw(options.sortDir === 'asc' ? 'ASC' : 'DESC');

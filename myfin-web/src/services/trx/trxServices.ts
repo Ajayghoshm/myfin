@@ -81,6 +81,8 @@ export type TransactionListOptions = {
   yearlyCost?: 'linked' | 'unlinked';
   /** amounts strictly below this, in cents */
   amountLt?: number;
+  /** only #17 write-offs (non-debt balance adjustments) */
+  adjustment?: 'write_off';
 };
 
 const getTransactions = (
@@ -106,6 +108,7 @@ const getTransactions = (
       cost_kind: options.costKind,
       yearly_cost: options.yearlyCost,
       amount_lt: options.amountLt,
+      adjustment: options.adjustment,
     },
   });
 };
@@ -318,6 +321,7 @@ export type BulkUpdateTransactionsRequest = {
     cost_kind?: 'fixed' | 'flexible' | 'unsorted';
     yearly_cost?: 'linked' | 'unlinked';
     amount_lt?: number;
+    adjustment?: 'write_off';
   };
   category_id?: bigint | null;
   entity_id?: bigint | null;

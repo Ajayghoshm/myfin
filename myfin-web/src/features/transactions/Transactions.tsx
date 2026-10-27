@@ -109,6 +109,8 @@ function readUrlFilters(searchParams: URLSearchParams) {
   const yearlyCost = searchParams.get('yearly_cost');
   const below = searchParams.get('below');
   const day = searchParams.get('day');
+  const range = /^(\d{1,12})-(\d{1,12})$/.exec(searchParams.get('range') ?? '');
+  const adjustment = searchParams.get('adjustment');
   return {
     planned: searchParams.get('planned') === '1',
     month: isYearMonth(month) ? month : null,
@@ -128,6 +130,14 @@ function readUrlFilters(searchParams: URLSearchParams) {
       : null) as 'linked' | 'unlinked' | null,
     day: day && isRealDay(day) ? day : null,
     below: below && /^[1-9]\d{0,14}$/.test(below) ? Number(below) : null,
+    // calendar range in epoch seconds, [from, to)
+    range:
+      range && Number(range[1]) < Number(range[2])
+        ? { from: Number(range[1]), to: Number(range[2]) }
+        : null,
+    adjustment: (adjustment === 'write_off' ? adjustment : null) as
+      | 'write_off'
+      | null,
   };
 }
 
@@ -141,6 +151,8 @@ type UrlFilterParam =
   | 'yearly_cost'
   | 'below'
   | 'day'
+  | 'range'
+  | 'adjustment'
   | 'planned';
 
 const Transactions = () => {
@@ -195,6 +207,9 @@ const Transactions = () => {
       costKind: urlFilters.cost ?? undefined,
       yearlyCost: urlFilters.yearlyCost ?? undefined,
       amountLt: urlFilters.below ?? undefined,
+      dateFrom: urlFilters.range?.from,
+      dateTo: urlFilters.range?.to,
+      adjustment: urlFilters.adjustment ?? undefined,
     };
   }, [
     urlFilters.month,
@@ -205,6 +220,9 @@ const Transactions = () => {
     urlFilters.cost,
     urlFilters.yearlyCost,
     urlFilters.below,
+    urlFilters.range?.from,
+    urlFilters.range?.to,
+    urlFilters.adjustment,
   ]);
   const listOptions: TransactionListOptions = useMemo(() => {
     const sort = sortModel[0];
@@ -649,6 +667,9 @@ const Transactions = () => {
                 cost_kind: structuredFilter.costKind,
                 yearly_cost: structuredFilter.yearlyCost,
                 amount_lt: structuredFilter.amountLt,
+                date_from: structuredFilter.dateFrom,
+                date_to: structuredFilter.dateTo,
+                adjustment: structuredFilter.adjustment,
               },
             }
           : { transaction_ids: selectedIdsOnPage }),
@@ -699,6 +720,29 @@ const Transactions = () => {
         i18n.language,
         { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' },
       ),
+    });
+  }
+  if (urlFilters.range) {
+    const fmt = (epoch: number) =>
+      new Date(epoch * 1000).toLocaleDateString(i18n.language, {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        timeZone: 'Asia/Kolkata',
+      });
+    filterChips.push({
+      param: 'range',
+      label: t('transactions.filterRange', {
+        from: fmt(urlFilters.range.from),
+        // the range end is exclusive: show the last instant inside it
+        to: fmt(urlFilters.range.to - 1),
+      }),
+    });
+  }
+  if (urlFilters.adjustment) {
+    filterChips.push({
+      param: 'adjustment',
+      label: t('transactions.filterWriteOffs'),
     });
   }
   if (urlFilters.category) {
