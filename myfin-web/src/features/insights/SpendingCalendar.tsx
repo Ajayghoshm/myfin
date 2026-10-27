@@ -59,14 +59,18 @@ export function calendarRange(ym: string, view: View) {
 /** Spending calendar: each IST day shaded by its spending, a month grid or a 12-month strip. */
 const SpendingCalendar = ({ ym }: Props) => {
   const theme = useTheme();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const formatCurrency = useFormatNumberAsCurrency();
   const [view, setView] = useState<View>('month');
   const [flexibleOnly, setFlexibleOnly] = useState(false);
 
   const range = useMemo(() => calendarRange(ym, view), [ym, view]);
-  const { data } = useGetDailySpend(range.from, range.to, flexibleOnly);
+  const { data, isError } = useGetDailySpend(
+    range.from,
+    range.to,
+    flexibleOnly,
+  );
 
   const byDate = useMemo(
     () => new Map((data?.days ?? []).map((d) => [d.date, d])),
@@ -77,15 +81,15 @@ const SpendingCalendar = ({ ym }: Props) => {
   }) as unknown as string[];
   const today = iso(Date.now() + IST_OFFSET_MS);
 
-  if (!data || data.from !== range.from || data.to !== range.to) {
-    return (
-      <Card variant="outlined">
-        <CardContent>
-          <Typography variant="h6">{t('insights.calendar.title')}</Typography>
-        </CardContent>
-      </Card>
-    );
-  }
+  // Only trust data that matches the current range and toggle (placeholder data may be stale).
+  const ready =
+    data &&
+    data.from === range.from &&
+    data.to === range.to &&
+    data.flexible_only === flexibleOnly
+      ? data
+      : null;
+  const quantiles = ready?.quantiles ?? [];
 
   const openDay = (date: string) =>
     navigate(
@@ -98,15 +102,13 @@ const SpendingCalendar = ({ ym }: Props) => {
 
   const renderCell = (date: string, size: number, showNumber: boolean) => {
     const entry = byDate.get(date);
-    const shade = entry ? shadeFor(entry.total, data.quantiles) : null;
+    const shade = entry ? shadeFor(entry.total, quantiles) : null;
     const isToday = date === today;
     const label = entry
-      ? t(
-          entry.count === 1
-            ? 'insights.calendar.tooltipOne'
-            : 'insights.calendar.tooltip',
-          { amount: formatCurrency.invoke(entry.total), count: entry.count },
-        )
+      ? t('insights.calendar.tooltip', {
+          amount: formatCurrency.invoke(entry.total),
+          count: entry.count,
+        })
       : t('insights.calendar.noSpend');
     const cell = (
       <Box
@@ -186,17 +188,37 @@ const SpendingCalendar = ({ ym }: Props) => {
     return (
       <Box sx={{ overflowX: 'auto', pb: 1 }}>
         <Box display="flex" gap="3px" width="max-content">
-          {columns.map((col) => (
-            <Box key={col[0]} display="flex" flexDirection="column" gap="3px">
-              {col.map((ms) =>
-                ms < range.fromMs || ms > range.toMs ? (
-                  <Box key={ms} sx={{ width: 14, height: 14 }} />
-                ) : (
-                  renderCell(iso(ms), 14, false)
-                ),
-              )}
-            </Box>
-          ))}
+          {columns.map((col) => {
+            const first = col.find(
+              (ms) =>
+                ms >= range.fromMs &&
+                ms <= range.toMs &&
+                new Date(ms).getUTCDate() === 1,
+            );
+            return (
+              <Box key={col[0]} display="flex" flexDirection="column" gap="3px">
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ height: 14, lineHeight: '14px', whiteSpace: 'nowrap' }}
+                >
+                  {first === undefined
+                    ? ''
+                    : new Date(first).toLocaleDateString(i18n.language, {
+                        month: 'short',
+                        timeZone: 'UTC',
+                      })}
+                </Typography>
+                {col.map((ms) =>
+                  ms < range.fromMs || ms > range.toMs ? (
+                    <Box key={ms} sx={{ width: 14, height: 14 }} />
+                  ) : (
+                    renderCell(iso(ms), 14, false)
+                  ),
+                )}
+              </Box>
+            );
+          })}
         </Box>
       </Box>
     );
@@ -238,50 +260,59 @@ const SpendingCalendar = ({ ym }: Props) => {
             </ToggleButtonGroup>
           </Stack>
         </Stack>
-        <Box mt={2}>{view === 'month' ? renderMonth() : renderYear()}</Box>
-        <Stack direction="row" alignItems="center" gap={0.5} mt={1}>
-          <Typography variant="caption" color="text.secondary">
-            {t('insights.calendar.less')}
+        {isError && !ready && (
+          <Typography color="error" variant="body2" mt={2}>
+            {t('insights.calendar.loadError')}
           </Typography>
-          {SHADE_ALPHAS.map((a) => (
+        )}
+        {ready && (
+          <>
+            <Box mt={2}>{view === 'month' ? renderMonth() : renderYear()}</Box>
+            <Stack direction="row" alignItems="center" gap={0.5} mt={1}>
+              <Typography variant="caption" color="text.secondary">
+                {t('insights.calendar.less')}
+              </Typography>
+              {SHADE_ALPHAS.map((a) => (
+                <Box
+                  key={a}
+                  sx={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: '2px',
+                    backgroundColor: alpha(theme.palette.primary.main, a),
+                  }}
+                />
+              ))}
+              <Typography variant="caption" color="text.secondary">
+                {t('insights.calendar.more')}
+              </Typography>
+            </Stack>
+            <Typography variant="subtitle2" mt={2} mb={0.5}>
+              {t('insights.calendar.weekdayAverages')}
+            </Typography>
             <Box
-              key={a}
-              sx={{
-                width: 12,
-                height: 12,
-                borderRadius: '2px',
-                backgroundColor: alpha(theme.palette.primary.main, a),
-              }}
-            />
-          ))}
-          <Typography variant="caption" color="text.secondary">
-            {t('insights.calendar.more')}
-          </Typography>
-        </Stack>
-        <Typography variant="subtitle2" mt={2} mb={0.5}>
-          {t('insights.calendar.weekdayAverages')}
-        </Typography>
-        <Box
-          display="grid"
-          gridTemplateColumns="repeat(7, minmax(0, 1fr))"
-          gap={1}
-          maxWidth={420}
-        >
-          {data.weekday_avg.map((avg, i) => (
-            <Box key={weekdays[i]}>
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                display="block"
-              >
-                {weekdays[i]}
-              </Typography>
-              <Typography variant="body2">
-                {formatCurrency.invoke(avg)}
-              </Typography>
+              display="grid"
+              gridTemplateColumns="repeat(7, minmax(0, 1fr))"
+              gap={1}
+              maxWidth={420}
+            >
+              {ready.weekday_avg.map((avg, i) => (
+                <Box key={weekdays[i]}>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    display="block"
+                  >
+                    {weekdays[i]}
+                  </Typography>
+                  <Typography variant="body2">
+                    {formatCurrency.invoke(avg)}
+                  </Typography>
+                </Box>
+              ))}
             </Box>
-          ))}
-        </Box>
+          </>
+        )}
       </CardContent>
     </Card>
   );

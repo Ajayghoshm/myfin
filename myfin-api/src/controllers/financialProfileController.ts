@@ -14,7 +14,7 @@ const financialProfileSchema = joi.object({
   sinking_fund_account_id: joi.number().integer().positive().allow(null),
   emergency_fund_target_months: joi.number().integer().min(1).max(24),
   emergency_topup_percent: joi.number().integer().min(0).max(100),
-  small_spend_cutoff: joi.number().greater(0).max(100000),
+  small_spend_cutoff: joi.number().greater(0).max(100000).custom((v, helpers) => (Math.round(v * 100) < 1 ? helpers.error('any.invalid') : v)),
 });
 
 const getFinancialProfile = async (req: Request, res: Response, next: NextFunction) => {

@@ -95,8 +95,21 @@ describe('Daily spend', () => {
     expect(r.days.map((d) => d.date)).toEqual(['2026-10-04', '2026-10-05', '2026-10-11']);
   });
 
+  test('weekday averages stop at today (IST): on Oct 5, Sunday = Oct 4 spend / 1', async () => {
+    const now = ist(2026, 10, 5, 10);
+    const r = await dailySpend(uid, '2026-10-01', '2026-10-31', false, now);
+    expect(r.weekday_avg[6]).toBeCloseTo(500, 2); // only Sunday Oct 4 counted
+    expect(r.weekday_avg[0]).toBeCloseTo(300, 2); // Monday Oct 5 (today counts)
+    expect(r.weekday_avg[3]).toBeCloseTo(10000, 2); // Thursday Oct 1 only
+  });
+
+  test('range entirely in the future: all averages 0', async () => {
+    const r = await dailySpend(uid, '2026-10-01', '2026-10-31', false, ist(2026, 9, 1));
+    expect(r.weekday_avg).toEqual([0, 0, 0, 0, 0, 0, 0]);
+  });
+
   test('weekday average: Sunday = Sunday totals / 4 Sundays', async () => {
-    const r = await dailySpend(uid, '2026-10-01', '2026-10-31', false);
+    const r = await dailySpend(uid, '2026-10-01', '2026-10-31', false, ist(2026, 11, 1));
     expect(r.weekday_avg).toHaveLength(7);
     expect(r.weekday_avg[6]).toBeCloseTo((500 + 100) / 4, 2);
     // Monday 5th: 300 over 4 Mondays (5,12,19,26)

@@ -11,7 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import { useGetSmallSpends } from '../../services/insights/insightsHooks.ts';
 import { formatYearMonth } from '../../utils/istMonth.ts';
 import { useFormatNumberAsCurrency } from '../../utils/textHooks.ts';
-import { buildTransactionsLink } from './drillDown.ts';
+import { buildTransactionsLink, isActionablePayeeKey } from './drillDown.ts';
 import FigureLink from './FigureLink.tsx';
 import { formatMonthLabel } from './insightsFormat.ts';
 
@@ -27,7 +27,7 @@ const SmallSpendsCard = ({ ym }: Props) => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const formatCurrency = useFormatNumberAsCurrency();
-  const { data } = useGetSmallSpends(ym);
+  const { data, isError } = useGetSmallSpends(ym);
 
   const chartData: TrendDatum[] = useMemo(
     () =>
@@ -40,6 +40,20 @@ const SmallSpendsCard = ({ ym }: Props) => {
     [data?.trend, i18n.language],
   );
 
+  if (isError && !data) {
+    return (
+      <Card variant="outlined">
+        <CardContent>
+          <Typography variant="h6">
+            {t('insights.smallSpends.title')}
+          </Typography>
+          <Typography color="text.secondary">
+            {t('insights.smallSpends.loadError')}
+          </Typography>
+        </CardContent>
+      </Card>
+    );
+  }
   if (!data) return null;
 
   const below = Math.round(data.cutoff * 100);
@@ -94,7 +108,7 @@ const SmallSpendsCard = ({ ym }: Props) => {
                     <Typography variant="body2" noWrap>
                       <FigureLink
                         to={
-                          place.payee_key === ''
+                          !isActionablePayeeKey(place.payee_key)
                             ? null
                             : linkFor(ym, place.payee_key)
                         }

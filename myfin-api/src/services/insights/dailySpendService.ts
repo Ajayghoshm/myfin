@@ -12,7 +12,7 @@ export type DailySpend = {
   flexible_only: boolean;
   /** Only days with spending, ascending. */
   days: { date: string; total: number; count: number }[];
-  /** Index 0 = Monday … 6 = Sunday: total on that weekday ÷ number of such weekdays in [from, to]. */
+  /** Index 0 = Monday … 6 = Sunday: total on that weekday ÷ number of such weekdays in [from, min(to, today IST)]. */
   weekday_avg: number[];
   /** 4 cut points over non-zero day totals (20/40/60/80 %) for 5 shades. */
   quantiles: number[];
@@ -50,7 +50,8 @@ export async function dailySpend(
   userId: bigint,
   from: string,
   to: string,
-  flexibleOnly: boolean
+  flexibleOnly: boolean,
+  now: number = Math.floor(Date.now() / 1000)
 ): Promise<DailySpend> {
   const { start, days: spanDays } = validateDailyRange(from, to);
   const end = start + spanDays * DAY;
@@ -74,16 +75,18 @@ export async function dailySpend(
     count: Number(r.cnt),
   }));
 
-  // Weekday averages over every calendar day in [from, to].
+  // Weekday averages over the calendar days in [from, min(to, today IST)]; future days are not counted.
   const firstDayNo = Math.floor((start + IST_OFFSET_SECONDS) / DAY);
+  const todayNo = Math.floor((now + IST_OFFSET_SECONDS) / DAY);
+  const countedDays = Math.max(0, Math.min(spanDays, todayNo - firstDayNo + 1));
   const weekdayCount = new Array<number>(7).fill(0);
-  for (let i = 0; i < spanDays; i++) weekdayCount[(firstDayNo + i + 3) % 7] += 1; // epoch day 0 = Thursday
+  for (let i = 0; i < countedDays; i++) weekdayCount[(firstDayNo + i + 3) % 7] += 1; // epoch day 0 = Thursday
   const weekdayTotal = new Array<number>(7).fill(0);
-  for (const r of raw) weekdayTotal[(Number(r.day_no) + 3) % 7] += Number(r.total);
+  for (const r of raw.filter((r) => Number(r.day_no) <= todayNo)) weekdayTotal[(Number(r.day_no) + 3) % 7] += Number(r.total);
   const weekday_avg = weekdayTotal.map((t, i) => (weekdayCount[i] > 0 ? money(t / weekdayCount[i]) : 0));
 
   const sorted = days.map((d) => d.total).sort((a, b) => a - b);
-  const quantiles = sorted.length === 0 ? [] : [0.2, 0.4, 0.6, 0.8].map((q) => quantile(sorted, q));
+  const quantiles = sorted.length === 0 ? [] : [0.2, 0.4, 0.6, 0.8].map((q) => money(quantile(sorted, q) * 100));
 
   return { from, to, flexible_only: flexibleOnly, days, weekday_avg, quantiles };
 }

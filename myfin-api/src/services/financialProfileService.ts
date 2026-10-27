@@ -122,7 +122,7 @@ export async function updateFinancialProfile(
 
   if (patch.small_spend_cutoff !== undefined) {
     const c = patch.small_spend_cutoff;
-    if (typeof c !== 'number' || !Number.isFinite(c) || c <= 0 || c > MAX_SMALL_SPEND)
+    if (typeof c !== 'number' || !Number.isFinite(c) || Math.round(c * 100) < 1 || c > MAX_SMALL_SPEND)
       throw APIError.badRequest('small_spend_cutoff must be greater than 0 and at most 100000.');
     data.small_spend_cutoff = BigInt(ConvertUtils.convertFloatToBigInteger(c));
   }

@@ -40,10 +40,14 @@ export async function smallSpends(userId: bigint, ym: YearMonth): Promise<SmallS
   }
 
   // Typical: average over the shared baseline months that have data (any counted row).
-  const { baselineN } = computeTypical(rows, baselineIdx);
+  // Yearly-cost rows and the typical month's one-offs stay out of the baseline sums.
+  const { baselineN, typical } = computeTypical(rows, baselineIdx);
   const n = baselineN;
-  const typicalCents = n > 0 ? baselineIdx.reduce((s, i) => s + perMonth[i].cents, 0) / n : null;
-  const typicalCount = n > 0 ? baselineIdx.reduce((s, i) => s + perMonth[i].count, 0) / n : null;
+  const baseSmall = small.filter(
+    (r) => baselineIdx.includes(r.monthIdx) && !r.yearlyCost && !typical.oneOffIds.has(r.id.toString())
+  );
+  const typicalCents = n > 0 ? baseSmall.reduce((s, r) => s + r.cents, 0) / n : null;
+  const typicalCount = n > 0 ? baseSmall.length / n : null;
 
   const agg = new Map<string, { count: number; cents: number }>();
   for (const r of small.filter((r) => r.monthIdx === sel)) {

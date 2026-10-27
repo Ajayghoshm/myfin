@@ -13,6 +13,7 @@ import {
   updateFinancialProfile,
 } from '../../src/services/financialProfileService.js';
 import { toTransactionFilter } from '../../src/controllers/transactionController.js';
+import { financialProfileSchema } from '../../src/controllers/financialProfileController.js';
 import userBackupMock from './mock/user-backup.mock.json';
 
 const DAY = 86_400;
@@ -143,6 +144,9 @@ describe('Small spends', () => {
     expect((await getFinancialProfile(uid)).small_spend_cutoff).toBe(200);
     await expect(updateFinancialProfile(uid, { small_spend_cutoff: 0 })).rejects.toThrow();
     await expect(updateFinancialProfile(uid, { small_spend_cutoff: 100001 })).rejects.toThrow();
+    await expect(updateFinancialProfile(uid, { small_spend_cutoff: 0.004 })).rejects.toThrow();
+    expect(financialProfileSchema.validate({ small_spend_cutoff: 0.004 }).error).toBeTruthy();
+    expect(financialProfileSchema.validate({ small_spend_cutoff: 0.01 }).error).toBeUndefined();
     await updateFinancialProfile(uid, { small_spend_cutoff: 100000 });
     expect((await getFinancialProfile(uid)).small_spend_cutoff).toBe(100000);
   });

@@ -925,6 +925,7 @@
     "deleteAlert": "Les paiements liés sont conservés et déliés."
   },
   "savingsRate": {
+    "loadError": "Impossible de charger ces données.",
     "title": "Taux d'épargne",
     "headline": "Taux d'épargne : {{rate}}",
     "target": "(objectif {{target}} {{mark}})",
@@ -1034,28 +1035,33 @@
     "trendHint": "Cliquez sur un mois pour le sélectionner",
     "fixedVsFlexible": "Fixes vs flexibles",
     "calendar": {
+      "loadError": "Impossible de charger ces données.",
       "title": "Calendrier des dépenses",
       "monthView": "Mois",
       "yearView": "Année",
       "flexibleOnly": "Flexibles uniquement",
       "weekdayAverages": "Moyenne par jour de la semaine",
-      "tooltip": "{{amount}} · {{count}} paiements",
-      "tooltipOne": "{{amount}} · 1 paiement",
+      "tooltip_one": "{{amount}} · {{count}} paiement",
+      "tooltip_other": "{{amount}} · {{count}} paiements",
       "noSpend": "Aucune dépense",
       "less": "Moins",
       "more": "Plus",
       "weekdays": ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
     },
     "smallSpends": {
+      "loadError": "Impossible de charger ces données.",
       "title": "Petites dépenses",
-      "headline": "{{count}} petits paiements, {{total}}",
+      "headline_one": "{{count}} petit paiement, {{total}}",
+      "headline_other": "{{count}} petits paiements, {{total}}",
       "none": "Aucun petit paiement ce mois-ci",
       "subtitle": "Paiements inférieurs à {{cutoff}}",
-      "typical": "Mois typique : {{count}} paiements, {{total}}",
+      "typical_one": "Mois typique : {{count}} paiement, {{total}}",
+      "typical_other": "Mois typique : {{count}} paiements, {{total}}",
       "places": "Où elles sont allées",
       "noDescription": "(sans description)",
       "trend": "12 derniers mois",
-      "count": "{{count}} paiements"
+      "count_one": "{{count}} paiement",
+      "count_other": "{{count}} paiements"
     },
     "fixedLabel": "Fixes",
     "flexibleLabel": "Flexibles",

@@ -999,6 +999,7 @@
     "deleteAlert": "Os pagamentos associados são mantidos e desassociados."
   },
   "savingsRate": {
+    "loadError": "Não foi possível carregar estes dados.",
     "title": "Taxa de poupança",
     "headline": "Taxa de poupança: {{rate}}",
     "target": "(meta {{target}} {{mark}})",
@@ -1108,28 +1109,33 @@
     "trendHint": "Clique num mês para o selecionar",
     "fixedVsFlexible": "Fixos vs flexíveis",
     "calendar": {
+      "loadError": "Não foi possível carregar estes dados.",
       "title": "Calendário de gastos",
       "monthView": "Mês",
       "yearView": "Ano",
       "flexibleOnly": "Apenas flexíveis",
       "weekdayAverages": "Média por dia da semana",
-      "tooltip": "{{amount}} · {{count}} pagamentos",
-      "tooltipOne": "{{amount}} · 1 pagamento",
+      "tooltip_one": "{{amount}} · {{count}} pagamento",
+      "tooltip_other": "{{amount}} · {{count}} pagamentos",
       "noSpend": "Sem gastos",
       "less": "Menos",
       "more": "Mais",
       "weekdays": ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
     },
     "smallSpends": {
+      "loadError": "Não foi possível carregar estes dados.",
       "title": "Pequenos gastos",
-      "headline": "{{count}} pequenos pagamentos, {{total}}",
+      "headline_one": "{{count}} pequeno pagamento, {{total}}",
+      "headline_other": "{{count}} pequenos pagamentos, {{total}}",
       "none": "Sem pequenos pagamentos este mês",
       "subtitle": "Pagamentos abaixo de {{cutoff}}",
-      "typical": "Mês típico: {{count}} pagamentos, {{total}}",
+      "typical_one": "Mês típico: {{count}} pagamento, {{total}}",
+      "typical_other": "Mês típico: {{count}} pagamentos, {{total}}",
       "places": "Onde foram",
       "noDescription": "(sem descrição)",
       "trend": "Últimos 12 meses",
-      "count": "{{count}} pagamentos"
+      "count_one": "{{count}} pagamento",
+      "count_other": "{{count}} pagamentos"
     },
     "fixedLabel": "Fixos",
     "flexibleLabel": "Flexíveis",

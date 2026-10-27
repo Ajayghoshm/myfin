@@ -19,9 +19,19 @@ const SavingsRateCard = () => {
   const { t } = useTranslation();
   const theme = useTheme();
   const ym = useMemo(() => currentYearMonth(), []);
-  const { data } = useGetMonthInsights(ym);
+  const { data, isError } = useGetMonthInsights(ym);
   const profile = useGetFinancialProfile();
 
+  if (isError && !data) {
+    return (
+      <DataCard>
+        <PanelTitle>{t('savingsRate.title')}</PanelTitle>
+        <Typography color="text.secondary">
+          {t('savingsRate.loadError')}
+        </Typography>
+      </DataCard>
+    );
+  }
   if (!data) return null;
 
   const rate =
@@ -41,9 +51,16 @@ const SavingsRateCard = () => {
   );
   const prev = idx > 0 ? data.trend[idx - 1] : null;
   const prevRate = prev?.savings_rate == null ? null : prev.savings_rate * 100;
-  const delta = rate != null && prevRate != null ? rate - prevRate : null;
+  // Compare the figures as displayed (rounded), so "20%" vs target "20%" never shows ✗.
+  const delta =
+    rate != null && prevRate != null
+      ? Math.round(rate) - Math.round(prevRate)
+      : null;
 
-  const onTarget = rate != null && target != null ? rate >= target : null;
+  const onTarget =
+    rate != null && target != null
+      ? Math.round(rate) >= Math.round(target)
+      : null;
   const color =
     onTarget == null
       ? undefined
@@ -70,11 +87,11 @@ const SavingsRateCard = () => {
             {t('savingsRate.headline', {
               rate: rate == null ? '—' : fmt(rate),
             })}
-            {target != null && rate != null && (
+            {target != null && (
               <Typography component="span" variant="body1" sx={{ ml: 1 }}>
                 {t('savingsRate.target', {
                   target: fmt(target),
-                  mark: onTarget ? '✓' : '✗',
+                  mark: onTarget == null ? '' : onTarget ? '✓' : '✗',
                 })}
               </Typography>
             )}
@@ -84,8 +101,9 @@ const SavingsRateCard = () => {
               average: average == null ? '—' : fmt(average),
             })}
             {delta != null &&
-              ` · ${delta >= 0 ? '▲' : '▼'} ${t('savingsRate.vsLastMonth', {
-                pts: Math.abs(Math.round(delta)),
+              delta !== 0 &&
+              ` · ${delta > 0 ? '▲' : '▼'} ${t('savingsRate.vsLastMonth', {
+                pts: Math.abs(delta),
               })}`}
           </Typography>
         </Stack>

@@ -997,6 +997,7 @@
     "deleteAlert": "Linked payments are kept and unlinked."
   },
   "savingsRate": {
+    "loadError": "Could not load this data.",
     "title": "Savings rate",
     "headline": "Savings rate: {{rate}}",
     "target": "(target {{target}} {{mark}})",
@@ -1106,28 +1107,33 @@
     "trendHint": "Click a month to select it",
     "fixedVsFlexible": "Fixed vs flexible",
     "calendar": {
+      "loadError": "Could not load this data.",
       "title": "Spending calendar",
       "monthView": "Month",
       "yearView": "Year",
       "flexibleOnly": "Flexible only",
       "weekdayAverages": "Average by weekday",
-      "tooltip": "{{amount}} · {{count}} payments",
-      "tooltipOne": "{{amount}} · 1 payment",
+      "tooltip_one": "{{amount}} · {{count}} payment",
+      "tooltip_other": "{{amount}} · {{count}} payments",
       "noSpend": "No spending",
       "less": "Less",
       "more": "More",
       "weekdays": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     },
     "smallSpends": {
+      "loadError": "Could not load this data.",
       "title": "Small spends",
-      "headline": "{{count}} small payments, {{total}}",
+      "headline_one": "{{count}} small payment, {{total}}",
+      "headline_other": "{{count}} small payments, {{total}}",
       "none": "No small payments this month",
       "subtitle": "Payments below {{cutoff}}",
-      "typical": "Typical month: {{count}} payments, {{total}}",
+      "typical_one": "Typical month: {{count}} payment, {{total}}",
+      "typical_other": "Typical month: {{count}} payments, {{total}}",
       "places": "Where they went",
       "noDescription": "(no description)",
       "trend": "Last 12 months",
-      "count": "{{count}} payments"
+      "count_one": "{{count}} payment",
+      "count_other": "{{count}} payments"
     },
     "fixedLabel": "Fixed",
     "flexibleLabel": "Flexible",
