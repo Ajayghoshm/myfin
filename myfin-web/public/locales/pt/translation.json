@@ -1099,6 +1099,19 @@
     "trend": "Tendência de 12 meses",
     "trendHint": "Clique num mês para o selecionar",
     "fixedVsFlexible": "Fixos vs flexíveis",
+    "calendar": {
+      "title": "Calendário de gastos",
+      "monthView": "Mês",
+      "yearView": "Ano",
+      "flexibleOnly": "Apenas flexíveis",
+      "weekdayAverages": "Média por dia da semana",
+      "tooltip": "{{amount}} · {{count}} pagamentos",
+      "tooltipOne": "{{amount}} · 1 pagamento",
+      "noSpend": "Sem gastos",
+      "less": "Menos",
+      "more": "Mais",
+      "weekdays": ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
+    },
     "smallSpends": {
       "title": "Pequenos gastos",
       "headline": "{{count}} pequenos pagamentos, {{total}}",

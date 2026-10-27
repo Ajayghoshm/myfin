@@ -84,6 +84,13 @@ import { useLinkYearlyCostTransaction } from '../../services/yearlyCosts/yearlyC
 const ID_REGEX = /^\d+$/;
 const TRX_TYPES: string[] = Object.values(TransactionType);
 
+/** A YYYY-MM-DD string that is a real calendar date. */
+function isRealDay(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const d = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
+}
+
 /** Drill-down filters read from the URL; invalid values are ignored. */
 function readUrlFilters(searchParams: URLSearchParams) {
   const month = searchParams.get('month');
@@ -94,6 +101,7 @@ function readUrlFilters(searchParams: URLSearchParams) {
   const cost = searchParams.get('cost');
   const yearlyCost = searchParams.get('yearly_cost');
   const below = searchParams.get('below');
+  const day = searchParams.get('day');
   return {
     planned: searchParams.get('planned') === '1',
     month: isYearMonth(month) ? month : null,
@@ -111,6 +119,7 @@ function readUrlFilters(searchParams: URLSearchParams) {
     yearlyCost: (yearlyCost === 'linked' || yearlyCost === 'unlinked'
       ? yearlyCost
       : null) as 'linked' | 'unlinked' | null,
+    day: day && isRealDay(day) ? day : null,
     below: below && /^[1-9]\d{0,14}$/.test(below) ? Number(below) : null,
   };
 }
@@ -124,6 +133,7 @@ type UrlFilterParam =
   | 'cost'
   | 'yearly_cost'
   | 'below'
+  | 'day'
   | 'planned';
 
 const Transactions = () => {
@@ -168,6 +178,7 @@ const Transactions = () => {
   const structuredFilter = useMemo(() => {
     return {
       effectiveMonth: urlFilters.month ?? undefined,
+      day: urlFilters.day ?? undefined,
       categoryId: urlFilters.category ?? undefined,
       payeeKey: urlFilters.payee ?? undefined,
       accountId: urlFilters.account ?? undefined,
@@ -177,6 +188,7 @@ const Transactions = () => {
     };
   }, [
     urlFilters.month,
+    urlFilters.day,
     urlFilters.category,
     urlFilters.payee,
     urlFilters.account,
@@ -577,6 +589,7 @@ const Transactions = () => {
                 query: searchQuery,
                 type: typeFilter ?? undefined,
                 effective_month: structuredFilter.effectiveMonth,
+                day: structuredFilter.day,
                 category_id: structuredFilter.categoryId,
                 payee_key: structuredFilter.payeeKey,
                 account_id: structuredFilter.accountId,
@@ -624,6 +637,15 @@ const Transactions = () => {
     filterChips.push({
       param: 'month',
       label: formatMonthLabel(year, month, i18n.language),
+    });
+  }
+  if (urlFilters.day) {
+    filterChips.push({
+      param: 'day',
+      label: new Date(`${urlFilters.day}T00:00:00Z`).toLocaleDateString(
+        i18n.language,
+        { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' },
+      ),
     });
   }
   if (urlFilters.category) {

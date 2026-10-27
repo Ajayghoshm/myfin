@@ -64,6 +64,8 @@ export type TransactionListOptions = {
   accountId?: string;
   /** 'YYYY-MM' effective month (see Insights drill-down) */
   effectiveMonth?: string;
+  /** 'YYYY-MM-DD' IST calendar day */
+  day?: string;
   costKind?: 'fixed' | 'flexible' | 'unsorted';
   /** linked to a yearly cost or not */
   yearlyCost?: 'linked' | 'unlinked';
@@ -90,6 +92,7 @@ const getTransactions = (
       payee_key: options.payeeKey,
       account_id: options.accountId,
       effective_month: options.effectiveMonth,
+      day: options.day,
       cost_kind: options.costKind,
       yearly_cost: options.yearlyCost,
       amount_lt: options.amountLt,
@@ -301,6 +304,7 @@ export type BulkUpdateTransactionsRequest = {
     payee_key?: string;
     account_id?: string;
     effective_month?: string;
+    day?: string;
     cost_kind?: 'fixed' | 'flexible' | 'unsorted';
     yearly_cost?: 'linked' | 'unlinked';
     amount_lt?: number;

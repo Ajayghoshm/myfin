@@ -170,6 +170,22 @@ export type SmallSpends = {
   trend: Array<{ year: number; month: number; count: number; total: number }>;
 };
 
+export type DailySpend = {
+  from: string;
+  to: string;
+  flexible_only: boolean;
+  days: Array<{ date: string; total: number; count: number }>;
+  /** index 0 = Monday ... 6 = Sunday */
+  weekday_avg: number[];
+  /** 4 cut points over non-zero day totals, for 5 shades */
+  quantiles: number[];
+};
+
+const getDailySpend = (from: string, to: string, flexibleOnly: boolean) =>
+  axios.get<DailySpend>('/insights/daily', {
+    params: { from, to, flexible_only: flexibleOnly ? 1 : 0 },
+  });
+
 const getSmallSpends = (month: string) =>
   axios.get<SmallSpends>('/insights/small-spends', { params: { month } });
 
@@ -196,6 +212,7 @@ export default {
   getEmergencyFund,
   getSafeToSpend,
   getSmallSpends,
+  getDailySpend,
   getForecast,
   getForecastBudgetCompare,
   createBudgetFromForecast,

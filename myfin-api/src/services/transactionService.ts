@@ -19,7 +19,7 @@ import {
   effectiveMonthSql,
   formatYearMonth,
 } from './insights/analyticsRules.js';
-import { type YearMonth, payeeKeySql } from './insights/insightsPrimitives.js';
+import { type YearMonth, dayStartIST, payeeKeySql } from './insights/insightsPrimitives.js';
 
 const getTransactionsForUser = async (
   userId: bigint,
@@ -127,6 +127,8 @@ export type TransactionFilter = {
   accountId?: bigint;
   /** Rows whose effective month is this month (see `effectiveMonthSql`); needs `salaryRule` to shift late salaries. */
   effectiveMonth?: YearMonth;
+  /** A single IST calendar day, YYYY-MM-DD. */
+  day?: string;
   /** Already-resolved rule; callers resolve it with `salaryRuleFor`. Without it nothing shifts. */
   salaryRule?: SalaryRule;
   /** Leave out balance adjustments (`is_adjustment`). */
@@ -167,6 +169,13 @@ export function structuredFilterSql(filter: TransactionFilter): Prisma.Sql {
   }
   if (filter.effectiveMonth != null) {
     parts.push(effectiveMonthSql(filter.effectiveMonth, filter.salaryRule ?? NO_SALARY_RULE));
+  }
+  if (filter.day != null) {
+    const start = dayStartIST(filter.day);
+    if (start == null) throw APIError.badRequest('Invalid day');
+    parts.push(
+      Prisma.sql`transactions.date_timestamp >= ${start} AND transactions.date_timestamp < ${start + 86400}`
+    );
   }
   if (filter.excludeAdjustments) parts.push(Prisma.sql`transactions.is_adjustment = false`);
   if (filter.costKind === 'unsorted') {
@@ -231,6 +240,7 @@ const getFilteredTransactionsByForUser = async (
     payeeKey: options.payeeKey,
     accountId: options.accountId,
     effectiveMonth: options.effectiveMonth,
+    day: options.day,
     salaryRule: options.salaryRule,
     excludeAdjustments: options.excludeAdjustments,
     costKind: options.costKind,

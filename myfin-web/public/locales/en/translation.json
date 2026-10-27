@@ -1097,6 +1097,19 @@
     "trend": "12-month trend",
     "trendHint": "Click a month to select it",
     "fixedVsFlexible": "Fixed vs flexible",
+    "calendar": {
+      "title": "Spending calendar",
+      "monthView": "Month",
+      "yearView": "Year",
+      "flexibleOnly": "Flexible only",
+      "weekdayAverages": "Average by weekday",
+      "tooltip": "{{amount}} · {{count}} payments",
+      "tooltipOne": "{{amount}} · 1 payment",
+      "noSpend": "No spending",
+      "less": "Less",
+      "more": "More",
+      "weekdays": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    },
     "smallSpends": {
       "title": "Small spends",
       "headline": "{{count}} small payments, {{total}}",

@@ -28,6 +28,21 @@ export function useGetSafeToSpend() {
 
 export const QUERY_KEY_GET_SMALL_SPENDS = 'QUERY_KEY_GET_SMALL_SPENDS';
 
+export const QUERY_KEY_GET_DAILY_SPEND = 'QUERY_KEY_GET_DAILY_SPEND';
+
+export function useGetDailySpend(
+  from: string,
+  to: string,
+  flexibleOnly: boolean,
+) {
+  return useQuery({
+    queryKey: [QUERY_KEY_GET_DAILY_SPEND, from, to, flexibleOnly],
+    queryFn: async () =>
+      (await insightsServices.getDailySpend(from, to, flexibleOnly)).data,
+    placeholderData: keepPreviousData,
+  });
+}
+
 /** `ym` is 'YYYY-MM'. */
 export function useGetSmallSpends(ym: string) {
   return useQuery({

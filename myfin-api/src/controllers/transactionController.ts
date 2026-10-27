@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import joi from 'joi';
 import { MYFIN } from '../consts.js';
 import APIError from '../errorHandling/apiError.js';
+import { dayStartIST } from '../services/insights/insightsPrimitives.js';
 import AccountService from '../services/accountService.js';
 import CategoryService from '../services/categoryService.js';
 import EntityService from '../services/entityService.js';
@@ -49,6 +50,11 @@ const structuredFilterKeys = {
     .string()
     .pattern(/^\d{4}-(0[1-9]|1[0-2])$/)
     .empty(''),
+  day: joi
+    .string()
+    .pattern(/^\d{4}-\d{2}-\d{2}$/)
+    .custom((v, helpers) => (dayStartIST(v) == null ? helpers.error('any.invalid') : v))
+    .empty(''),
   cost_kind: joi.string().valid('fixed', 'flexible', 'unsorted').empty(''),
   yearly_cost: joi.string().valid('linked', 'unlinked').empty(''),
   amount_lt: joi.number().integer().positive().empty(''),
@@ -61,6 +67,7 @@ type StructuredFilterInput = {
   payee_key?: string;
   account_id?: number;
   effective_month?: string;
+  day?: string;
   cost_kind?: 'fixed' | 'flexible' | 'unsorted';
   yearly_cost?: 'linked' | 'unlinked';
   amount_lt?: number;
@@ -81,10 +88,11 @@ const toTransactionFilter = (input: StructuredFilterInput) => ({
   // An income/expense month drill-down mirrors Insights, which never counts balance adjustments;
   // a plain month view still lists them.
   excludeAdjustments:
-    input.effective_month !== undefined &&
+    (input.effective_month !== undefined || input.day !== undefined) &&
     (input.type === MYFIN.TRX_TYPES.EXPENSE || input.type === MYFIN.TRX_TYPES.INCOME)
       ? true
       : undefined,
+  day: input.day,
   costKind: input.cost_kind,
   yearlyCost: input.yearly_cost,
   amountLt: input.amount_lt,

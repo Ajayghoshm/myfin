@@ -11,6 +11,19 @@ export function monthRangeIST(ym: YearMonth): { from: number; to: number } {
   return { from, to };
 }
 
+const DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/** Epoch-second start of a YYYY-MM-DD IST day, or null when it is not a real calendar date. */
+export function dayStartIST(date: string): number | null {
+  const m = DAY_RE.exec(date);
+  if (!m) return null;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const ms = Date.UTC(y, mo - 1, d);
+  const back = new Date(ms);
+  if (back.getUTCFullYear() !== y || back.getUTCMonth() !== mo - 1 || back.getUTCDate() !== d) return null;
+  return ms / 1000 - IST_OFFSET_SECONDS;
+}
+
 export function shiftMonth(ym: YearMonth, delta: number): YearMonth {
   const idx = ym.year * 12 + (ym.month - 1) + delta;
   return { year: Math.floor(idx / 12), month: (((idx % 12) + 12) % 12) + 1 };

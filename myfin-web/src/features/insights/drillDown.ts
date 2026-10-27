@@ -1,5 +1,6 @@
 export type TransactionsLinkParams = {
-  month: string; // 'YYYY-MM'
+  month?: string; // 'YYYY-MM'
+  day?: string; // 'YYYY-MM-DD' (IST calendar day)
   type?: 'E' | 'I' | 'T';
   category?: string; // category id | 'none'
   payee?: string; // payee key, exactly as received from the API
@@ -20,7 +21,8 @@ export function isActionablePayeeKey(payeeKey: string): boolean {
 /** Link to the Transactions page with drill-down filters in the URL. */
 export function buildTransactionsLink(params: TransactionsLinkParams): string {
   const search = new URLSearchParams();
-  search.set('month', params.month);
+  if (params.month) search.set('month', params.month);
+  if (params.day) search.set('day', params.day);
   if (params.type) search.set('type', params.type);
   if (params.category) search.set('category', params.category);
   if (params.payee) search.set('payee', params.payee);

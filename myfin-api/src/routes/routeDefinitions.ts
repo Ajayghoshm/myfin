@@ -109,6 +109,7 @@ export const routeGroups: RouteGroup[] = [
       { method: 'get', path: '/emergency-fund', handlerName: 'getEmergencyFund' },
       { method: 'get', path: '/safe-to-spend', handlerName: 'getSafeToSpend' },
       { method: 'get', path: '/small-spends', handlerName: 'getSmallSpends' },
+      { method: 'get', path: '/daily', handlerName: 'getDailySpend' },
       { method: 'get', path: '/forecast', handlerName: 'getForecast' },
       { method: 'get', path: '/forecast/budget-compare', handlerName: 'getForecastBudgetCompare' },
       { method: 'post', path: '/forecast/budget', handlerName: 'createBudgetFromForecast' },

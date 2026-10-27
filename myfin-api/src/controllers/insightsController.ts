@@ -8,6 +8,8 @@ import {
   forecastToBudget,
   parseForecastMonth,
 } from '../services/planning/forecastService.js';
+import { dailySpend } from '../services/insights/dailySpendService.js';
+import { dayStartIST } from '../services/insights/insightsPrimitives.js';
 import { smallSpends } from '../services/insights/smallSpendService.js';
 import { safeToSpend } from '../services/planning/safeToSpendService.js';
 import InsightsService from '../services/insights/insightsService.js';
@@ -51,6 +53,30 @@ const getSmallSpends = async (req: Request, res: Response, next: NextFunction) =
     const sessionData = await CommonsController.checkAuthSessionValidity(req);
     const input = await forecastQuerySchema.validateAsync(req.query);
     res.json(await smallSpends(sessionData.userId, parseForecastMonth(input.month)));
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
+const realDay = joi
+  .string()
+  .pattern(/^\d{4}-\d{2}-\d{2}$/)
+  .custom((v, helpers) => (dayStartIST(v) == null ? helpers.error('any.invalid') : v));
+
+const dailySpendQuerySchema = joi
+  .object({
+    from: realDay.required(),
+    to: realDay.required(),
+    flexible_only: joi.boolean().truthy('1').falsy('0', '').default(false),
+  })
+  .unknown(true);
+
+const getDailySpend = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    const input = await dailySpendQuerySchema.validateAsync(req.query);
+    res.json(await dailySpend(sessionData.userId, input.from, input.to, input.flexible_only));
   } catch (err) {
     Logger.addLog(err);
     next(err || APIError.internalServerError());
@@ -128,6 +154,7 @@ export default {
   getEmergencyFund,
   getSafeToSpend,
   getSmallSpends,
+  getDailySpend,
   getForecast,
   getForecastBudgetCompare,
   createBudgetFromForecast,
@@ -135,4 +162,4 @@ export default {
 };
 
 // Exported for tests
-export { forecastBudgetSchema, forecastQuerySchema, monthInsightsSchema, payeeClassificationSchema };
+export { dailySpendQuerySchema, forecastBudgetSchema, forecastQuerySchema, monthInsightsSchema, payeeClassificationSchema };
