@@ -65,6 +65,8 @@ export type TransactionListOptions = {
   /** 'YYYY-MM' effective month (see Insights drill-down) */
   effectiveMonth?: string;
   costKind?: 'fixed' | 'flexible' | 'unsorted';
+  /** linked to a yearly cost or not */
+  yearlyCost?: 'linked' | 'unlinked';
 };
 
 const getTransactions = (
@@ -87,6 +89,7 @@ const getTransactions = (
       account_id: options.accountId,
       effective_month: options.effectiveMonth,
       cost_kind: options.costKind,
+      yearly_cost: options.yearlyCost,
     },
   });
 };
@@ -290,6 +293,7 @@ export type BulkUpdateTransactionsRequest = {
     account_id?: string;
     effective_month?: string;
     cost_kind?: 'fixed' | 'flexible' | 'unsorted';
+    yearly_cost?: 'linked' | 'unlinked';
   };
   category_id?: bigint | null;
   entity_id?: bigint | null;

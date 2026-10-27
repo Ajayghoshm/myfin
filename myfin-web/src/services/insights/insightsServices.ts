@@ -76,6 +76,31 @@ export type EmergencyFund = {
   accounts: Array<{ account_id: string; name: string; balance: number }>;
 };
 
+export type SafeToSpend = {
+  month: string; // 'YYYY-MM'
+  days_left: number;
+  per_day: number;
+  safe_to_spend: number;
+  expected_income: number;
+  income_so_far: number;
+  typical_income: number | null;
+  spent_so_far: number;
+  fixed_still_to_come: number;
+  fixed_lines: Array<{
+    category_id: string;
+    name: string;
+    typical: number;
+    spent: number;
+    remaining: number;
+  }>;
+  savings_target: number;
+  yearly_setaside: number;
+  emergency_topup: number;
+  has_fixed_categories: boolean;
+};
+
+const getSafeToSpend = () => axios.get<SafeToSpend>('/insights/safe-to-spend');
+
 const getEmergencyFund = () =>
   axios.get<EmergencyFund>('/insights/emergency-fund');
 
@@ -95,5 +120,6 @@ const setPayeeClassification = (payee_key: string, kind: PayeeKind | null) => {
 export default {
   getMonthInsights,
   getEmergencyFund,
+  getSafeToSpend,
   setPayeeClassification,
 };

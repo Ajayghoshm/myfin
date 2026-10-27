@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import joi from 'joi';
 import APIError from '../errorHandling/apiError.js';
 import { emergencyFund } from '../services/planning/emergencyFundService.js';
+import { safeToSpend } from '../services/planning/safeToSpendService.js';
 import InsightsService from '../services/insights/insightsService.js';
 import Logger from '../utils/Logger.js';
 import CommonsController from './commonsController.js';
@@ -38,6 +39,16 @@ const getEmergencyFund = async (req: Request, res: Response, next: NextFunction)
   }
 };
 
+const getSafeToSpend = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    res.json(await safeToSpend(sessionData.userId));
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
 const payeeClassificationSchema = joi.object({
   payee_key: joi.string().min(1).max(255).required(),
   kind: joi.string().valid('person', 'merchant').allow(null).required(),
@@ -58,6 +69,7 @@ const setPayeeClassification = async (req: Request, res: Response, next: NextFun
 export default {
   getMonthInsights,
   getEmergencyFund,
+  getSafeToSpend,
   setPayeeClassification,
 };
 

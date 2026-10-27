@@ -14,6 +14,15 @@ export function useGetEmergencyFund() {
   });
 }
 
+export const QUERY_KEY_GET_SAFE_TO_SPEND = 'QUERY_KEY_GET_SAFE_TO_SPEND';
+
+export function useGetSafeToSpend() {
+  return useQuery({
+    queryKey: [QUERY_KEY_GET_SAFE_TO_SPEND],
+    queryFn: async () => (await insightsServices.getSafeToSpend()).data,
+  });
+}
+
 /** `ym` is 'YYYY-MM'. */
 export function useGetMonthInsights(ym: string) {
   async function getMonthInsights() {

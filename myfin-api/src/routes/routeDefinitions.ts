@@ -105,6 +105,7 @@ export const routeGroups: RouteGroup[] = [
     routes: [
       { method: 'get', path: '/month', handlerName: 'getMonthInsights' },
       { method: 'get', path: '/emergency-fund', handlerName: 'getEmergencyFund' },
+      { method: 'get', path: '/safe-to-spend', handlerName: 'getSafeToSpend' },
       { method: 'put', path: '/payee-classification', handlerName: 'setPayeeClassification' },
     ],
   },

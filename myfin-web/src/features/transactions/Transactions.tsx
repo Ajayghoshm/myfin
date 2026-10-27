@@ -90,6 +90,7 @@ function readUrlFilters(searchParams: URLSearchParams) {
   const payee = searchParams.get('payee');
   const account = searchParams.get('account');
   const cost = searchParams.get('cost');
+  const yearlyCost = searchParams.get('yearly_cost');
   return {
     month: isYearMonth(month) ? month : null,
     type: type && TRX_TYPES.includes(type) ? (type as TransactionType) : null,
@@ -103,10 +104,20 @@ function readUrlFilters(searchParams: URLSearchParams) {
       | 'fixed'
       | 'flexible'
       | null,
+    yearlyCost: (yearlyCost === 'linked' || yearlyCost === 'unlinked'
+      ? yearlyCost
+      : null) as 'linked' | 'unlinked' | null,
   };
 }
 
-type UrlFilterParam = 'month' | 'type' | 'category' | 'payee' | 'account' | 'cost';
+type UrlFilterParam =
+  | 'month'
+  | 'type'
+  | 'category'
+  | 'payee'
+  | 'account'
+  | 'cost'
+  | 'yearly_cost';
 
 const Transactions = () => {
   const theme = useTheme();
@@ -153,6 +164,7 @@ const Transactions = () => {
       payeeKey: urlFilters.payee ?? undefined,
       accountId: urlFilters.account ?? undefined,
       costKind: urlFilters.cost ?? undefined,
+      yearlyCost: urlFilters.yearlyCost ?? undefined,
     };
   }, [
     urlFilters.month,
@@ -160,6 +172,7 @@ const Transactions = () => {
     urlFilters.payee,
     urlFilters.account,
     urlFilters.cost,
+    urlFilters.yearlyCost,
   ]);
   const listOptions: TransactionListOptions = useMemo(() => {
     const sort = sortModel[0];
@@ -548,6 +561,7 @@ const Transactions = () => {
                 payee_key: structuredFilter.payeeKey,
                 account_id: structuredFilter.accountId,
                 cost_kind: structuredFilter.costKind,
+                yearly_cost: structuredFilter.yearlyCost,
               },
             }
           : { transaction_ids: selectedIdsOnPage }),
@@ -611,6 +625,16 @@ const Transactions = () => {
         urlFilters.cost === 'fixed'
           ? 'transactions.filterFixed'
           : 'transactions.filterFlexible',
+      ),
+    });
+  }
+  if (urlFilters.yearlyCost) {
+    filterChips.push({
+      param: 'yearly_cost',
+      label: t(
+        urlFilters.yearlyCost === 'unlinked'
+          ? 'transactions.filterYearlyUnlinked'
+          : 'transactions.filterYearlyLinked',
       ),
     });
   }
