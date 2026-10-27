@@ -109,14 +109,16 @@ async function balancesAt(accountIds: bigint[], boundaries: number[]): Promise<M
   return out;
 }
 
-/** Σ invest asset values (cents) at each boundary. */
-async function investValuesAt(userId: bigint, boundaries: number[]): Promise<number[]> {
+/** Σ invest asset values (cents) at each boundary; `assetIds` limits it to those assets. */
+export async function investValuesAt(userId: bigint, boundaries: number[], assetIds?: bigint[]): Promise<number[]> {
+  if (assetIds && assetIds.length === 0) return boundaries.map(() => 0);
+  const only = assetIds ? Prisma.sql`AND a.asset_id IN (${Prisma.join(assetIds)})` : Prisma.empty;
   const maxIdx = Math.max(...boundaries.map(monthIdxBefore));
   const snaps = await prisma.$queryRaw<Array<{ asset_id: bigint; year: number; month: number; current_value: bigint }>>`
     SELECT s.invest_assets_asset_id AS asset_id, s.year, s.month, s.current_value
     FROM invest_asset_evo_snapshot s
     JOIN invest_assets a ON a.asset_id = s.invest_assets_asset_id
-    WHERE a.users_user_id = ${userId} AND (s.year * 12 + s.month - 1) <= ${maxIdx}
+    WHERE a.users_user_id = ${userId} ${only} AND (s.year * 12 + s.month - 1) <= ${maxIdx}
     ORDER BY s.invest_assets_asset_id, s.year, s.month`;
   const byAsset = new Map<string, { idx: number; cents: number }[]>();
   for (const s of snaps) {

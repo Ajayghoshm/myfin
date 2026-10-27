@@ -21,6 +21,7 @@ model accounts {
   color_gradient                                               String?             @db.VarChar(45)
   stale_after_days                                             Int?
   is_emergency_fund                                            Boolean             @default(false)
+  is_retirement                                                Boolean             @default(false)
   users                                                        users               @relation(fields: [users_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction, map: "accounts_users_user_id_fk")
   balances_snapshot                                            balances_snapshot[]
   transactions_transactions_accounts_account_to_idToaccounts   transactions[]      @relation("transactions_accounts_account_to_idToaccounts")
@@ -165,6 +166,7 @@ model invest_assets {
   created_at                BigInt
   updated_at                BigInt?
   users_user_id             BigInt
+  is_retirement             Boolean                     @default(false)
   invest_asset_evo_snapshot invest_asset_evo_snapshot[]
   invest_transactions       invest_transactions[]
 
@@ -399,6 +401,14 @@ model user_financial_profile {
   emergency_fund_target_months Int     @default(6)
   emergency_topup_percent      Int     @default(10)
   small_spend_cutoff           BigInt  @default(20000)
+  date_of_birth                String? @db.VarChar(10)
+  retirement_age               Int     @default(60)
+  expected_return_pct          Decimal @default(10) @db.Decimal(5, 2)
+  inflation_pct                Decimal @default(6) @db.Decimal(5, 2)
+  swr_pct                      Decimal @default(3.5) @db.Decimal(5, 2)
+  retirement_spending_basis    String  @default("all") @db.VarChar(8)
+  family_support_monthly       BigInt  @default(0)
+  family_support_years         Int     @default(0)
   updated_at         BigInt
   users              users   @relation(fields: [users_user_id], references: [user_id], onDelete: Cascade)
 }

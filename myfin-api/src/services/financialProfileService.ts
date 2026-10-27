@@ -3,6 +3,7 @@ import APIError from '../errorHandling/apiError.js';
 import DateTimeUtils from '../utils/DateTimeUtils.js';
 import ConvertUtils from '../utils/convertUtils.js';
 import { assertEarmarkAllowed } from './earmarkService.js';
+import { ageOn } from './wealth/retirementMath.js';
 
 export type SavingsTargetMode = 'amount' | 'percent';
 
@@ -18,7 +19,22 @@ export type FinancialProfile = {
   emergency_topup_percent: number;
   /** Currency: payments below this count as small spends. */
   small_spend_cutoff: number;
+  /** 'YYYY-MM-DD', or null when not set. */
+  date_of_birth: string | null;
+  retirement_age: number;
+  expected_return_pct: number;
+  inflation_pct: number;
+  swr_pct: number;
+  retirement_spending_basis: RetirementSpendingBasis;
+  /** Currency per month. */
+  family_support_monthly: number;
+  family_support_years: number;
+  /** Ticked for retirement. */
+  retirement_account_ids: string[];
+  retirement_asset_ids: string[];
 };
+
+export type RetirementSpendingBasis = 'all' | 'fixed';
 
 export type FinancialProfilePatch = {
   salary_category_id?: number | string | bigint | null;
@@ -30,6 +46,17 @@ export type FinancialProfilePatch = {
   emergency_fund_target_months?: number;
   emergency_topup_percent?: number;
   small_spend_cutoff?: number;
+  date_of_birth?: string | null;
+  retirement_age?: number;
+  expected_return_pct?: number;
+  inflation_pct?: number;
+  swr_pct?: number;
+  retirement_spending_basis?: RetirementSpendingBasis;
+  family_support_monthly?: number;
+  family_support_years?: number;
+  /** Replaces the whole ticked set. */
+  retirement_account_ids?: Array<number | string | bigint>;
+  retirement_asset_ids?: Array<number | string | bigint>;
 };
 
 type ProfileRow = {
@@ -42,7 +69,23 @@ type ProfileRow = {
   emergency_fund_target_months: number;
   emergency_topup_percent: number;
   small_spend_cutoff: bigint;
+  date_of_birth: string | null;
+  retirement_age: number;
+  expected_return_pct: { toString(): string } | number;
+  inflation_pct: { toString(): string } | number;
+  swr_pct: { toString(): string } | number;
+  retirement_spending_basis: string;
+  family_support_monthly: bigint;
+  family_support_years: number;
 };
+
+type ProfileData = Partial<
+  Omit<ProfileRow, 'expected_return_pct' | 'inflation_pct' | 'swr_pct'> & {
+    expected_return_pct: number;
+    inflation_pct: number;
+    swr_pct: number;
+  }
+>;
 
 const SAVINGS_MODES: string[] = ['amount', 'percent'];
 const DEFAULT_CUTOFF_DAY = 25;
@@ -50,7 +93,19 @@ const DEFAULT_EMERGENCY_MONTHS = 6;
 const DEFAULT_TOPUP_PERCENT = 10;
 const DEFAULT_SMALL_SPEND_CENTS = 20000n;
 const MAX_SMALL_SPEND = 100_000;
+export const MAX_RETIREMENT_AGE = 80;
+const DEFAULT_RETIREMENT_AGE = 60;
+const MAX_FAMILY_SUPPORT_YEARS = 60;
+const MAX_FAMILY_SUPPORT = 10_000_000;
+const pct = (v: { toString(): string } | number | undefined, fallback: number) => (v == null ? fallback : Number(v.toString()));
 
+const ranged = (name: string, v: unknown, min: number, max: number): number => {
+  if (typeof v !== 'number' || !Number.isFinite(v) || v < min || v > max)
+    throw APIError.badRequest(`${name} must be between ${min} and ${max}.`);
+  return Math.round(v * 100) / 100;
+};
+
+const nowSeconds = () => Math.floor(Date.now() / 1000);
 const idOrNull = (v: bigint | null | undefined) => (v != null ? String(v) : null);
 
 const toProfile = (row: ProfileRow | null): FinancialProfile => {
@@ -66,19 +121,49 @@ const toProfile = (row: ProfileRow | null): FinancialProfile => {
     emergency_fund_target_months: row?.emergency_fund_target_months ?? DEFAULT_EMERGENCY_MONTHS,
     emergency_topup_percent: row?.emergency_topup_percent ?? DEFAULT_TOPUP_PERCENT,
     small_spend_cutoff: ConvertUtils.convertBigIntegerToFloat(row?.small_spend_cutoff ?? DEFAULT_SMALL_SPEND_CENTS),
+    date_of_birth: row?.date_of_birth ?? null,
+    retirement_age: row?.retirement_age ?? DEFAULT_RETIREMENT_AGE,
+    expected_return_pct: pct(row?.expected_return_pct, 10),
+    inflation_pct: pct(row?.inflation_pct, 6),
+    swr_pct: pct(row?.swr_pct, 3.5),
+    retirement_spending_basis: row?.retirement_spending_basis === 'fixed' ? 'fixed' : 'all',
+    family_support_monthly: ConvertUtils.convertBigIntegerToFloat(row?.family_support_monthly ?? 0n),
+    family_support_years: row?.family_support_years ?? 0,
+    retirement_account_ids: [],
+    retirement_asset_ids: [],
   };
 };
 
+async function withTicks(userId: bigint, profile: FinancialProfile): Promise<FinancialProfile> {
+  const [accounts, assets] = await Promise.all([
+    prisma.accounts.findMany({
+      where: { users_user_id: userId, is_retirement: true },
+      select: { account_id: true },
+      orderBy: { account_id: 'asc' },
+    }),
+    prisma.invest_assets.findMany({
+      where: { users_user_id: userId, is_retirement: true },
+      select: { asset_id: true },
+      orderBy: { asset_id: 'asc' },
+    }),
+  ]);
+  return {
+    ...profile,
+    retirement_account_ids: accounts.map((a) => String(a.account_id)),
+    retirement_asset_ids: assets.map((a) => String(a.asset_id)),
+  };
+}
+
 export async function getFinancialProfile(userId: bigint): Promise<FinancialProfile> {
   const row = await prisma.user_financial_profile.findUnique({ where: { users_user_id: userId } });
-  return toProfile(row);
+  return withTicks(userId, toProfile(row));
 }
 
 export async function updateFinancialProfile(
   userId: bigint,
   patch: FinancialProfilePatch
 ): Promise<FinancialProfile> {
-  const data: Partial<ProfileRow> = {};
+  const data: ProfileData = {};
 
   if (patch.salary_cutoff_day !== undefined) {
     const day = patch.salary_cutoff_day;
@@ -105,6 +190,46 @@ export async function updateFinancialProfile(
     where: { users_user_id: userId },
   });
   const current = toProfile(existing);
+
+  // Retirement settings
+  if (patch.date_of_birth !== undefined) {
+    if (patch.date_of_birth === null) data.date_of_birth = null;
+    else {
+      if (typeof patch.date_of_birth !== 'string' || ageOn(patch.date_of_birth, nowSeconds()) === null)
+        throw APIError.badRequest('date_of_birth must be a real past date as YYYY-MM-DD.');
+      data.date_of_birth = patch.date_of_birth;
+    }
+  }
+  if (patch.retirement_age !== undefined) {
+    const a = patch.retirement_age;
+    if (!Number.isInteger(a) || a < 1 || a > MAX_RETIREMENT_AGE)
+      throw APIError.badRequest(`retirement_age must be an integer up to ${MAX_RETIREMENT_AGE}.`);
+    const dob = data.date_of_birth !== undefined ? data.date_of_birth : current.date_of_birth;
+    const age = dob ? ageOn(dob, nowSeconds()) : null;
+    if (age !== null && a <= age) throw APIError.badRequest('retirement_age must be above your current age.');
+    data.retirement_age = a;
+  }
+  if (patch.expected_return_pct !== undefined)
+    data.expected_return_pct = ranged('expected_return_pct', patch.expected_return_pct, 0, 30);
+  if (patch.inflation_pct !== undefined) data.inflation_pct = ranged('inflation_pct', patch.inflation_pct, 0, 20);
+  if (patch.swr_pct !== undefined) data.swr_pct = ranged('swr_pct', patch.swr_pct, 1, 10);
+  if (patch.retirement_spending_basis !== undefined) {
+    if (patch.retirement_spending_basis !== 'all' && patch.retirement_spending_basis !== 'fixed')
+      throw APIError.badRequest("retirement_spending_basis must be 'all' or 'fixed'.");
+    data.retirement_spending_basis = patch.retirement_spending_basis;
+  }
+  if (patch.family_support_monthly !== undefined) {
+    const v = patch.family_support_monthly;
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > MAX_FAMILY_SUPPORT)
+      throw APIError.badRequest('family_support_monthly must be a non-negative amount.');
+    data.family_support_monthly = BigInt(ConvertUtils.convertFloatToBigInteger(v));
+  }
+  if (patch.family_support_years !== undefined) {
+    const y = patch.family_support_years;
+    if (!Number.isInteger(y) || y < 0 || y > MAX_FAMILY_SUPPORT_YEARS)
+      throw APIError.badRequest(`family_support_years must be an integer up to ${MAX_FAMILY_SUPPORT_YEARS}.`);
+    data.family_support_years = y;
+  }
 
   if (patch.emergency_fund_target_months !== undefined) {
     const m = patch.emergency_fund_target_months;
@@ -152,7 +277,9 @@ export async function updateFinancialProfile(
     v === undefined ? undefined : v === null ? null : BigInt(v);
   const sinking = toId(patch.sinking_fund_account_id);
   const savings = toId(patch.savings_target_account_id);
-  const overrides = { sinking, savings_target: savings };
+  const accountTicks = patch.retirement_account_ids?.map((v) => BigInt(v));
+  const assetTicks = patch.retirement_asset_ids?.map((v) => BigInt(v));
+  const overrides = { sinking, savings_target: savings, retirementIds: accountTicks };
   if (sinking != null) {
     await assertEarmarkAllowed(userId, sinking, 'sinking', prisma, overrides);
     data.sinking_fund_account_id = sinking;
@@ -162,12 +289,40 @@ export async function updateFinancialProfile(
     data.savings_target_account_id = savings;
   } else if (savings === null) data.savings_target_account_id = null;
 
-  const row = await prisma.user_financial_profile.upsert({
-    where: { users_user_id: userId },
-    create: { users_user_id: userId, ...data, updated_at: DateTimeUtils.getCurrentUnixTimestamp() },
-    update: { ...data, updated_at: DateTimeUtils.getCurrentUnixTimestamp() },
+  if (accountTicks) {
+    for (const id of accountTicks) await assertEarmarkAllowed(userId, id, 'retirement', prisma, overrides);
+  }
+  if (assetTicks) {
+    const owned = await prisma.invest_assets.count({
+      where: { users_user_id: userId, asset_id: { in: assetTicks } },
+    });
+    if (owned !== new Set(assetTicks.map(String)).size)
+      throw APIError.badRequest('Invest asset does not belong to this user.');
+  }
+
+  const row = await prisma.$transaction(async (tx) => {
+    const saved = await tx.user_financial_profile.upsert({
+      where: { users_user_id: userId },
+      create: { users_user_id: userId, ...data, updated_at: DateTimeUtils.getCurrentUnixTimestamp() },
+      update: { ...data, updated_at: DateTimeUtils.getCurrentUnixTimestamp() },
+    });
+    if (accountTicks) {
+      await tx.accounts.updateMany({ where: { users_user_id: userId }, data: { is_retirement: false } });
+      await tx.accounts.updateMany({
+        where: { users_user_id: userId, account_id: { in: accountTicks } },
+        data: { is_retirement: true },
+      });
+    }
+    if (assetTicks) {
+      await tx.invest_assets.updateMany({ where: { users_user_id: userId }, data: { is_retirement: false } });
+      await tx.invest_assets.updateMany({
+        where: { users_user_id: userId, asset_id: { in: assetTicks } },
+        data: { is_retirement: true },
+      });
+    }
+    return saved;
   });
-  return toProfile(row);
+  return withTicks(userId, toProfile(row));
 }
 
 export default { getFinancialProfile, updateFinancialProfile };

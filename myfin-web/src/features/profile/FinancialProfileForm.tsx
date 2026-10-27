@@ -1,4 +1,9 @@
-import { Autocomplete, ToggleButton, ToggleButtonGroup } from '@mui/material';
+import {
+  Autocomplete,
+  Divider,
+  ToggleButton,
+  ToggleButtonGroup,
+} from '@mui/material';
 import Button from '@mui/material/Button';
 import Grid from '@mui/material/Grid';
 import TextField from '@mui/material/TextField';
@@ -11,6 +16,7 @@ import {
 import { useGetAccounts } from '../../services/account/accountHooks.ts';
 import { isEarmarkableAccountType } from '../../services/auth/authServices.ts';
 import { useGetCategories } from '../../services/category/CategoryHooks.tsx';
+import { useGetAssets } from '../../services/invest/investHooks.ts';
 import {
   useGetFinancialProfile,
   useUpdateFinancialProfile,
@@ -24,6 +30,7 @@ const FinancialProfileForm = () => {
   const profileRequest = useGetFinancialProfile();
   const categoriesRequest = useGetCategories();
   const accountsRequest = useGetAccounts();
+  const assetsRequest = useGetAssets();
   const updateRequest = useUpdateFinancialProfile();
 
   const [categoryId, setCategoryId] = useState<string | null>(null);
@@ -35,6 +42,18 @@ const FinancialProfileForm = () => {
   const [emergencyMonths, setEmergencyMonths] = useState('6');
   const [topupPercent, setTopupPercent] = useState('10');
   const [smallSpendCutoff, setSmallSpendCutoff] = useState('200');
+  const [dateOfBirth, setDateOfBirth] = useState('');
+  const [retirementAge, setRetirementAge] = useState('60');
+  const [returnPct, setReturnPct] = useState('10');
+  const [inflationPct, setInflationPct] = useState('6');
+  const [swrPct, setSwrPct] = useState('3.5');
+  const [spendingBasis, setSpendingBasis] = useState<'all' | 'fixed'>('all');
+  const [familyMonthly, setFamilyMonthly] = useState('0');
+  const [familyYears, setFamilyYears] = useState('0');
+  const [retirementAccountIds, setRetirementAccountIds] = useState<string[]>(
+    [],
+  );
+  const [retirementAssetIds, setRetirementAssetIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (!profileRequest.data) return;
@@ -49,6 +68,16 @@ const FinancialProfileForm = () => {
     );
     setTopupPercent(String(profileRequest.data.emergency_topup_percent));
     setSmallSpendCutoff(String(profileRequest.data.small_spend_cutoff));
+    setDateOfBirth(profileRequest.data.date_of_birth ?? '');
+    setRetirementAge(String(profileRequest.data.retirement_age));
+    setReturnPct(String(profileRequest.data.expected_return_pct));
+    setInflationPct(String(profileRequest.data.inflation_pct));
+    setSwrPct(String(profileRequest.data.swr_pct));
+    setSpendingBasis(profileRequest.data.retirement_spending_basis);
+    setFamilyMonthly(String(profileRequest.data.family_support_monthly));
+    setFamilyYears(String(profileRequest.data.family_support_years));
+    setRetirementAccountIds(profileRequest.data.retirement_account_ids);
+    setRetirementAssetIds(profileRequest.data.retirement_asset_ids);
   }, [profileRequest.data]);
 
   const options = (categoriesRequest.data ?? []).map((cat) => ({
@@ -87,6 +116,46 @@ const FinancialProfileForm = () => {
     smallSpendNumber > 0 &&
     smallSpendNumber <= 100000;
 
+  const inRange = (v: string, min: number, max: number) =>
+    v !== '' &&
+    Number.isFinite(Number(v)) &&
+    Number(v) >= min &&
+    Number(v) <= max;
+  const isDobValid =
+    dateOfBirth === '' ||
+    (/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth) &&
+      !Number.isNaN(Date.parse(dateOfBirth)));
+  const isRetAgeValid =
+    inRange(retirementAge, 1, 80) && Number.isInteger(Number(retirementAge));
+  const isReturnValid = inRange(returnPct, 0, 30);
+  const isInflationValid = inRange(inflationPct, 0, 20);
+  const isSwrValid = inRange(swrPct, 1, 10);
+  const isFamilyMonthlyValid = inRange(familyMonthly, 0, 10000000);
+  const isFamilyYearsValid =
+    inRange(familyYears, 0, 60) && Number.isInteger(Number(familyYears));
+  const isRetirementValid =
+    isDobValid &&
+    isRetAgeValid &&
+    isReturnValid &&
+    isInflationValid &&
+    isSwrValid &&
+    isFamilyMonthlyValid &&
+    isFamilyYearsValid;
+
+  // Retirement can overlap the savings target but not emergency or sinking accounts
+  const retirementAccountOptions = (accountsRequest.data ?? [])
+    .filter(
+      (a) =>
+        isEarmarkableAccountType(a.type) &&
+        !a.is_emergency_fund &&
+        String(a.account_id) !== sinkingAccountId,
+    )
+    .map((a) => ({ id: String(a.account_id), label: a.name }));
+  const retirementAssetOptions = (assetsRequest.data ?? []).map((a) => ({
+    id: String(a.asset_id),
+    label: a.name,
+  }));
+
   const day = Number(cutoffDay);
   const isDayValid = Number.isInteger(day) && day >= 1 && day <= 28;
 
@@ -104,6 +173,16 @@ const FinancialProfileForm = () => {
         emergency_fund_target_months: monthsNumber,
         emergency_topup_percent: topupNumber,
         small_spend_cutoff: smallSpendNumber,
+        date_of_birth: dateOfBirth === '' ? null : dateOfBirth,
+        retirement_age: Number(retirementAge),
+        expected_return_pct: Number(returnPct),
+        inflation_pct: Number(inflationPct),
+        swr_pct: Number(swrPct),
+        retirement_spending_basis: spendingBasis,
+        family_support_monthly: Number(familyMonthly),
+        family_support_years: Number(familyYears),
+        retirement_account_ids: retirementAccountIds.map(Number),
+        retirement_asset_ids: retirementAssetIds.map(Number),
       },
       {
         onSuccess: () =>
@@ -270,6 +349,152 @@ const FinancialProfileForm = () => {
           slotProps={{ htmlInput: { min: 0.01, max: 100000, step: 0.01 } }}
         />
       </Grid>
+      <Grid size={12}>
+        <Divider textAlign="left">{t('profile.retirementSection')}</Divider>
+      </Grid>
+      <Grid size={{ xs: 12, md: 6 }}>
+        <TextField
+          id="date-of-birth"
+          fullWidth
+          type="date"
+          label={t('profile.dateOfBirth')}
+          helperText={t('profile.dateOfBirthHelper')}
+          value={dateOfBirth}
+          error={!isDobValid}
+          onChange={(e) => setDateOfBirth(e.target.value)}
+          slotProps={{ inputLabel: { shrink: true } }}
+        />
+      </Grid>
+      <Grid size={{ xs: 12, md: 6 }}>
+        <TextField
+          id="retirement-age"
+          fullWidth
+          type="number"
+          label={t('profile.retirementAge')}
+          value={retirementAge}
+          error={!isRetAgeValid}
+          onChange={(e) => setRetirementAge(e.target.value)}
+          slotProps={{ htmlInput: { min: 1, max: 80 } }}
+        />
+      </Grid>
+      <Grid size={{ xs: 12, md: 4 }}>
+        <TextField
+          id="expected-return-pct"
+          fullWidth
+          type="number"
+          label={t('profile.expectedReturnPct')}
+          value={returnPct}
+          error={!isReturnValid}
+          onChange={(e) => setReturnPct(e.target.value)}
+          slotProps={{ htmlInput: { min: 0, max: 30, step: 0.1 } }}
+        />
+      </Grid>
+      <Grid size={{ xs: 12, md: 4 }}>
+        <TextField
+          id="inflation-pct"
+          fullWidth
+          type="number"
+          label={t('profile.inflationPct')}
+          value={inflationPct}
+          error={!isInflationValid}
+          onChange={(e) => setInflationPct(e.target.value)}
+          slotProps={{ htmlInput: { min: 0, max: 20, step: 0.1 } }}
+        />
+      </Grid>
+      <Grid size={{ xs: 12, md: 4 }}>
+        <TextField
+          id="swr-pct"
+          fullWidth
+          type="number"
+          label={t('profile.swrPct')}
+          value={swrPct}
+          error={!isSwrValid}
+          onChange={(e) => setSwrPct(e.target.value)}
+          slotProps={{ htmlInput: { min: 1, max: 10, step: 0.05 } }}
+        />
+      </Grid>
+      <Grid size={12}>
+        <ToggleButtonGroup
+          exclusive
+          size="small"
+          color="primary"
+          value={spendingBasis}
+          aria-label={t('profile.retirementSpendingBasis')}
+          onChange={(_e, value: 'all' | 'fixed' | null) => {
+            if (value !== null) setSpendingBasis(value);
+          }}
+        >
+          <ToggleButton value="all">{t('profile.basisAll')}</ToggleButton>
+          <ToggleButton value="fixed">{t('profile.basisFixed')}</ToggleButton>
+        </ToggleButtonGroup>
+      </Grid>
+      <Grid size={{ xs: 12, md: 6 }}>
+        <TextField
+          id="family-support-monthly"
+          fullWidth
+          type="number"
+          label={t('profile.familySupportMonthly')}
+          value={familyMonthly}
+          error={!isFamilyMonthlyValid}
+          onChange={(e) => setFamilyMonthly(e.target.value)}
+          slotProps={{ htmlInput: { min: 0, step: 0.01 } }}
+        />
+      </Grid>
+      <Grid size={{ xs: 12, md: 6 }}>
+        <TextField
+          id="family-support-years"
+          fullWidth
+          type="number"
+          label={t('profile.familySupportYears')}
+          value={familyYears}
+          error={!isFamilyYearsValid}
+          onChange={(e) => setFamilyYears(e.target.value)}
+          slotProps={{ htmlInput: { min: 0, max: 60 } }}
+        />
+      </Grid>
+      <Grid size={12}>
+        <Autocomplete
+          multiple
+          id="retirement-accounts"
+          value={retirementAccountOptions.filter((o) =>
+            retirementAccountIds.includes(o.id),
+          )}
+          options={retirementAccountOptions}
+          onChange={(_event, value) =>
+            setRetirementAccountIds(value.map((v) => v.id))
+          }
+          isOptionEqualToValue={(option, value) => option.id === value.id}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              fullWidth
+              label={t('profile.retirementAccounts')}
+              helperText={t('profile.retirementCorpusHelper')}
+            />
+          )}
+        />
+      </Grid>
+      <Grid size={12}>
+        <Autocomplete
+          multiple
+          id="retirement-assets"
+          value={retirementAssetOptions.filter((o) =>
+            retirementAssetIds.includes(o.id),
+          )}
+          options={retirementAssetOptions}
+          onChange={(_event, value) =>
+            setRetirementAssetIds(value.map((v) => v.id))
+          }
+          isOptionEqualToValue={(option, value) => option.id === value.id}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              fullWidth
+              label={t('profile.retirementAssets')}
+            />
+          )}
+        />
+      </Grid>
       <Grid offset="auto">
         <Button
           variant="contained"
@@ -280,6 +505,7 @@ const FinancialProfileForm = () => {
             !isMonthsValid ||
             !isTopupValid ||
             !isSmallSpendValid ||
+            !isRetirementValid ||
             updateRequest.isPending
           }
         >

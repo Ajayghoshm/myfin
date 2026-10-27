@@ -14,6 +14,17 @@ export type FinancialProfile = {
   emergency_topup_percent: number;
   /** Currency: payments below this are small spends. */
   small_spend_cutoff: number;
+  /** 'YYYY-MM-DD' or null. */
+  date_of_birth: string | null;
+  retirement_age: number;
+  expected_return_pct: number;
+  inflation_pct: number;
+  swr_pct: number;
+  retirement_spending_basis: 'all' | 'fixed';
+  family_support_monthly: number;
+  family_support_years: number;
+  retirement_account_ids: string[];
+  retirement_asset_ids: string[];
 };
 
 export type FinancialProfilePatch = {
@@ -26,6 +37,16 @@ export type FinancialProfilePatch = {
   emergency_fund_target_months?: number;
   emergency_topup_percent?: number;
   small_spend_cutoff?: number;
+  date_of_birth?: string | null;
+  retirement_age?: number;
+  expected_return_pct?: number;
+  inflation_pct?: number;
+  swr_pct?: number;
+  retirement_spending_basis?: 'all' | 'fixed';
+  family_support_monthly?: number;
+  family_support_years?: number;
+  retirement_account_ids?: number[];
+  retirement_asset_ids?: number[];
 };
 
 const getFinancialProfile = () => {

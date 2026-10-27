@@ -50,6 +50,9 @@ export function useUpdateFinancialProfile() {
       void queryClient.invalidateQueries({
         queryKey: [QUERY_KEY_GET_TRANSACTIONS],
       });
+      void queryClient.invalidateQueries({
+        queryKey: ['QUERY_KEY_GET_RETIREMENT'],
+      });
     },
   });
 }

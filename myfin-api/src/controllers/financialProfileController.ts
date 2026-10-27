@@ -15,6 +15,16 @@ const financialProfileSchema = joi.object({
   emergency_fund_target_months: joi.number().integer().min(1).max(24),
   emergency_topup_percent: joi.number().integer().min(0).max(100),
   small_spend_cutoff: joi.number().greater(0).max(100000).custom((v, helpers) => (Math.round(v * 100) < 1 ? helpers.error('any.invalid') : v)),
+  date_of_birth: joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).allow(null),
+  retirement_age: joi.number().integer().min(1).max(80),
+  expected_return_pct: joi.number().min(0).max(30),
+  inflation_pct: joi.number().min(0).max(20),
+  swr_pct: joi.number().min(1).max(10),
+  retirement_spending_basis: joi.string().valid('all', 'fixed'),
+  family_support_monthly: joi.number().min(0).max(10000000),
+  family_support_years: joi.number().integer().min(0).max(60),
+  retirement_account_ids: joi.array().items(joi.number().integer().positive()).unique(),
+  retirement_asset_ids: joi.array().items(joi.number().integer().positive()).unique(),
 });
 
 const getFinancialProfile = async (req: Request, res: Response, next: NextFunction) => {

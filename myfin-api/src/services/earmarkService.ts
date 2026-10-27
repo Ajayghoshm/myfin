@@ -2,7 +2,7 @@ import { prisma } from '../config/prisma.js';
 import { MYFIN } from '../consts.js';
 import APIError from '../errorHandling/apiError.js';
 
-export type AccountRole = 'emergency' | 'sinking' | 'savings_target';
+export type AccountRole = 'emergency' | 'sinking' | 'savings_target' | 'retirement';
 
 type DbClient = typeof prisma;
 
@@ -12,6 +12,8 @@ export type RoleOverrides = {
   savings_target?: bigint | null;
   /** Account type the account will have after a pending change. */
   type?: string;
+  /** Retirement-ticked account ids after a pending patch (instead of each account's stored flag). */
+  retirementIds?: bigint[];
 };
 
 /** Credit cards and loan accounts hold debt, so they can never be earmarked for anything. */
@@ -23,8 +25,8 @@ export const isNeverEarmarkable = (type: string | null | undefined) =>
   type === MYFIN.ACCOUNT_TYPES.INVESTING || isDebtAccountType(type);
 
 /**
- * An account may hold only one of emergency / sinking / savings_target, must belong to the
- * user and must not be an investment, credit card or loan account. Throws APIError 400 otherwise.
+ * An account may hold only one of emergency / sinking / savings_target (retirement may overlap a
+ * savings target but never emergency or sinking), must belong to the user and must not be an investment, credit card or loan account. Throws APIError 400 otherwise.
  */
 export async function assertEarmarkAllowed(
   userId: bigint,
@@ -35,7 +37,7 @@ export async function assertEarmarkAllowed(
 ): Promise<void> {
   const account = await dbClient.accounts.findFirst({
     where: { account_id: accountId, users_user_id: userId },
-    select: { type: true, is_emergency_fund: true },
+    select: { type: true, is_emergency_fund: true, is_retirement: true },
   });
   if (!account) throw APIError.badRequest('Account does not belong to this user.');
   const type = overrides.type ?? account.type;
@@ -54,13 +56,24 @@ export async function assertEarmarkAllowed(
       ? overrides.savings_target
       : (profile?.savings_target_account_id ?? null);
 
+  const retirement = overrides.retirementIds
+    ? overrides.retirementIds.includes(accountId)
+    : account.is_retirement;
   const clash = (
     [
       ['emergency', account.is_emergency_fund],
       ['sinking', sinking === accountId],
       ['savings_target', savings === accountId],
+      ['retirement', retirement],
     ] as Array<[AccountRole, boolean]>
-  ).find(([other, held]) => other !== role && held);
+  ).find(
+    ([other, held]) =>
+      other !== role &&
+      held &&
+      // Retirement and the savings target may overlap
+      !(other === 'savings_target' && role === 'retirement') &&
+      !(other === 'retirement' && role === 'savings_target')
+  );
   if (clash)
     throw APIError.badRequest(
       `This account is already the ${clash[0].replace('_', ' ')} account; an account can hold only one earmarked role.`

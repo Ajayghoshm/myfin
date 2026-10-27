@@ -121,6 +121,14 @@ export interface BackupData {
     emergency_fund_target_months?: number;
     emergency_topup_percent?: number;
     small_spend_cutoff?: bigint | number;
+    date_of_birth?: string | null;
+    retirement_age?: number;
+    expected_return_pct?: number | string | { toString(): string };
+    inflation_pct?: number | string | { toString(): string };
+    swr_pct?: number | string | { toString(): string };
+    retirement_spending_basis?: string;
+    family_support_monthly?: bigint | number;
+    family_support_years?: number;
   } | null;
 }
 
@@ -298,6 +306,14 @@ class BackupManager {
             emergency_fund_target_months: true,
             emergency_topup_percent: true,
             small_spend_cutoff: true,
+            date_of_birth: true,
+            retirement_age: true,
+            expected_return_pct: true,
+            inflation_pct: true,
+            swr_pct: true,
+            retirement_spending_basis: true,
+            family_support_monthly: true,
+            family_support_years: true,
           },
         })
         .then((row) => row ?? null),
@@ -546,6 +562,7 @@ class BackupManager {
           color_gradient: account.color_gradient,
           stale_after_days: account.stale_after_days ?? null,
           is_emergency_fund: account.is_emergency_fund ?? false,
+          is_retirement: account.is_retirement ?? false,
         },
       });
 
@@ -638,6 +655,7 @@ class BackupManager {
           broker: asset.broker,
           created_at: asset.created_at,
           updated_at: asset.updated_at,
+          is_retirement: asset.is_retirement ?? false,
           users_user_id: userId,
         },
       });
@@ -1091,6 +1109,14 @@ class BackupManager {
           emergency_fund_target_months: profile.emergency_fund_target_months ?? 6,
           emergency_topup_percent: profile.emergency_topup_percent ?? 10,
           small_spend_cutoff: BigInt(profile.small_spend_cutoff ?? 20000),
+          date_of_birth: profile.date_of_birth ?? null,
+          retirement_age: profile.retirement_age ?? 60,
+          expected_return_pct: Number(profile.expected_return_pct ?? 10),
+          inflation_pct: Number(profile.inflation_pct ?? 6),
+          swr_pct: Number(profile.swr_pct ?? 3.5),
+          retirement_spending_basis: profile.retirement_spending_basis === 'fixed' ? 'fixed' : 'all',
+          family_support_monthly: BigInt(profile.family_support_monthly ?? 0),
+          family_support_years: profile.family_support_years ?? 0,
           updated_at: BigInt(profile.updated_at),
         },
       });

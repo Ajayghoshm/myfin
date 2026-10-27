@@ -11,6 +11,7 @@ import {
   EventRepeatOutlined,
   FolderSharedOutlined,
   HandshakeOutlined,
+  BeachAccessOutlined,
   InsertChartOutlined,
   InsightsOutlined,
   LocalOfferOutlined,
@@ -31,6 +32,7 @@ import {
   ROUTE_INSIGHTS,
   ROUTE_YEARLY_COSTS,
   ROUTE_DEBTS,
+  ROUTE_RETIREMENT,
   ROUTE_INVEST,
   ROUTE_RULES,
   ROUTE_STATS,
@@ -187,6 +189,13 @@ const MyFinSidebar = () => {
           >
             {' '}
             {t('sidebar.debts')}
+          </MenuItem>
+          <MenuItem
+            icon={<BeachAccessOutlined />}
+            component={<NavLink to={ROUTE_RETIREMENT} />}
+          >
+            {' '}
+            {t('sidebar.retirement')}
           </MenuItem>
           <MenuItem
             icon={<InsertChartOutlined />}

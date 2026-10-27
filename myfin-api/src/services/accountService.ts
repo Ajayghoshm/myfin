@@ -193,7 +193,7 @@ class AccountService {
 
     const current = await Account.findUnique({
       where: { account_id: accountObj.account_id },
-      select: { is_emergency_fund: true },
+      select: { is_emergency_fund: true, is_retirement: true },
     });
     const emergency = accountObj.new_is_emergency_fund ?? current?.is_emergency_fund ?? false;
     // Validate the resulting state (type + flag + roles), not the stored one
@@ -204,6 +204,7 @@ class AccountService {
       });
       if (
         emergency ||
+        current?.is_retirement ||
         profile?.sinking_fund_account_id === accountObj.account_id ||
         profile?.savings_target_account_id === accountObj.account_id
       )

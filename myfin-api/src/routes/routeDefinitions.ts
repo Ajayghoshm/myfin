@@ -7,6 +7,7 @@ import CategoryController from '../controllers/categoryController.js';
 import DebtController from '../controllers/debtController.js';
 import LoanController from '../controllers/loanController.js';
 import EntityController from '../controllers/entityController.js';
+import RetirementController from '../controllers/retirementController.js';
 import FinancialProfileController from '../controllers/financialProfileController.js';
 import GoalController from '../controllers/goalController.js';
 import InsightsController from '../controllers/insightsController.js';
@@ -81,6 +82,17 @@ export const routeGroups: RouteGroup[] = [
     routes: [
       { method: 'get', path: '/financial-profile', handlerName: 'getFinancialProfile' },
       { method: 'put', path: '/financial-profile', handlerName: 'updateFinancialProfile' },
+    ],
+  },
+  {
+    tag: 'Retirement',
+    basePath: '/retirement',
+    controller: RetirementController as ControllerModule,
+    controllerSourceBaseUrl: new URL('../controllers/retirementController', import.meta.url).href,
+    routes: [
+      { method: 'get', path: '/', handlerName: 'getRetirementFigures' },
+      { method: 'post', path: '/what-if', handlerName: 'whatIf' },
+      { method: 'post', path: '/save-what-if', handlerName: 'saveWhatIfSettings' },
     ],
   },
   {
