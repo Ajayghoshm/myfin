@@ -15,6 +15,14 @@ export type Account = {
   status: AccountStatus;
   color_gradient: string;
   balance: number;
+  /** null = default for the account type, 0 = never. */
+  stale_after_days?: number | null;
+  last_transaction_at?: number | null;
+  last_balance_check_at?: number | null;
+  days_since_last_transaction?: number | null;
+  /** null = never. */
+  stale_after_days_effective?: number | null;
+  freshness?: 'fresh' | 'stale' | 'never' | 'inactive';
 };
 
 export enum AccountType {

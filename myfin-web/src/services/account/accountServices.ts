@@ -18,6 +18,7 @@ export type AddAccountRequest = {
   exclude_from_budgets: boolean;
   current_balance?: number;
   color_gradient: ColorGradient;
+  stale_after_days?: number | null;
 };
 
 const addAccount = (request: AddAccountRequest) => {
@@ -33,6 +34,7 @@ export type EditAccountRequest = {
   exclude_from_budgets: boolean;
   current_balance?: number;
   color_gradient: ColorGradient;
+  new_stale_after_days?: number | null;
 };
 
 const editAccount = (request: EditAccountRequest) => {

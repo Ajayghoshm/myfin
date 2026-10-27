@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import joi from 'joi';
 import APIError from '../errorHandling/apiError.js';
 import AccountService from '../services/accountService.js';
+import { listAccountsWithFreshness } from '../services/accountFreshnessService.js';
 import Logger from '../utils/Logger.js';
 import CommonsController from './commonsController.js';
 
@@ -18,6 +19,7 @@ const createAccountSchema = joi.object({
   exclude_from_budgets: joi.boolean().required(),
   current_balance: joi.number().required(),
   color_gradient: joi.string().trim().optional(),
+  stale_after_days: joi.number().integer().min(0).max(365).allow(null).optional(),
 });
 
 const createAccount = async (req, res, next) => {
@@ -37,7 +39,7 @@ const createAccount = async (req, res, next) => {
 const getAllAccountsForUser = async (req, res, next) => {
   try {
     const sessionData = await CommonsController.checkAuthSessionValidity(req);
-    const accsList = await AccountService.getAccountsForUserWithAmounts(sessionData.userId, false);
+    const accsList = await listAccountsWithFreshness(sessionData.userId);
     res.send(accsList);
   } catch (err) {
     Logger.addLog(err);
@@ -84,6 +86,7 @@ const updateAccountSchema = joi
     new_status: joi.string().valid('Ativa', 'Inativa').trim().required(),
     exclude_from_budgets: joi.boolean().required(),
     color_gradient: joi.string().trim().optional(),
+    new_stale_after_days: joi.number().integer().min(0).max(365).allow(null).optional(),
   })
   .unknown(true);
 

@@ -19,6 +19,7 @@ model accounts {
   created_timestamp                                            BigInt?
   updated_timestamp                                            BigInt?
   color_gradient                                               String?             @db.VarChar(45)
+  stale_after_days                                             Int?
   users                                                        users               @relation(fields: [users_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction, map: "accounts_users_user_id_fk")
   balances_snapshot                                            balances_snapshot[]
   transactions_transactions_accounts_account_to_idToaccounts   transactions[]      @relation("transactions_accounts_account_to_idToaccounts")

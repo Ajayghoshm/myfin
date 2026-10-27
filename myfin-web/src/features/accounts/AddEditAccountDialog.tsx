@@ -80,6 +80,13 @@ const AddEditAccountDialog = (props: Props) => {
   const [typeValue, setTypeValue] = useState<AccountType | ''>(
     props.account?.type || '',
   );
+  // blank = default for the type (null), 0 = never
+  const [staleDaysValue, setStaleDaysValue] = useState<string>(
+    props.account?.stale_after_days == null
+      ? ''
+      : String(props.account.stale_after_days),
+  );
+  const staleDaysNumber = staleDaysValue === '' ? null : Number(staleDaysValue);
   const typeOptions = Object.values(AccountType);
 
   // Loading
@@ -227,6 +234,7 @@ const AddEditAccountDialog = (props: Props) => {
                 new_description: descriptionValue,
                 exclude_from_budgets: excludeFromBudgetsValue,
                 color_gradient: colorValue as ColorGradient,
+                new_stale_after_days: staleDaysNumber,
               });
             } else {
               // Create
@@ -237,6 +245,7 @@ const AddEditAccountDialog = (props: Props) => {
                 description: descriptionValue,
                 exclude_from_budgets: excludeFromBudgetsValue,
                 color_gradient: colorValue as ColorGradient,
+                stale_after_days: staleDaysNumber,
               });
             }
           },
@@ -388,6 +397,22 @@ const AddEditAccountDialog = (props: Props) => {
                     ),
                   },
                 }}
+              />
+            </Grid>
+            <Grid size={12}>
+              {/* Stale after N days */}
+              <TextField
+                margin="dense"
+                id="stale_after_days"
+                name="stale_after_days"
+                type="number"
+                value={staleDaysValue}
+                onChange={(e) => setStaleDaysValue(e.target.value)}
+                label={t('accounts.staleAfterDays')}
+                helperText={t('accounts.staleAfterDaysHelp')}
+                fullWidth
+                variant="outlined"
+                slotProps={{ htmlInput: { min: 0, max: 365, step: 1 } }}
               />
             </Grid>
           </Grid>

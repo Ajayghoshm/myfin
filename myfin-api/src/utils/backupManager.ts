@@ -329,6 +329,7 @@ class BackupManager {
           created_timestamp: account.created_timestamp,
           updated_timestamp: account.updated_timestamp,
           color_gradient: account.color_gradient,
+          stale_after_days: account.stale_after_days ?? null,
         },
       });
 

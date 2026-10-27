@@ -161,6 +161,8 @@ const Accounts = () => {
       status: account.status,
       type: account.type,
       lastCheck: lastCheckByAccount.get(String(account.account_id)) ?? null,
+      freshness: account.freshness,
+      days: account.days_since_last_transaction ?? null,
     },
     balance: account.balance,
     status: account.status,
@@ -202,6 +204,20 @@ const Accounts = () => {
             <Typography variant="caption" color={theme.palette.text.secondary}>
               {t(`accounts.${params.value.type.toLowerCase()}`)}
             </Typography>
+            {params.value.freshness === 'fresh' && (
+              <Typography variant="caption" color="success.main">
+                {`${t('accounts.fresh')} ✓`}
+              </Typography>
+            )}
+            {params.value.freshness === 'stale' && (
+              <Typography variant="caption" color="warning.main">
+                {`${
+                  params.value.days === null
+                    ? t('accounts.staleNoTransactions')
+                    : t('accounts.staleDays', { count: params.value.days })
+                } ⚠️`}
+              </Typography>
+            )}
             {params.value.lastCheck && (
               <Typography
                 variant="caption"

@@ -31,6 +31,7 @@ export type AccountType = {
   exclude_from_budgets: boolean;
   current_balance: number;
   color_gradient?: string;
+  stale_after_days?: number | null;
   users_user_id: number;
 };
 
@@ -42,6 +43,7 @@ export type CreateAccountType = {
   exclude_from_budgets: boolean;
   current_balance: number;
   color_gradient?: string;
+  stale_after_days?: number | null;
   users_user_id: bigint;
 };
 
@@ -54,6 +56,8 @@ export type UpdateAccountType = {
   exclude_from_budgets: boolean;
   current_balance: number;
   color_gradient?: string;
+  /** Omitted = unchanged; null = type default; 0 = never. */
+  new_stale_after_days?: number | null;
   users_user_id: bigint;
 };
 
@@ -102,6 +106,7 @@ class AccountService {
                                    a.description,
                                    a.status,
                                    a.color_gradient,
+                                   a.stale_after_days,
                                    a.exclude_from_budgets,
                                    (a.current_balance / 100) as 'balance', a.users_user_id
                             FROM accounts a
@@ -153,6 +158,9 @@ class AccountService {
         exclude_from_budgets: accountObj.exclude_from_budgets,
         status: accountObj.new_status,
         color_gradient: accountObj.color_gradient,
+        ...(accountObj.new_stale_after_days !== undefined && {
+          stale_after_days: accountObj.new_stale_after_days,
+        }),
         updated_timestamp: DateTimeUtils.getCurrentUnixTimestamp(),
       },
     });
@@ -663,6 +671,7 @@ class AccountService {
                                    a.description,
                                    a.status,
                                    a.color_gradient,
+                                   a.stale_after_days,
                                    a.exclude_from_budgets,
                                    (a.current_balance / 100) as 'balance', a.users_user_id
                             FROM accounts a

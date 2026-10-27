@@ -20,6 +20,7 @@ import Stack from '@mui/material/Stack';
 import { useGetDebtAccounts, useGetInvestingAccounts } from '../../services/user/userHooks.ts';
 import { Account } from '../../services/auth/authServices.ts';
 import { DatePicker } from '@mui/x-date-pickers';
+import NeedsUpdatingCard from './NeedsUpdatingCard.tsx';
 
 const generateDebtIncomeDistributionChartData = (accounts: Account[]) => {
   return (
@@ -276,6 +277,9 @@ const Dashboard = () => {
             </Typography>
           </Stack>
         </Tooltip>
+      </Grid>
+      <Grid size={12} sx={{ '&:empty': { display: 'none' } }}>
+        <NeedsUpdatingCard />
       </Grid>
       <Grid
         size={{
