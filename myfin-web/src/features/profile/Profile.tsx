@@ -27,6 +27,7 @@ import ChangePasswordForm from './ChangePasswordForm.tsx';
 import { useUserData } from '../../providers/UserProvider.tsx';
 import ChangeCurrencyForm from './ChangeCurrencyForm.tsx';
 import FinancialProfileForm from './FinancialProfileForm.tsx';
+import LegacyFile from './LegacyFile.tsx';
 import FolderBackups from './FolderBackups.tsx';
 import {
   MY_FIN_THEME_LABEL_KEYS,
@@ -356,6 +357,37 @@ const Profile = () => {
             </AccordionSummary>
             <AccordionDetails>
               <FolderBackups />
+            </AccordionDetails>
+          </Accordion>
+          {/* If something happens to me */}
+          <Accordion
+            sx={{
+              width: '100%',
+              maxWidth: '700px',
+              backgroundColor:
+                theme.palette.mode === 'dark'
+                  ? 'background.paper'
+                  : 'background.default',
+            }}
+          >
+            <AccordionSummary
+              expandIcon={<ExpandMoreIcon />}
+              aria-controls="legacy-content"
+              id="legacy-header"
+            >
+              <Grid container size={12}>
+                <Grid spacing={1} size={6}>
+                  <Typography>{t('profile.legacy.title')}</Typography>
+                </Grid>
+                <Grid>
+                  <Typography sx={{ color: 'text.secondary' }}>
+                    {t('profile.legacy.strapLine')}
+                  </Typography>
+                </Grid>
+              </Grid>
+            </AccordionSummary>
+            <AccordionDetails>
+              <LegacyFile />
             </AccordionDetails>
           </Accordion>
           {/* Stats for nerds */}

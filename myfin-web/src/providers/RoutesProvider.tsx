@@ -23,12 +23,14 @@ import Insights from '../features/insights/Insights.tsx';
 import SalaryPlanView from '../features/salaryPlan/SalaryPlanView.tsx';
 import YearlyCosts from '../features/yearlyCosts/YearlyCosts.tsx';
 import Debts from '../features/debts/Debts.tsx';
+import LegacyPrint from '../features/profile/LegacyPrint.tsx';
 import Retirement from '../features/retirement/Retirement.tsx';
 
 export const ROUTE_AUTH = '/auth';
 export const ROUTE_RECOVER_PASSWORD = '/recover-password';
 export const ROUTE_DASHBOARD = '/dashboard';
 export const ROUTE_PROFILE = '/profile';
+export const ROUTE_LEGACY_PRINT = '/settings/legacy/print';
 export const ROUTE_TRX = '/transactions';
 export const ROUTE_BUDGETS = '/budgets';
 export const ROUTE_BUDGET_MATRIX = '/budgets/matrix';
@@ -72,6 +74,7 @@ const RoutesProvider = () => {
           {/* Private authenticated routes */}
           <Route path={ROUTE_DASHBOARD} element={<Dashboard />} />
           <Route path={ROUTE_PROFILE} element={<Profile />} />
+          <Route path={ROUTE_LEGACY_PRINT} element={<LegacyPrint />} />
           <Route path={ROUTE_TRX} element={<Transactions />} />
           <Route path={ROUTE_BUDGETS} element={<BudgetList />} />
           <Route path={ROUTE_BUDGET_MATRIX} element={<BudgetMatrix />} />

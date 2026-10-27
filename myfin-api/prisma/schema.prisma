@@ -22,6 +22,7 @@ model accounts {
   stale_after_days                                             Int?
   is_emergency_fund                                            Boolean             @default(false)
   is_retirement                                                Boolean             @default(false)
+  legacy_entries                                               legacy_entries[]
   users                                                        users               @relation(fields: [users_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction, map: "accounts_users_user_id_fk")
   balances_snapshot                                            balances_snapshot[]
   transactions_transactions_accounts_account_to_idToaccounts   transactions[]      @relation("transactions_accounts_account_to_idToaccounts")
@@ -294,6 +295,7 @@ model users {
   planned_transactions       planned_transactions[]
   salary_plans               salary_plans[]
   debts                      debts[]
+  legacy_entries             legacy_entries[]
   currency                   String                       @default("EUR")
 }
 
@@ -545,4 +547,20 @@ model debt_payments {
   principal_transaction    transactions? @relation("debt_payment_principal_trx", fields: [principal_transaction_id], references: [transaction_id], onDelete: SetNull)
 
   @@index([debts_debt_id], map: "debt_payments_debt_idx")
+}
+
+model legacy_entries {
+  entry_id      BigInt    @id @default(autoincrement())
+  users_user_id BigInt
+  kind          String    @db.VarChar(12)
+  account_id    BigInt?
+  data          Json
+  sort_order    Int       @default(0)
+  created_at    BigInt
+  updated_at    BigInt
+  users         users     @relation(fields: [users_user_id], references: [user_id], onDelete: Cascade)
+  account       accounts? @relation(fields: [account_id], references: [account_id], onDelete: SetNull)
+
+  @@index([users_user_id], map: "legacy_entries_user_idx")
+  @@index([account_id], map: "legacy_entries_account_idx")
 }

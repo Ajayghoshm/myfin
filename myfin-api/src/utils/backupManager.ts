@@ -75,6 +75,16 @@ export interface BackupData {
     buckets: unknown;
     created_at: bigint | number;
   }[];
+  /** "If something happens to me" file entries. Absent in older backups. */
+  legacy_entries?: {
+    entry_id: bigint;
+    kind: string;
+    account_id: bigint | null;
+    data: unknown;
+    sort_order: number;
+    created_at: bigint | number;
+    updated_at: bigint | number;
+  }[];
   /** Debts (lent, borrowed, loans). Absent in older backups. */
   debts?: {
     debt_id: bigint;
@@ -298,6 +308,10 @@ class BackupManager {
       debt_payments: await dbClient.debt_payments.findMany({
         where: { debts: { users_user_id: userId } },
         orderBy: { payment_id: 'asc' },
+      }),
+      legacy_entries: await dbClient.legacy_entries.findMany({
+        where: { users_user_id: userId },
+        orderBy: { entry_id: 'asc' },
       }),
       financial_profile: await dbClient.user_financial_profile
         .findUnique({
@@ -774,6 +788,23 @@ class BackupManager {
         },
       });
       debtIdMap.set(String(d.debt_id), created.debt_id);
+    }
+    // endregion
+
+    // region Legacy file entries
+    for (const e of data.legacy_entries ?? []) {
+      await dbClient.legacy_entries.create({
+        data: {
+          users_user_id: userId,
+          kind: e.kind,
+          // Keyed by the raw backup value; an entry whose account is gone keeps its data
+          account_id: e.account_id != null ? (accountIdMap.get(e.account_id) ?? null) : null,
+          data: (e.data ?? {}) as Prisma.InputJsonValue,
+          sort_order: e.sort_order ?? 0,
+          created_at: BigInt(e.created_at ?? 0),
+          updated_at: BigInt(e.updated_at ?? 0),
+        },
+      });
     }
     // endregion
 

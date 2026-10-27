@@ -218,6 +218,7 @@ const restoreUserSchema = joi.object({
     .items(joi.object().pattern(joi.string(), joi.any()))
     .optional(),
   debts: joi.array().items(joi.object().pattern(joi.string(), joi.any())).optional(),
+  legacy_entries: joi.array().items(joi.object().pattern(joi.string(), joi.any())).optional(),
   debt_payments: joi.array().items(joi.object().pattern(joi.string(), joi.any())).optional(),
   financial_profile: joi.object().pattern(joi.string(), joi.any()).allow(null).optional(),
 });

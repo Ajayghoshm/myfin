@@ -5,6 +5,7 @@ import BalanceCheckController from '../controllers/balanceCheckController.js';
 import BudgetController from '../controllers/budgetController.js';
 import CategoryController from '../controllers/categoryController.js';
 import DebtController from '../controllers/debtController.js';
+import LegacyController from '../controllers/legacyController.js';
 import LoanController from '../controllers/loanController.js';
 import EntityController from '../controllers/entityController.js';
 import RetirementController from '../controllers/retirementController.js';
@@ -206,6 +207,18 @@ export const routeGroups: RouteGroup[] = [
       { method: 'post', path: '/:id/repayments', handlerName: 'addRepayment' },
       { method: 'get', path: '/:id/repayment-suggestions', handlerName: 'getRepaymentSuggestions' },
       { method: 'delete', path: '/:id/repayments/:paymentId', handlerName: 'deleteRepayment' },
+    ],
+  },
+  {
+    tag: 'Legacy',
+    basePath: '/legacy',
+    controller: LegacyController as ControllerModule,
+    controllerSourceBaseUrl: new URL('../controllers/legacyController', import.meta.url).href,
+    routes: [
+      { method: 'get', path: '/', handlerName: 'getAll' },
+      { method: 'post', path: '/', handlerName: 'create' },
+      { method: 'put', path: '/:id', handlerName: 'update' },
+      { method: 'delete', path: '/:id', handlerName: 'remove' },
     ],
   },
   {
