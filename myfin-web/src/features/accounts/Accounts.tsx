@@ -126,7 +126,7 @@ const Accounts = () => {
         ]);
         break;
       case 2:
-        setFilter([AccountType.Credit]);
+        setFilter([AccountType.Credit, AccountType.Loan]);
         break;
       case 3:
         setFilter([AccountType.Investing]);

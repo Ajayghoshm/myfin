@@ -32,6 +32,7 @@ const MYFIN = {
     MEAL: 'MEALAC',
     WALLET: 'WALLET',
     OTHER: 'OTHAC',
+    LOAN: 'LOANAC',
   },
   CATEGORY_STATUS: {
     ACTIVE: 'Ativa',

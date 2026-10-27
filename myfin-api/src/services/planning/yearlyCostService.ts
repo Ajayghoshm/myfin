@@ -293,6 +293,7 @@ async function expenseRows(userId: bigint, from: number): Promise<ExpenseRow[]> 
     WHERE acc_from.users_user_id = ${userId}
       AND transactions.type = ${MYFIN.TRX_TYPES.EXPENSE}
       AND transactions.is_adjustment = false
+      AND transactions.debt_id IS NULL
       AND transactions.date_timestamp >= ${from}`;
 }
 

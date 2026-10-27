@@ -85,8 +85,8 @@ const toTransactionFilter = (input: StructuredFilterInput) => ({
         : BigInt(input.category_id),
   payeeKey: input.payee_key,
   accountId: input.account_id === undefined ? undefined : BigInt(input.account_id),
-  // An income/expense month drill-down mirrors Insights, which never counts balance adjustments;
-  // a plain month view still lists them.
+  // An income/expense month drill-down mirrors Insights, which never counts balance adjustments or
+  // debt principal rows (lent/borrowed/repaid); a plain month view still lists them.
   excludeAdjustments:
     (input.effective_month !== undefined || input.day !== undefined) &&
     (input.type === MYFIN.TRX_TYPES.EXPENSE || input.type === MYFIN.TRX_TYPES.INCOME)

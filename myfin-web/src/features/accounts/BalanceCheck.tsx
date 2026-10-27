@@ -28,7 +28,7 @@ import {
   useWriteOffBalanceGap,
 } from '../../services/account/accountHooks.ts';
 import { BalanceCheckRow } from '../../services/account/accountServices.ts';
-import { AccountType } from '../../services/auth/authServices.ts';
+import { isDebtAccountType } from '../../services/auth/authServices.ts';
 import { TransactionType } from '../../services/trx/trxServices.ts';
 import { useUserData } from '../../providers/UserProvider.tsx';
 import { useFormatNumberAsCurrency } from '../../utils/textHooks.ts';
@@ -43,7 +43,7 @@ const gapOf = (row: BalanceCheckRow, real: number) =>
  * so a card whose real owed amount is lower than MyFin's needs income, a bank account an expense.
  */
 const missingTransactionType = (row: BalanceCheckRow, gap: number) => {
-  const rawChange = row.type === AccountType.Credit ? -gap : gap;
+  const rawChange = isDebtAccountType(row.type) ? -gap : gap;
   return rawChange > 0 ? TransactionType.Income : TransactionType.Expense;
 };
 
@@ -156,7 +156,7 @@ const BalanceCheck = () => {
             const real = inputs[row.account_id];
             const gap = real === undefined ? null : gapOf(row, real);
             const matches = gap === 0;
-            const isCard = row.type === AccountType.Credit;
+            const isCard = isDebtAccountType(row.type);
             return (
               <TableRow key={row.account_id}>
                 <TableCell>{row.name}</TableCell>

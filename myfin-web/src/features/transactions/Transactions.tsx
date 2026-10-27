@@ -43,6 +43,7 @@ import {
   Delete,
   Edit,
   FolderShared,
+  Handshake,
   Search,
   Stars,
 } from '@mui/icons-material';
@@ -68,7 +69,10 @@ import IconButton from '@mui/material/IconButton';
 import { inferTrxType } from '../../utils/transactionUtils.ts';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { debounce } from 'lodash';
-import { ROUTE_IMPORT_TRX } from '../../providers/RoutesProvider.tsx';
+import {
+  ROUTE_DEBTS,
+  ROUTE_IMPORT_TRX,
+} from '../../providers/RoutesProvider.tsx';
 import { CategoryIcon } from '../../services/category/categoryIcons.tsx';
 import AccountIconBadge from '../../services/account/AccountIconBadge.tsx';
 import { useUserData } from '../../providers/UserProvider.tsx';
@@ -80,6 +84,9 @@ import {
 } from '../../utils/istMonth.ts';
 import { formatMonthLabel } from '../insights/insightsFormat.ts';
 import { useLinkYearlyCostTransaction } from '../../services/yearlyCosts/yearlyCostHooks.ts';
+import DebtEntryDialog, {
+  DebtSourceTransaction,
+} from '../debts/DebtEntryDialog.tsx';
 
 const ID_REGEX = /^\d+$/;
 const TRX_TYPES: string[] = Object.values(TransactionType);
@@ -161,6 +168,9 @@ const Transactions = () => {
     useState<Transaction | null>(null);
   const [isRemoveDialogOpen, setRemoveDialogOpen] = useState(false);
   const [isAddEditDialogOpen, setEditDialogOpen] = useState(false);
+  const [debtSource, setDebtSource] = useState<DebtSourceTransaction | null>(
+    null,
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [sortModel, setSortModel] = useState<GridSortModel>([]);
   const setUrlFilter = (param: UrlFilterParam, value: string | null) => {
@@ -285,6 +295,25 @@ const Transactions = () => {
     setActionableTransaction(trx);
     setEditDialogOpen(true);
   };
+
+  // Only an unlinked expense (lent) or income (borrowed) can become a debt entry
+  const canMarkAsDebt = (trx: Transaction) => {
+    const type = inferTrxType(trx);
+    return (
+      trx.debt_id == null &&
+      !trx.is_adjustment &&
+      (type === TransactionType.Expense || type === TransactionType.Income)
+    );
+  };
+
+  const handleMarkAsDebtClick = (trx: Transaction) =>
+    setDebtSource({
+      transactionId: String(trx.transaction_id),
+      type: inferTrxType(trx) === TransactionType.Income ? 'I' : 'E',
+      description: trx.description,
+      amount: Number(trx.amount),
+      date: Number(trx.date_timestamp),
+    });
 
   const handleRemoveTransactionClick = (trx: Transaction) => {
     setActionableTransaction(trx);
@@ -413,6 +442,17 @@ const Transactions = () => {
                 label={t('transactions.adjustment')}
               />
             )}
+            {params.value.debtRole && (
+              <Chip
+                size="small"
+                variant="outlined"
+                color="secondary"
+                sx={{ ml: 1 }}
+                label={t(`transactions.debtRole.${params.value.debtRole}`)}
+                title={t('transactions.debtRoleHelp')}
+                onClick={() => navigate(ROUTE_DEBTS)}
+              />
+            )}
             {params.value.yearlyCost && (
               <Chip
                 size="small"
@@ -527,7 +567,7 @@ const Transactions = () => {
       field: 'actions',
       headerName: t('common.actions'),
       flex: 150,
-      minWidth: 100,
+      minWidth: 140,
       editable: false,
       sortable: false,
       renderCell: (params) => (
@@ -540,6 +580,19 @@ const Transactions = () => {
           >
             <Edit fontSize="medium" color="action" />
           </IconButton>
+          {canMarkAsDebt(params.value) && (
+            <Tooltip title={t('transactions.markAsDebt')}>
+              <IconButton
+                aria-label={t('transactions.markAsDebt')}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleMarkAsDebtClick(params.value);
+                }}
+              >
+                <Handshake fontSize="medium" color="action" />
+              </IconButton>
+            </Tooltip>
+          )}
           <IconButton
             aria-label={t('common.delete')}
             onClick={(event) => {
@@ -739,6 +792,7 @@ const Transactions = () => {
           tags: result.tags,
           isAdjustment: !!result.is_adjustment,
           yearlyCost: result.yearly_cost_id != null,
+          debtRole: result.debt_role ?? null,
           transactionId: String(result.transaction_id),
           countedIn:
             result.effective_month &&
@@ -765,6 +819,12 @@ const Transactions = () => {
           onPositiveClick={() => setEditDialogOpen(false)}
           onNegativeClick={() => setEditDialogOpen(false)}
           transaction={actionableTransaction}
+        />
+      )}
+      {debtSource && (
+        <DebtEntryDialog
+          transaction={debtSource}
+          onClose={() => setDebtSource(null)}
         />
       )}
       {isRemoveDialogOpen && (

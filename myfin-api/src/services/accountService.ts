@@ -4,7 +4,7 @@ import APIError from '../errorHandling/apiError.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import DateTimeUtils from '../utils/DateTimeUtils.js';
 import ConvertUtils from '../utils/convertUtils.js';
-import { assertEarmarkAllowed } from './earmarkService.js';
+import { assertEarmarkAllowed, isDebtAccountType, isNeverEarmarkable } from './earmarkService.js';
 import UserService from './userService.js';
 
 const Account = prisma.accounts;
@@ -76,6 +76,8 @@ class AccountService {
     if (accountObj.is_emergency_fund) {
       if (accountObj.type === MYFIN.ACCOUNT_TYPES.INVESTING)
         throw APIError.badRequest('An investment account cannot be an emergency fund.');
+      if (isDebtAccountType(accountObj.type))
+        throw APIError.badRequest('A credit card or loan account cannot be an emergency fund.');
     }
     return dbClient.accounts.create({
       data: accountObj,
@@ -136,6 +138,7 @@ class AccountService {
   static async deleteAccount(accountId: bigint) {
     // Loaded lazily: the planning services import transaction/account services themselves.
     const { skipBucketsForPlannedRows } = await import('./planning/salaryPlanService.js');
+    const { forgetDeletedTransactions } = await import('./debts/debtService.js');
     await prisma.$transaction(async (tx) => {
       const account = await tx.accounts.findUnique({
         where: { account_id: accountId },
@@ -148,6 +151,17 @@ class AccountService {
       });
       if (account && plannedRows.length > 0)
         await skipBucketsForPlannedRows(account.users_user_id, plannedRows, tx);
+      const debtLinked = await tx.transactions.findMany({
+        where: {
+          OR: [{ accounts_account_from_id: accountId }, { accounts_account_to_id: accountId }],
+          debt_id: { not: null },
+        },
+        select: { transaction_id: true },
+      });
+      await forgetDeletedTransactions(
+        debtLinked.map((t) => t.transaction_id),
+        tx
+      );
       await tx.transactions.deleteMany({
         where: {
           OR: [{ accounts_account_from_id: accountId }, { accounts_account_to_id: accountId }],
@@ -178,7 +192,7 @@ class AccountService {
     });
     const emergency = accountObj.new_is_emergency_fund ?? current?.is_emergency_fund ?? false;
     // Validate the resulting state (type + flag + roles), not the stored one
-    if (accountObj.new_type === MYFIN.ACCOUNT_TYPES.INVESTING) {
+    if (isNeverEarmarkable(accountObj.new_type)) {
       const profile = await prisma.user_financial_profile.findUnique({
         where: { users_user_id: userId },
         select: { sinking_fund_account_id: true, savings_target_account_id: true },
@@ -189,7 +203,7 @@ class AccountService {
         profile?.savings_target_account_id === accountObj.account_id
       )
         throw APIError.badRequest(
-          'An investment account cannot be earmarked (emergency, sinking fund or savings target).'
+          'An investment, credit card or loan account cannot be earmarked (emergency, sinking fund or savings target).'
         );
     } else if (accountObj.new_is_emergency_fund === true) {
       await assertEarmarkAllowed(userId, accountObj.account_id, 'emergency', prisma, {

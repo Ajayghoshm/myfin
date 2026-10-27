@@ -43,6 +43,7 @@ import {
   Account,
   AccountStatus,
   AccountType,
+  isEarmarkableAccountType,
 } from '../../services/auth/authServices.ts';
 import { apiErrorMessage } from '../../utils/apiErrorMessage.ts';
 import { cssGradients } from '../../utils/gradientUtils.ts';
@@ -244,7 +245,7 @@ const AddEditAccountDialog = (props: Props) => {
                 color_gradient: colorValue as ColorGradient,
                 new_stale_after_days: staleDaysNumber,
                 new_is_emergency_fund:
-                  typeValue === AccountType.Investing ? false : isEmergencyFund,
+                  isEarmarkableAccountType(typeValue) && isEmergencyFund,
               });
             } else {
               // Create
@@ -257,7 +258,7 @@ const AddEditAccountDialog = (props: Props) => {
                 color_gradient: colorValue as ColorGradient,
                 stale_after_days: staleDaysNumber,
                 is_emergency_fund:
-                  typeValue !== AccountType.Investing && isEmergencyFund,
+                  isEarmarkableAccountType(typeValue) && isEmergencyFund,
               });
             }
           },
@@ -427,7 +428,7 @@ const AddEditAccountDialog = (props: Props) => {
                 slotProps={{ htmlInput: { min: 0, max: 365, step: 1 } }}
               />
             </Grid>
-            {typeValue !== AccountType.Investing && (
+            {isEarmarkableAccountType(typeValue) && (
               <Grid size={12}>
                 {/* Emergency fund */}
                 <Tooltip

@@ -33,7 +33,10 @@ export function useGetTopSummaryValues() {
     }, 0) ?? 0;
   const debtSum =
     accounts?.reduce((result, current: Account) => {
-      if (current.type == AccountType.Credit) {
+      if (
+        current.type == AccountType.Credit ||
+        current.type == AccountType.Loan
+      ) {
         return result + Number(current.balance);
       }
       return result;

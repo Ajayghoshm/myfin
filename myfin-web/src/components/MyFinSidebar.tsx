@@ -10,6 +10,7 @@ import {
   DonutLargeOutlined,
   EventRepeatOutlined,
   FolderSharedOutlined,
+  HandshakeOutlined,
   InsertChartOutlined,
   InsightsOutlined,
   LocalOfferOutlined,
@@ -29,6 +30,7 @@ import {
   ROUTE_GOALS,
   ROUTE_INSIGHTS,
   ROUTE_YEARLY_COSTS,
+  ROUTE_DEBTS,
   ROUTE_INVEST,
   ROUTE_RULES,
   ROUTE_STATS,
@@ -178,6 +180,13 @@ const MyFinSidebar = () => {
           >
             {' '}
             {t('sidebar.yearlyCosts')}
+          </MenuItem>
+          <MenuItem
+            icon={<HandshakeOutlined />}
+            component={<NavLink to={ROUTE_DEBTS} />}
+          >
+            {' '}
+            {t('sidebar.debts')}
           </MenuItem>
           <MenuItem
             icon={<InsertChartOutlined />}

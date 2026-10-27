@@ -30,6 +30,8 @@ model accounts {
   balance_checks                                               balance_checks[]
   planned_from                                                 planned_transactions[] @relation("planned_from")
   planned_to                                                   planned_transactions[] @relation("planned_to")
+  debts_paying                                                 debts[]             @relation("debts_account")
+  debts_loan                                                   debts[]             @relation("debts_loan_account")
 
   @@unique([name, users_user_id], map: "name_UNIQUE")
   @@index([users_user_id], map: "fk_accounts_users1_idx")
@@ -237,6 +239,8 @@ model transactions {
   is_adjustment                                            Boolean                @default(false)
   external_id                                              String?                @db.VarChar(64)
   yearly_cost_id                                           BigInt?
+  debt_id                                                  BigInt?
+  debt_role                                                String?                @db.VarChar(12)
   transaction_has_tags                                     transaction_has_tags[]
   accounts_transactions_accounts_account_to_idToaccounts   accounts?              @relation("transactions_accounts_account_to_idToaccounts", fields: [accounts_account_to_id], references: [account_id], onDelete: NoAction, onUpdate: NoAction, map: "transactions_accounts_account_id_fk")
   accounts_transactions_accounts_account_from_idToaccounts accounts?              @relation("transactions_accounts_account_from_idToaccounts", fields: [accounts_account_from_id], references: [account_id], onDelete: NoAction, onUpdate: NoAction, map: "transactions_accounts_account_id_fk2")
@@ -244,6 +248,9 @@ model transactions {
   categories                                               categories?            @relation(fields: [categories_category_id], references: [category_id], onUpdate: NoAction, map: "transactions_ibfk_2")
   salary_plans                                             salary_plans[]
   yearly_costs                                             yearly_costs?          @relation(fields: [yearly_cost_id], references: [yearly_cost_id], onDelete: SetNull, onUpdate: NoAction, map: "transactions_yearly_cost_fk")
+  debts                                                    debts?                 @relation("transactions_debt", fields: [debt_id], references: [debt_id], onDelete: SetNull, onUpdate: NoAction, map: "transactions_debt_fk")
+  debt_payments                                            debt_payments[]        @relation("debt_payment_trx")
+  debt_payments_principal                                  debt_payments[]        @relation("debt_payment_principal_trx")
 
   @@index([accounts_account_from_id, accounts_account_to_id], map: "fk_transactions_accounts1_idx")
   @@index([categories_category_id], map: "fk_transactions_categories1_idx")
@@ -252,6 +259,7 @@ model transactions {
   @@index([accounts_account_to_id], map: "transactions_accounts_account_to_id_index")
   @@index([external_id])
   @@index([yearly_cost_id], map: "transactions_yearly_cost_idx")
+  @@index([debt_id], map: "transactions_debt_idx")
 }
 
 model users {
@@ -282,6 +290,7 @@ model users {
   yearly_cost_dismissals     yearly_cost_dismissals[]
   planned_transactions       planned_transactions[]
   salary_plans               salary_plans[]
+  debts                      debts[]
   currency                   String                       @default("EUR")
 }
 
@@ -463,4 +472,49 @@ model salary_plans {
 
   @@unique([users_user_id, month], map: "salary_plans_user_month_uq")
   @@index([salary_transaction_id], map: "salary_plans_trx_idx")
+}
+
+model debts {
+  debt_id           BigInt          @id @default(autoincrement())
+  users_user_id     BigInt
+  kind              String          @db.VarChar(10)
+  counterparty_name String          @db.VarChar(255)
+  counterparty_key  String?         @db.VarChar(255)
+  principal         BigInt
+  rate              Decimal         @default(0) @db.Decimal(6, 3)
+  tenure_months     Int?
+  emi               BigInt?
+  emi_day           Int?
+  account_id        BigInt?
+  loan_account_id   BigInt?
+  start_date        BigInt
+  due_date          BigInt?
+  note              String?         @db.Text
+  status            String          @default("open") @db.VarChar(10)
+  created_at        BigInt
+  users             users           @relation(fields: [users_user_id], references: [user_id], onDelete: Cascade)
+  account           accounts?       @relation("debts_account", fields: [account_id], references: [account_id], onDelete: SetNull)
+  loan_account      accounts?       @relation("debts_loan_account", fields: [loan_account_id], references: [account_id], onDelete: SetNull)
+  payments          debt_payments[]
+  transactions      transactions[]  @relation("transactions_debt")
+
+  @@index([users_user_id], map: "debts_user_idx")
+}
+
+model debt_payments {
+  payment_id               BigInt        @id @default(autoincrement())
+  debts_debt_id            BigInt
+  date                     BigInt
+  amount                   BigInt
+  principal_part           BigInt
+  interest_part            BigInt        @default(0)
+  transaction_id           BigInt?
+  principal_transaction_id BigInt?
+  installment_no           Int?
+  manual                   Boolean       @default(false)
+  debts                    debts         @relation(fields: [debts_debt_id], references: [debt_id], onDelete: Cascade)
+  transaction              transactions? @relation("debt_payment_trx", fields: [transaction_id], references: [transaction_id], onDelete: SetNull)
+  principal_transaction    transactions? @relation("debt_payment_principal_trx", fields: [principal_transaction_id], references: [transaction_id], onDelete: SetNull)
+
+  @@index([debts_debt_id], map: "debt_payments_debt_idx")
 }

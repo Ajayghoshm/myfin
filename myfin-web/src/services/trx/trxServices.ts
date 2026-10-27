@@ -28,6 +28,16 @@ export type Transaction = {
   is_adjustment?: 0 | 1 | boolean;
   /** Set when the payment is linked to a yearly cost. */
   yearly_cost_id?: string | null;
+  /** Set when the row is linked to a debt (lent / borrowed / repayment / EMI part). */
+  debt_id?: string | null;
+  debt_role?:
+    | 'lend'
+    | 'borrow'
+    | 'repayment'
+    | 'disbursement'
+    | 'interest'
+    | 'principal'
+    | null;
   tag_names?: Array<string>;
   tags?: Array<Tag>;
   /** 'YYYY-MM' the row counts in for analytics (late salary counts in the next month). */

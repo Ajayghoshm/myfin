@@ -11,7 +11,7 @@ const createAccountSchema = joi.object({
   name: joi.string().trim().required(),
   type: joi
     .string()
-    .valid('CHEAC', 'SAVAC', 'INVAC', 'CREAC', 'OTHAC', 'WALLET', 'MEALAC')
+    .valid('CHEAC', 'SAVAC', 'INVAC', 'CREAC', 'OTHAC', 'WALLET', 'MEALAC', 'LOANAC')
     .trim()
     .required(),
   description: joi.string().allow('').default(''),
@@ -80,7 +80,7 @@ const updateAccountSchema = joi
     new_name: joi.string().trim().required(),
     new_type: joi
       .string()
-      .valid('CHEAC', 'SAVAC', 'INVAC', 'CREAC', 'OTHAC', 'WALLET', 'MEALAC')
+      .valid('CHEAC', 'SAVAC', 'INVAC', 'CREAC', 'OTHAC', 'WALLET', 'MEALAC', 'LOANAC')
       .trim()
       .required(),
     new_description: joi.string().allow('').default(''),

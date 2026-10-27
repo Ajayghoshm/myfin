@@ -9,7 +9,7 @@ import {
   useSnackbar,
 } from '../../providers/SnackbarProvider.tsx';
 import { useGetAccounts } from '../../services/account/accountHooks.ts';
-import { AccountType } from '../../services/auth/authServices.ts';
+import { isEarmarkableAccountType } from '../../services/auth/authServices.ts';
 import { useGetCategories } from '../../services/category/CategoryHooks.tsx';
 import {
   useGetFinancialProfile,
@@ -57,9 +57,9 @@ const FinancialProfileForm = () => {
   }));
   const selected = options.find((o) => o.id === categoryId) ?? null;
 
-  // Investment accounts cannot be earmarked
+  // Investment, card and loan accounts cannot be earmarked
   const accountOptions = (accountsRequest.data ?? [])
-    .filter((a) => a.type !== AccountType.Investing)
+    .filter((a) => isEarmarkableAccountType(a.type))
     .map((a) => ({ id: String(a.account_id), label: a.name }));
   const savingsAccount =
     accountOptions.find((o) => o.id === savingsAccountId) ?? null;

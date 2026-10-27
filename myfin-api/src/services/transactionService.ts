@@ -20,6 +20,7 @@ import {
   formatYearMonth,
 } from './insights/analyticsRules.js';
 import { type YearMonth, dayStartIST, payeeKeySql } from './insights/insightsPrimitives.js';
+import { forgetDeletedTransactions } from './debts/debtService.js';
 
 const getTransactionsForUser = async (
   userId: bigint,
@@ -131,7 +132,7 @@ export type TransactionFilter = {
   day?: string;
   /** Already-resolved rule; callers resolve it with `salaryRuleFor`. Without it nothing shifts. */
   salaryRule?: SalaryRule;
-  /** Leave out balance adjustments (`is_adjustment`). */
+  /** Leave out rows that never count in analytics: balance adjustments and debt principal rows (see `countsForAnalyticsSql`). */
   excludeAdjustments?: boolean;
   /** Expense split by the category's `is_fixed` flag; 'unsorted' = expenses without a category. */
   costKind?: CostKind;
@@ -177,7 +178,11 @@ export function structuredFilterSql(filter: TransactionFilter): Prisma.Sql {
       Prisma.sql`transactions.date_timestamp >= ${start} AND transactions.date_timestamp < ${start + 86400}`
     );
   }
-  if (filter.excludeAdjustments) parts.push(Prisma.sql`transactions.is_adjustment = false`);
+  if (filter.excludeAdjustments) {
+    parts.push(
+      Prisma.sql`transactions.is_adjustment = false AND (transactions.debt_role IS NULL OR transactions.debt_role = 'interest')`
+    );
+  }
   if (filter.costKind === 'unsorted') {
     parts.push(
       Prisma.sql`transactions.type = 'E' AND transactions.categories_category_id IS NULL`
@@ -267,6 +272,8 @@ const getFilteredTransactionsByForUser = async (
                                             transactions.is_essential,
                                             transactions.is_adjustment,
                                             transactions.yearly_cost_id,
+                                            transactions.debt_id,
+                                            transactions.debt_role,
                                             transactions.date_timestamp,
                                             (transactions.amount / 100) as amount,
                                             transactions.type,
@@ -574,6 +581,9 @@ const deleteTransaction = async (userId: bigint, transactionId: number, dbClient
         transactions_transaction_id: transactionId,
       },
     });
+
+    // Repayments backed by this transaction stop counting towards their debt
+    if (trx.debt_id != null) await forgetDeletedTransactions([trx.transaction_id], prismaTx);
 
     // Delete transaction
     await prismaTx.transactions.delete({

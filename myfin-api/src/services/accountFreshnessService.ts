@@ -4,7 +4,7 @@ import AccountService from './accountService.js';
 
 const DAY_SECONDS = 86400;
 
-/** Days after which an account with no stored setting is considered stale. */
+/** Days after which an account with no stored setting is considered stale (0 = never). */
 const DEFAULT_STALE_DAYS: Record<string, number> = {
   CHEAC: 7,
   WALLET: 7,
@@ -13,6 +13,8 @@ const DEFAULT_STALE_DAYS: Record<string, number> = {
   CREAC: 35,
   INVAC: 45,
   OTHAC: 45,
+  // A loan account only moves with EMIs; never nag about it.
+  LOANAC: 0,
 };
 const FALLBACK_STALE_DAYS = 45;
 
@@ -35,8 +37,9 @@ export function freshnessFor(
   nowEpoch: number
 ): FreshnessInfo {
   const stored = account.stale_after_days;
-  const effective =
-    stored === 0 ? null : (stored ?? DEFAULT_STALE_DAYS[account.type] ?? FALLBACK_STALE_DAYS);
+  // 0 = never, whether stored or the type's default
+  const staleDays = stored ?? DEFAULT_STALE_DAYS[account.type] ?? FALLBACK_STALE_DAYS;
+  const effective = staleDays === 0 ? null : staleDays;
   const days =
     lastTrxAt === null ? null : Math.max(0, Math.floor((nowEpoch - lastTrxAt) / DAY_SECONDS));
 

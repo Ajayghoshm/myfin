@@ -3,6 +3,7 @@ import {
   AccountBalanceWallet,
   AccountCircle,
   CreditCard,
+  RequestQuote,
   Restaurant,
   Savings,
   TrendingUp,
@@ -20,6 +21,7 @@ const accountIcons: Record<AccountType, ElementType> = {
   [AccountType.Meal]: Restaurant,
   [AccountType.Wallet]: Wallet,
   [AccountType.Other]: AccountBalanceWallet,
+  [AccountType.Loan]: RequestQuote,
 };
 
 type AccountIconProps = SvgIconProps & {

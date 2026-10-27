@@ -5,8 +5,11 @@ import { IST_OFFSET_SECONDS, type YearMonth, monthRangeIST, shiftMonth } from '.
 
 const DAY_SECONDS = 86_400;
 
-/** Rows that count in analytics: income and expenses, never transfers or balance adjustments. */
-export const countsForAnalyticsSql: Prisma.Sql = Prisma.sql`transactions.type IN ('E','I') AND transactions.is_adjustment = false`;
+/**
+ * Rows that count in analytics: income and expenses, never transfers, balance adjustments or debt
+ * principal (lending, borrowing, repayments, loan disbursements). Only an EMI's interest part counts.
+ */
+export const countsForAnalyticsSql: Prisma.Sql = Prisma.sql`transactions.type IN ('E','I') AND transactions.is_adjustment = false AND (transactions.debt_role IS NULL OR transactions.debt_role = 'interest')`;
 
 export type SalaryRule = { salaryCategoryId: bigint | null; cutoffDay: number };
 

@@ -34,7 +34,16 @@ export enum AccountType {
   Meal = 'MEALAC',
   Wallet = 'WALLET',
   Other = 'OTHAC',
+  Loan = 'LOANAC',
 }
+
+/** Credit cards and loans hold what the user owes (stored negative). */
+export const isDebtAccountType = (type: string | undefined | null) =>
+  type === AccountType.Credit || type === AccountType.Loan;
+
+/** Investment, card and loan accounts can never be earmarked (emergency, sinking, savings). */
+export const isEarmarkableAccountType = (type: string | undefined | null) =>
+  type !== AccountType.Investing && !isDebtAccountType(type);
 
 export type UserSession = {
   user_id: bigint;

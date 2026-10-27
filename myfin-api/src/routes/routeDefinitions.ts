@@ -4,6 +4,7 @@ import AccountController from '../controllers/accountController.js';
 import BalanceCheckController from '../controllers/balanceCheckController.js';
 import BudgetController from '../controllers/budgetController.js';
 import CategoryController from '../controllers/categoryController.js';
+import DebtController from '../controllers/debtController.js';
 import EntityController from '../controllers/entityController.js';
 import FinancialProfileController from '../controllers/financialProfileController.js';
 import GoalController from '../controllers/goalController.js';
@@ -155,6 +156,21 @@ export const routeGroups: RouteGroup[] = [
       { method: 'get', path: '/:id/candidates', handlerName: 'getCandidates' },
       { method: 'put', path: '/:id', handlerName: 'updateYearlyCost' },
       { method: 'delete', path: '/:id', handlerName: 'deleteYearlyCost' },
+    ],
+  },
+  {
+    tag: 'Debts',
+    basePath: '/debts',
+    controller: DebtController as ControllerModule,
+    controllerSourceBaseUrl: new URL('../controllers/debtController', import.meta.url).href,
+    routes: [
+      { method: 'get', path: '/', handlerName: 'getDebts' },
+      { method: 'post', path: '/', handlerName: 'createDebt' },
+      { method: 'put', path: '/:id', handlerName: 'updateDebt' },
+      { method: 'delete', path: '/:id', handlerName: 'deleteDebt' },
+      { method: 'post', path: '/:id/repayments', handlerName: 'addRepayment' },
+      { method: 'get', path: '/:id/repayment-suggestions', handlerName: 'getRepaymentSuggestions' },
+      { method: 'delete', path: '/:id/repayments/:paymentId', handlerName: 'deleteRepayment' },
     ],
   },
   {

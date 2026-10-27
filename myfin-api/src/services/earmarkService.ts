@@ -14,9 +14,17 @@ export type RoleOverrides = {
   type?: string;
 };
 
+/** Credit cards and loan accounts hold debt, so they can never be earmarked for anything. */
+export const isDebtAccountType = (type: string | null | undefined) =>
+  type === MYFIN.ACCOUNT_TYPES.CREDIT || type === MYFIN.ACCOUNT_TYPES.LOAN;
+
+/** Account types that can never hold an earmarked role (investment, credit card, loan). */
+export const isNeverEarmarkable = (type: string | null | undefined) =>
+  type === MYFIN.ACCOUNT_TYPES.INVESTING || isDebtAccountType(type);
+
 /**
  * An account may hold only one of emergency / sinking / savings_target, must belong to the
- * user and must not be an investment account. Throws APIError 400 otherwise.
+ * user and must not be an investment, credit card or loan account. Throws APIError 400 otherwise.
  */
 export async function assertEarmarkAllowed(
   userId: bigint,
@@ -30,8 +38,10 @@ export async function assertEarmarkAllowed(
     select: { type: true, is_emergency_fund: true },
   });
   if (!account) throw APIError.badRequest('Account does not belong to this user.');
-  if ((overrides.type ?? account.type) === MYFIN.ACCOUNT_TYPES.INVESTING)
+  const type = overrides.type ?? account.type;
+  if (type === MYFIN.ACCOUNT_TYPES.INVESTING)
     throw APIError.badRequest('An investment account cannot be earmarked.');
+  if (isDebtAccountType(type)) throw APIError.badRequest('A credit card or loan account cannot be earmarked.');
 
   const profile = await dbClient.user_financial_profile.findUnique({
     where: { users_user_id: userId },
@@ -71,4 +81,4 @@ export async function emergencyAccountIds(userId: bigint): Promise<bigint[]> {
   return rows.map((r) => r.account_id);
 }
 
-export default { assertEarmarkAllowed, emergencyAccountIds };
+export default { assertEarmarkAllowed, emergencyAccountIds, isDebtAccountType, isNeverEarmarkable };

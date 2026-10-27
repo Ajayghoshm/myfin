@@ -74,6 +74,38 @@ export interface BackupData {
     buckets: unknown;
     created_at: bigint | number;
   }[];
+  /** Debts (lent, borrowed, loans). Absent in older backups. */
+  debts?: {
+    debt_id: bigint;
+    kind: string;
+    counterparty_name: string;
+    counterparty_key: string | null;
+    principal: bigint | number;
+    rate: unknown;
+    tenure_months: number | null;
+    emi: bigint | number | null;
+    emi_day: number | null;
+    account_id: bigint | null;
+    loan_account_id: bigint | null;
+    start_date: bigint | number;
+    due_date: bigint | number | null;
+    note: string | null;
+    status: string;
+    created_at: bigint | number;
+  }[];
+  /** Debt repayments / EMIs. Absent in older backups. */
+  debt_payments?: {
+    payment_id: bigint;
+    debts_debt_id: bigint;
+    date: bigint | number;
+    amount: bigint | number;
+    principal_part: bigint | number;
+    interest_part: bigint | number;
+    transaction_id: bigint | null;
+    principal_transaction_id: bigint | null;
+    installment_no: number | null;
+    manual: boolean;
+  }[];
   /** Financial profile settings. Absent (or null) in older backups / when never set. */
   financial_profile?: {
     salary_category_id: bigint | null;
@@ -241,6 +273,14 @@ class BackupManager {
         where: { users_user_id: userId },
         orderBy: { salary_plan_id: 'asc' },
       }),
+      debts: await dbClient.debts.findMany({
+        where: { users_user_id: userId },
+        orderBy: { debt_id: 'asc' },
+      }),
+      debt_payments: await dbClient.debt_payments.findMany({
+        where: { debts: { users_user_id: userId } },
+        orderBy: { payment_id: 'asc' },
+      }),
       financial_profile: await dbClient.user_financial_profile
         .findUnique({
           where: { users_user_id: userId },
@@ -404,6 +444,39 @@ class BackupManager {
       ) {
         throw APIError.notAcceptable(
           'Salary plan not recognized in backup',
+          RestoreUserErrorCodes.MalformedBackup
+        );
+      }
+    }
+    const DEBT_KINDS = ['lent', 'borrowed', 'loan'];
+    const isWhole = (v: unknown) => /^-?\d+$/.test(String(v));
+    const debts = data.debts ?? [];
+    for (const d of debts) {
+      if (
+        !DEBT_KINDS.includes(d?.kind) ||
+        typeof d.counterparty_name !== 'string' ||
+        d.counterparty_name.length > 255 ||
+        !isWhole(d.principal) ||
+        !isWhole(d.start_date) ||
+        (d.due_date != null && !isWhole(d.due_date)) ||
+        (d.emi != null && !isWhole(d.emi)) ||
+        (d.rate != null && !Number.isFinite(Number(d.rate)))
+      ) {
+        throw APIError.notAcceptable('Debt not recognized in backup', RestoreUserErrorCodes.MalformedBackup);
+      }
+    }
+    const debtIdsInBackup = new Set(debts.map((d) => String(d.debt_id)));
+    const debtPayments = data.debt_payments ?? [];
+    for (const p of debtPayments) {
+      if (
+        !debtIdsInBackup.has(String(p?.debts_debt_id)) ||
+        !isWhole(p.date) ||
+        !isWhole(p.amount) ||
+        !isWhole(p.principal_part) ||
+        (p.interest_part != null && !isWhole(p.interest_part))
+      ) {
+        throw APIError.notAcceptable(
+          'Debt payment not recognized in backup',
           RestoreUserErrorCodes.MalformedBackup
         );
       }
@@ -636,6 +709,36 @@ class BackupManager {
     }
     // endregion
 
+    // region Debts (before transactions, which link to them)
+    // <old id as text, new id>; text keys because ids may come back as numbers or strings after a JSON round trip
+    const debtIdMap = new Map<string, bigint>();
+    for (const d of debts) {
+      const mapAccount = (v: bigint | null) => (v != null ? (accountIdMap.get(v) ?? null) : null);
+      const created = await dbClient.debts.create({
+        data: {
+          users_user_id: userId,
+          kind: d.kind,
+          counterparty_name: d.counterparty_name,
+          counterparty_key: d.counterparty_key ?? null,
+          principal: BigInt(d.principal),
+          rate: d.rate != null ? String(d.rate) : '0',
+          tenure_months: d.tenure_months ?? null,
+          emi: d.emi != null ? BigInt(d.emi) : null,
+          emi_day: d.emi_day ?? null,
+          // Keyed by the raw backup value (a Number after a JSON round trip), like every other map
+          account_id: mapAccount(d.account_id),
+          loan_account_id: mapAccount(d.loan_account_id),
+          start_date: BigInt(d.start_date),
+          due_date: d.due_date != null ? BigInt(d.due_date) : null,
+          note: d.note ?? null,
+          status: d.status === 'settled' ? 'settled' : 'open',
+          created_at: BigInt(d.created_at ?? 0),
+        },
+      });
+      debtIdMap.set(String(d.debt_id), created.debt_id);
+    }
+    // endregion
+
     // region Rules
     // check if all values are valid
     const rulePromises = data.rules.map(async (rule) => {
@@ -714,6 +817,9 @@ class BackupManager {
           external_id: trx.external_id ?? undefined,
           yearly_cost_id:
             trx.yearly_cost_id != null ? (yearlyCostIdMap.get(trx.yearly_cost_id) ?? null) : null,
+          // Older backups predate debts.
+          debt_id: trx.debt_id != null ? (debtIdMap.get(String(trx.debt_id)) ?? null) : null,
+          debt_role: trx.debt_id != null && debtIdMap.has(String(trx.debt_id)) ? (trx.debt_role ?? null) : null,
         },
       });
       return newTrx;
@@ -907,6 +1013,25 @@ class BackupManager {
       await dbClient.salary_plans.update({
         where: { salary_plan_id: salaryPlanIdMap.get(String(p.salary_plan_id)) },
         data: { buckets: buckets as Prisma.InputJsonValue },
+      });
+    }
+    // endregion
+
+    // region Debt payments (after transactions, whose ids they point at)
+    for (const p of debtPayments) {
+      const mapTrx = (v: bigint | null) => (v != null ? (transactionIdMap.get(String(v)) ?? null) : null);
+      await dbClient.debt_payments.create({
+        data: {
+          debts_debt_id: debtIdMap.get(String(p.debts_debt_id)),
+          date: BigInt(p.date),
+          amount: BigInt(p.amount),
+          principal_part: BigInt(p.principal_part),
+          interest_part: BigInt(p.interest_part ?? 0),
+          transaction_id: mapTrx(p.transaction_id),
+          principal_transaction_id: mapTrx(p.principal_transaction_id),
+          installment_no: p.installment_no ?? null,
+          manual: p.manual === true,
+        },
       });
     }
     // endregion

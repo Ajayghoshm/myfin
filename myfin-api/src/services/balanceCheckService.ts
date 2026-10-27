@@ -20,9 +20,11 @@ export type BalanceCheckRow = {
   last_check: { checked_at: number; result: string; gap: number } | null;
 };
 
-const isCredit = (type: string) => type === MYFIN.ACCOUNT_TYPES.CREDIT;
+/** Cards and loan accounts are compared as the amount owed. */
+const isCredit = (type: string) =>
+  type === MYFIN.ACCOUNT_TYPES.CREDIT || type === MYFIN.ACCOUNT_TYPES.LOAN;
 
-/** The balance the user compares their real figure with: owed amount for cards, the balance otherwise. */
+/** The balance the user compares their real figure with: owed amount for cards and loans, the balance otherwise. */
 const comparableCents = (account: { type: string; current_balance: bigint | null }) => {
   const raw = Number(account.current_balance ?? 0);
   return isCredit(account.type) ? -raw : raw;

@@ -533,6 +533,10 @@ const userService = {
           })
         );
 
+        // Delete debts and their payments (transactions referencing them are unlinked by the FK)
+        await prismaTx.debt_payments.deleteMany({ where: { debts: { users_user_id: userId } } });
+        await prismaTx.debts.deleteMany({ where: { users_user_id: userId } });
+
         // Delete planned transactions (they reference accounts)
         await prismaTx.planned_transactions.deleteMany({ where: { users_user_id: userId } });
         await prismaTx.salary_plans.deleteMany({ where: { users_user_id: userId } });
