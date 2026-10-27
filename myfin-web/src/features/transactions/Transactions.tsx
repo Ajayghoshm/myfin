@@ -369,8 +369,8 @@ const Transactions = () => {
                 sx={{ ml: 1 }}
                 label={t('transactions.countedInMonth', {
                   month: formatMonthLabel(
-                    parseYearMonth(params.value.countedIn).year,
-                    parseYearMonth(params.value.countedIn).month,
+                    params.value.countedIn.year,
+                    params.value.countedIn.month,
                     i18n.language,
                   ),
                 })}
@@ -622,7 +622,7 @@ const Transactions = () => {
             result.effective_month &&
             result.date_timestamp != null &&
             result.effective_month !== istYearMonthOf(result.date_timestamp)
-              ? result.effective_month
+              ? parseYearMonth(result.effective_month)
               : null,
         },
         value: {

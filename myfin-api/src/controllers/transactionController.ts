@@ -58,6 +58,7 @@ type StructuredFilterInput = {
   payee_key?: string;
   account_id?: number;
   effective_month?: string;
+  type?: string;
 };
 
 const toTransactionFilter = (input: StructuredFilterInput) => ({
@@ -71,8 +72,13 @@ const toTransactionFilter = (input: StructuredFilterInput) => ({
         : BigInt(input.category_id),
   payeeKey: input.payee_key,
   accountId: input.account_id === undefined ? undefined : BigInt(input.account_id),
-  // A month drill-down mirrors Insights, which never counts balance adjustments.
-  excludeAdjustments: input.effective_month === undefined ? undefined : true,
+  // An income/expense month drill-down mirrors Insights, which never counts balance adjustments;
+  // a plain month view still lists them.
+  excludeAdjustments:
+    input.effective_month !== undefined &&
+    (input.type === MYFIN.TRX_TYPES.EXPENSE || input.type === MYFIN.TRX_TYPES.INCOME)
+      ? true
+      : undefined,
   effectiveMonth:
     input.effective_month === undefined
       ? undefined
@@ -483,3 +489,5 @@ export default {
   importPhonePePreview,
   importPhonePeCategorize,
 };
+
+export { toTransactionFilter };

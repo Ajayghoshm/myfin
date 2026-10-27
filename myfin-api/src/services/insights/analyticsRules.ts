@@ -1,16 +1,16 @@
 import { Prisma } from '../../generated/prisma/client.js';
 import { MYFIN } from '../../consts.js';
 import { getFinancialProfile } from '../financialProfileService.js';
-import { type YearMonth, monthRangeIST, shiftMonth } from './insightsPrimitives.js';
+import { IST_OFFSET_SECONDS, type YearMonth, monthRangeIST, shiftMonth } from './insightsPrimitives.js';
 
 const DAY_SECONDS = 86_400;
-const IST_OFFSET_SECONDS = 19_800;
 
 /** Rows that count in analytics: income and expenses, never transfers or balance adjustments. */
 export const countsForAnalyticsSql: Prisma.Sql = Prisma.sql`transactions.type IN ('E','I') AND transactions.is_adjustment = false`;
 
 export type SalaryRule = { salaryCategoryId: bigint | null; cutoffDay: number };
 
+/** `cutoffDay` is unused while `salaryCategoryId` is null. */
 export const NO_SALARY_RULE: SalaryRule = { salaryCategoryId: null, cutoffDay: 25 };
 
 export async function salaryRuleFor(userId: bigint): Promise<SalaryRule> {

@@ -2,7 +2,7 @@ import { Prisma } from '../../generated/prisma/client.js';
 
 export type YearMonth = { year: number; month: number }; // month 1-12
 
-const IST_OFFSET_SECONDS = 19800; // UTC+05:30, no DST
+export const IST_OFFSET_SECONDS = 19800; // UTC+05:30, no DST
 
 /** Epoch-second range [from, to) for a calendar month in Asia/Kolkata. */
 export function monthRangeIST(ym: YearMonth): { from: number; to: number } {

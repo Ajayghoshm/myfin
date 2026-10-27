@@ -12,6 +12,7 @@ import {
   setPayeeClassification,
 } from '../../src/services/insights/insightsService.js';
 import { updateFinancialProfile } from '../../src/services/financialProfileService.js';
+import { toTransactionFilter } from '../../src/controllers/transactionController.js';
 import { effectiveMonthOf, salaryRuleFor } from '../../src/services/insights/analyticsRules.js';
 import {
   monthInsightsSchema,
@@ -622,5 +623,73 @@ describe('Shared analytics rules', () => {
     const rows = res.results as Array<{ effective_month: string }>;
     expect(rows).toHaveLength(1);
     expect(rows[0].effective_month).toBe('2026-11');
+  });
+
+  const setRule = (cutoffDay: number) =>
+    updateFinancialProfile(ctx.user.user_id, {
+      salary_category_id: Number(ctx.salary.category_id),
+      salary_cutoff_day: cutoffDay,
+    });
+
+  test('cut-off day 1 shifts every salary to the next month', async () => {
+    await setRule(1);
+    const octR = await getMonthInsights(ctx.user.user_id, OCT);
+    const novR = await getMonthInsights(ctx.user.user_id, NOV);
+    expect(octR.summary.income).toBe(50000); // September's salary
+    expect(novR.summary.income).toBe(50000); // October's salary
+    expect(await drill(OCT, I)).toBe(50000);
+    expect(await drill(NOV, I)).toBe(50000);
+  });
+
+  test('cut-off day 28 boundary', async () => {
+    await setRule(28);
+    await addSalary(oct.from + 27 * DAY - 60, 3000); // 27 Oct 23:59 IST
+    await addSalary(oct.from + 27 * DAY, 7000); // 28 Oct 00:00 IST
+    expect((await getMonthInsights(ctx.user.user_id, OCT)).summary.income).toBe(53000);
+    expect((await getMonthInsights(ctx.user.user_id, NOV)).summary.income).toBe(7000);
+    expect(await drill(NOV, I)).toBe(7000);
+  });
+
+  test('a late December salary counts in January', async () => {
+    await setRule(25);
+    const dec = monthRangeIST({ year: 2026, month: 12 });
+    await addSalary(dec.from + 25 * DAY, 8000);
+    const decR = await getMonthInsights(ctx.user.user_id, { year: 2026, month: 12 });
+    const janR = await getMonthInsights(ctx.user.user_id, { year: 2027, month: 1 });
+    expect(decR.summary.income).toBe(0);
+    expect(janR.summary.income).toBe(8000);
+    expect(janR.effective_month).toBe('2027-01');
+    expect(await drill({ year: 2027, month: 1 }, I)).toBe(8000);
+  });
+
+  test('the first trend month catches a late salary from the month before it', async () => {
+    await setRule(25);
+    const prev = monthRangeIST({ year: 2025, month: 10 });
+    await addSalary(prev.from + 25 * DAY, 6000);
+    const r = await getMonthInsights(ctx.user.user_id, OCT);
+    expect(r.trend[0]).toMatchObject({ year: 2025, month: 11, income: 6000 });
+  });
+
+  test('month drill-down hides adjustments only for an income/expense type', async () => {
+    await prisma.transactions.create({
+      data: {
+        type: E,
+        amount: 99900,
+        date_timestamp: oct.from + 6 * DAY,
+        description: 'Reconciliation write-off',
+        accounts_account_from_id: ctx.bank.account_id,
+        is_adjustment: true,
+      },
+    });
+    const rule = await salaryRuleFor(ctx.user.user_id);
+    const count = async (input: { effective_month: string; type?: string }) =>
+      (
+        await TransactionService.getFilteredTransactionsByForUser(
+          ctx.user.user_id, 0, 1000, 'write-off',
+          { ...toTransactionFilter(input), salaryRule: rule }
+        )
+      ).results as unknown[];
+    expect(await count({ effective_month: '2026-10' })).toHaveLength(1);
+    expect(await count({ effective_month: '2026-10', type: E })).toHaveLength(0);
   });
 });
