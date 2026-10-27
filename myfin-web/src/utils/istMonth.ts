@@ -30,3 +30,9 @@ export function currentYearMonth(): string {
   const ist = new Date(Date.now() + IST_OFFSET_SECONDS * 1000);
   return formatYearMonth(ist.getUTCFullYear(), ist.getUTCMonth() + 1);
 }
+
+/** The IST calendar month of an epoch-second timestamp, as 'YYYY-MM'. */
+export function istYearMonthOf(timestamp: number): string {
+  const ist = new Date((timestamp + IST_OFFSET_SECONDS) * 1000);
+  return formatYearMonth(ist.getUTCFullYear(), ist.getUTCMonth() + 1);
+}

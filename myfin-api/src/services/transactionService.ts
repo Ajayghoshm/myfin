@@ -12,7 +12,14 @@ import RuleService from './ruleService.js';
 import TagService, { Tag } from './tagService.js';
 import { getExistingExternalIds } from './phonePeImportService.js';
 import UserService from './userService.js';
-import { payeeKeySql } from './insights/insightsPrimitives.js';
+import {
+  NO_SALARY_RULE,
+  type SalaryRule,
+  effectiveMonthOf,
+  effectiveMonthSql,
+  formatYearMonth,
+} from './insights/analyticsRules.js';
+import { type YearMonth, payeeKeySql } from './insights/insightsPrimitives.js';
 
 const getTransactionsForUser = async (
   userId: bigint,
@@ -116,6 +123,12 @@ export type TransactionFilter = {
   payeeKey?: string;
   /** Matches either side of a transaction. */
   accountId?: bigint;
+  /** Rows whose effective month is this month (see `effectiveMonthSql`); needs `salaryRule` to shift late salaries. */
+  effectiveMonth?: YearMonth;
+  /** Already-resolved rule; callers resolve it with `salaryRuleFor`. Without it nothing shifts. */
+  salaryRule?: SalaryRule;
+  /** Leave out balance adjustments (`is_adjustment`). */
+  excludeAdjustments?: boolean;
 };
 
 export type TransactionListOptions = Omit<TransactionFilter, 'query'> & {
@@ -144,6 +157,10 @@ export function structuredFilterSql(filter: TransactionFilter): Prisma.Sql {
       Prisma.sql`(transactions.accounts_account_from_id = ${filter.accountId} OR transactions.accounts_account_to_id = ${filter.accountId})`
     );
   }
+  if (filter.effectiveMonth != null) {
+    parts.push(effectiveMonthSql(filter.effectiveMonth, filter.salaryRule ?? NO_SALARY_RULE));
+  }
+  if (filter.excludeAdjustments) parts.push(Prisma.sql`transactions.is_adjustment = false`);
   if (parts.length === 0) return Prisma.empty;
   return Prisma.sql`AND ${Prisma.join(parts, ' AND ')}`;
 }
@@ -192,6 +209,9 @@ const getFilteredTransactionsByForUser = async (
     categoryId: options.categoryId,
     payeeKey: options.payeeKey,
     accountId: options.accountId,
+    effectiveMonth: options.effectiveMonth,
+    salaryRule: options.salaryRule,
+    excludeAdjustments: options.excludeAdjustments,
   };
   // ORDER BY can't be parameterised, so only whitelisted fragments are interpolated
   const sortDir = Prisma.raw(options.sortDir === 'asc' ? 'ASC' : 'DESC');
@@ -262,6 +282,16 @@ const getFilteredTransactionsByForUser = async (
   if (Array.isArray(mainQueryResult)) {
     for (const trx of mainQueryResult) {
       trx.tags = await getAllTagsForTransaction(userId, trx.transaction_id);
+      trx.effective_month = formatYearMonth(
+        effectiveMonthOf(
+          {
+            type: trx.type,
+            categoryId: trx.categories_category_id == null ? null : String(trx.categories_category_id),
+            date: Number(trx.date_timestamp),
+          },
+          options.salaryRule ?? NO_SALARY_RULE
+        )
+      );
     }
   }
 

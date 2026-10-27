@@ -71,7 +71,11 @@ import { CategoryIcon } from '../../services/category/categoryIcons.tsx';
 import AccountIconBadge from '../../services/account/AccountIconBadge.tsx';
 import { useUserData } from '../../providers/UserProvider.tsx';
 import { useGetCategories } from '../../services/category/CategoryHooks.tsx';
-import { isYearMonth, istMonthRange, parseYearMonth } from '../../utils/istMonth.ts';
+import {
+  isYearMonth,
+  istYearMonthOf,
+  parseYearMonth,
+} from '../../utils/istMonth.ts';
 import { formatMonthLabel } from '../insights/insightsFormat.ts';
 
 const ID_REGEX = /^\d+$/;
@@ -136,10 +140,8 @@ const Transactions = () => {
   };
   // structured filters shared by the list request and "select all matching"
   const structuredFilter = useMemo(() => {
-    const range = urlFilters.month ? istMonthRange(urlFilters.month) : null;
     return {
-      dateFrom: range?.from,
-      dateTo: range?.to,
+      effectiveMonth: urlFilters.month ?? undefined,
       categoryId: urlFilters.category ?? undefined,
       payeeKey: urlFilters.payee ?? undefined,
       accountId: urlFilters.account ?? undefined,
@@ -359,6 +361,21 @@ const Transactions = () => {
         <Stack direction="column" gap={1} p={2}>
           <Stack direction="row" alignItems="center" gap={0}>
             {params.value.description ?? t('common.externalAccount')}
+            {params.value.countedIn && (
+              <Chip
+                size="small"
+                variant="outlined"
+                color="info"
+                sx={{ ml: 1 }}
+                label={t('transactions.countedInMonth', {
+                  month: formatMonthLabel(
+                    parseYearMonth(params.value.countedIn).year,
+                    parseYearMonth(params.value.countedIn).month,
+                    i18n.language,
+                  ),
+                })}
+              />
+            )}
           </Stack>
           <Stack direction="row" alignItems="center" gap={0.5}>
             {params.value.category_icon_key ? (
@@ -493,8 +510,7 @@ const Transactions = () => {
               filter: {
                 query: searchQuery,
                 type: typeFilter ?? undefined,
-                date_from: structuredFilter.dateFrom,
-                date_to: structuredFilter.dateTo,
+                effective_month: structuredFilter.effectiveMonth,
                 category_id: structuredFilter.categoryId,
                 payee_key: structuredFilter.payeeKey,
                 account_id: structuredFilter.accountId,
@@ -602,6 +618,12 @@ const Transactions = () => {
           category: result.category_name,
           category_icon_key: result.category_icon_key,
           tags: result.tags,
+          countedIn:
+            result.effective_month &&
+            result.date_timestamp != null &&
+            result.effective_month !== istYearMonthOf(result.date_timestamp)
+              ? result.effective_month
+              : null,
         },
         value: {
           amount: formatNumberAsCurrency(result.amount),

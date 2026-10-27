@@ -113,4 +113,45 @@ describe('Financial profile', () => {
     await UserService.deleteAllUserData(user.user_id);
     expect(await prisma.user_financial_profile.count({ where: { users_user_id: user.user_id } })).toBe(0);
   });
+
+  test('backup carries is_adjustment; older backups restore as false', async () => {
+    const acc = await prisma.accounts.create({
+      data: {
+        name: 'Bank',
+        type: MYFIN.ACCOUNT_TYPES.CHECKING,
+        description: '',
+        status: MYFIN.ACCOUNT_STATUS.ACTIVE,
+        exclude_from_budgets: false,
+        current_balance: 0,
+        users_user_id: user.user_id,
+        created_timestamp: 0,
+        updated_timestamp: 0,
+      } as never,
+    });
+    const mk = (description: string, is_adjustment: boolean) =>
+      prisma.transactions.create({
+        data: {
+          type: 'E',
+          amount: 100,
+          date_timestamp: 1_700_000_000,
+          description,
+          accounts_account_from_id: acc.account_id,
+          is_adjustment,
+        },
+      });
+    await mk('adj', true);
+    await mk('plain', false);
+    const backup = await UserService.backupUser(user.user_id);
+    expect(backup.transactions?.find((t) => t.description === 'adj')?.is_adjustment).toBe(true);
+    await BackupManager.restoreBackup(user.user_id, backup);
+    const flags = async () =>
+      Object.fromEntries(
+        (await prisma.transactions.findMany()).map((t) => [t.description, t.is_adjustment])
+      );
+    expect(await flags()).toEqual({ adj: true, plain: false });
+
+    for (const t of backup.transactions ?? []) Reflect.deleteProperty(t, 'is_adjustment');
+    await BackupManager.restoreBackup(user.user_id, backup);
+    expect(await flags()).toEqual({ adj: false, plain: false });
+  });
 });

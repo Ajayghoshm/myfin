@@ -58,6 +58,7 @@ export function useGetTransactions(
       options.type,
       options.dateFrom,
       options.dateTo,
+      options.effectiveMonth,
       options.categoryId,
       options.payeeKey,
       options.accountId,

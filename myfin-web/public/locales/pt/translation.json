@@ -285,6 +285,7 @@
     "filterUncategorised": "Sem categoria",
     "filterCategoryFallback": "Categoria {{id}}",
     "filterAccountFallback": "Conta {{id}}",
+    "countedInMonth": "contado em {{month}}",
     "bulkEditTitle_one": "Editar 1 transação",
     "bulkEditConfirmTitle_one": "Atualizar 1 transação?",
     "bulkEditSuccess_one": "1 transação atualizada",

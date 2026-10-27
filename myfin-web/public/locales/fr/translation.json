@@ -264,7 +264,8 @@
     "addAnotherTagPlaceholder": "Ajouter une autre étiquette",
     "filterUncategorised": "Sans catégorie",
     "filterCategoryFallback": "Catégorie {{id}}",
-    "filterAccountFallback": "Compte {{id}}"
+    "filterAccountFallback": "Compte {{id}}",
+    "countedInMonth": "compté en {{month}}"
   },
   "importTransactions": {
     "importTransactions": "Importer des transactions",

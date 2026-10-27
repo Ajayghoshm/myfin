@@ -139,4 +139,23 @@ describe('Structured transaction filters', () => {
     const essentials = await prisma.transactions.count({ where: { is_essential: true } });
     expect(essentials).toBe(2);
   });
+
+  test('effective month without a salary rule equals the plain IST range', async () => {
+    const rule = { salaryCategoryId: null, cutoffDay: 25 };
+    const result = await list({ effectiveMonth: { year: 2026, month: 11 }, salaryRule: rule });
+    expect(amounts(result)).toEqual([30]);
+    expect(amounts(await list({ effectiveMonth: { year: 2026, month: 10 }, salaryRule: rule }))).toEqual([
+      121, 200,
+    ]);
+  });
+
+  test('bulk update by effective month matches the list', async () => {
+    const rule = { salaryCategoryId: null, cutoffDay: 25 };
+    const updated = await TransactionService.bulkUpdateTransactions(
+      user.user_id,
+      { filter: { effectiveMonth: { year: 2026, month: 10 }, salaryRule: rule } },
+      { is_essential: true }
+    );
+    expect(updated).toBe(2);
+  });
 });

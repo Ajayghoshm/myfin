@@ -1,7 +1,14 @@
 import { Prisma } from '../../generated/prisma/client.js';
 import { prisma } from '../../config/prisma.js';
 import { MYFIN } from '../../consts.js';
-import { structuredFilterSql } from '../transactionService.js';
+import {
+  type SalaryRule,
+  countsForAnalyticsSql,
+  cutoffOf,
+  effectiveMonthOf,
+  formatYearMonth,
+  salaryRuleFor,
+} from './analyticsRules.js';
 import {
   type YearMonth,
   guessIsPerson,
@@ -15,6 +22,8 @@ type Rates = { income: number; spending: number; savings: number; savings_rate: 
 
 export type MonthInsights = {
   month: YearMonth;
+  /** 'YYYY-MM' of `month`; figures use the effective-month rule (late salary counts next month). */
+  effective_month: string;
   range: { from: number; to: number };
   summary: Rates;
   typical: Rates | null;
@@ -102,12 +111,20 @@ const ownershipSql = (userId: bigint) => Prisma.sql`FROM transactions
   LEFT JOIN categories ON categories.category_id = transactions.categories_category_id
   WHERE (acc_from.users_user_id = ${userId} OR acc_to.users_user_id = ${userId})`;
 
-/** All income and expense rows (never transfers) for the user in [from, to). */
+/**
+ * Counted rows bucketed by effective month. Fetches from the previous month's cut-off so late
+ * salaries that belong to the first month are included; rows outside every month are dropped.
+ */
 async function fetchRows(
   userId: bigint,
-  ranges: Array<{ from: number; to: number }>
+  months: YearMonth[],
+  ranges: Array<{ from: number; to: number }>,
+  rule: SalaryRule
 ): Promise<Row[]> {
-  const from = ranges[0].from;
+  const from =
+    rule.salaryCategoryId == null
+      ? ranges[0].from
+      : Math.min(ranges[0].from, cutoffOf(shiftMonth(months[0], -1), rule));
   const to = ranges[ranges.length - 1].to;
   const raw = await prisma.$queryRaw<RawRow[]>`
     SELECT transactions.transaction_id,
@@ -120,25 +137,30 @@ async function fetchRows(
            acc_from.name                       AS from_name,
            ${payeeKeySql}                      AS payee_key
     ${ownershipSql(userId)}
-      AND transactions.type IN (${MYFIN.TRX_TYPES.EXPENSE}, ${MYFIN.TRX_TYPES.INCOME})
-      ${structuredFilterSql({ dateFrom: from, dateTo: to })}`;
+      AND ${countsForAnalyticsSql}
+      AND transactions.date_timestamp >= ${from} AND transactions.date_timestamp < ${to}`;
 
-  return raw.map((r) => {
+  const rows: Row[] = [];
+  for (const r of raw) {
     const date = Number(r.date_timestamp);
-    const monthIdx = ranges.findIndex((m) => date >= m.from && date < m.to);
-    return {
+    const categoryId = r.category_id == null ? null : r.category_id.toString();
+    const eff = effectiveMonthOf({ type: r.type, categoryId, date }, rule);
+    const monthIdx = months.findIndex((m) => m.year === eff.year && m.month === eff.month);
+    if (monthIdx < 0) continue;
+    rows.push({
       id: r.transaction_id,
       type: r.type,
       cents: Number(r.amount),
       date,
-      categoryId: r.category_id == null ? null : r.category_id.toString(),
+      categoryId,
       categoryName: r.category_name,
       fromId: r.from_id == null ? null : r.from_id.toString(),
       fromName: r.from_name,
       payeeKey: r.payee_key ?? '',
       monthIdx,
-    };
-  });
+    });
+  }
+  return rows;
 }
 
 /** Person/merchant kind per key: the user's correction, else the all-history guess. */
@@ -209,7 +231,8 @@ export async function getMonthInsights(userId: bigint, ym: YearMonth): Promise<M
   const sel = TREND_MONTHS - 1;
   const baselineIdx = Array.from({ length: BASELINE_MONTHS }, (_, i) => sel - BASELINE_MONTHS + i);
 
-  const rows = await fetchRows(userId, ranges);
+  const rule = await salaryRuleFor(userId);
+  const rows = await fetchRows(userId, months, ranges, rule);
   const current = rows.filter((r) => r.monthIdx === sel);
   const baseline = rows.filter((r) => baselineIdx.includes(r.monthIdx));
 
@@ -410,6 +433,7 @@ export async function getMonthInsights(userId: bigint, ym: YearMonth): Promise<M
 
   return {
     month: { year: ym.year, month: ym.month },
+    effective_month: formatYearMonth(ym),
     range: ranges[sel],
     summary,
     typical,

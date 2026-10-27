@@ -11,6 +11,8 @@ import {
   getMonthInsights,
   setPayeeClassification,
 } from '../../src/services/insights/insightsService.js';
+import { updateFinancialProfile } from '../../src/services/financialProfileService.js';
+import { effectiveMonthOf, salaryRuleFor } from '../../src/services/insights/analyticsRules.js';
 import {
   monthInsightsSchema,
   payeeClassificationSchema,
@@ -21,6 +23,7 @@ const JUL: YearMonth = { year: 2026, month: 7 };
 const AUG: YearMonth = { year: 2026, month: 8 };
 const SEP: YearMonth = { year: 2026, month: 9 };
 const OCT: YearMonth = { year: 2026, month: 10 };
+const NOV: YearMonth = { year: 2026, month: 11 };
 
 type Ctx = {
   user: { user_id: bigint };
@@ -485,5 +488,139 @@ describe('Monthly insights', () => {
     await expect(
       payeeClassificationSchema.validateAsync({ payee_key: 'X', kind: 'shop' })
     ).rejects.toMatchObject({ isJoi: true });
+  });
+});
+
+describe('Shared analytics rules', () => {
+  let ctx: Ctx;
+  const oct = monthRangeIST(OCT);
+  const nov = monthRangeIST(NOV);
+  const E = MYFIN.TRX_TYPES.EXPENSE;
+  const I = MYFIN.TRX_TYPES.INCOME;
+
+  beforeEach(async () => {
+    ctx = await seed();
+  });
+
+  const addSalary = (date: number, amount: number) =>
+    addTrx(ctx.user.user_id, {
+      type: I,
+      to: ctx.bank.account_id,
+      amount,
+      date,
+      description: 'Salary',
+      categoryId: ctx.salary.category_id,
+    });
+
+  const drill = async (ym: YearMonth, type: string) => {
+    const rule = await salaryRuleFor(ctx.user.user_id);
+    return drillSum(ctx.user.user_id, {
+      type,
+      effectiveMonth: ym,
+      salaryRule: rule,
+      excludeAdjustments: true,
+    });
+  };
+
+  test('salary rule defaults to no category and day 25', async () => {
+    expect(await salaryRuleFor(ctx.user.user_id)).toEqual({
+      salaryCategoryId: null,
+      cutoffDay: 25,
+    });
+  });
+
+  test('salary at or after the cut-off counts in the next month', async () => {
+    await updateFinancialProfile(ctx.user.user_id, {
+      salary_category_id: Number(ctx.salary.category_id),
+      salary_cutoff_day: 25,
+    });
+    await addSalary(oct.from + 24 * DAY - 60, 3000); // 2026-10-24 23:59 IST
+    await addSalary(oct.from + 24 * DAY, 7000); // 2026-10-25 00:00 IST
+
+    const octR = await getMonthInsights(ctx.user.user_id, OCT);
+    const novR = await getMonthInsights(ctx.user.user_id, NOV);
+    expect(octR.effective_month).toBe('2026-10');
+    expect(octR.range).toEqual(oct);
+    expect(octR.summary.income).toBe(53000);
+    expect(novR.summary.income).toBe(7000);
+    expect(novR.range).toEqual(nov);
+    expect(octR.trend).toHaveLength(12);
+    expect(novR.trend).toHaveLength(12);
+    expect(novR.trend[11].income).toBe(7000);
+    expect(octR.trend[11].income).toBe(53000);
+
+    // drill-downs equal the figures
+    expect(await drill(OCT, I)).toBe(53000);
+    expect(await drill(NOV, I)).toBe(7000);
+    expect(await drill(OCT, E)).toBe(octR.summary.spending);
+  });
+
+  test('a late salary from the previous month lands in the selected month', async () => {
+    await updateFinancialProfile(ctx.user.user_id, {
+      salary_category_id: Number(ctx.salary.category_id),
+    });
+    const sep = monthRangeIST(SEP);
+    await addSalary(sep.from + 25 * DAY, 9000); // 2026-09-26 IST, late
+    const r = await getMonthInsights(ctx.user.user_id, OCT);
+    expect(r.summary.income).toBe(59000);
+    expect(await drill(OCT, I)).toBe(59000);
+    const sepR = await getMonthInsights(ctx.user.user_id, SEP);
+    expect(sepR.summary.income).toBe(50000);
+  });
+
+  test('no salary category means nothing shifts', async () => {
+    await addSalary(oct.from + 26 * DAY, 7000);
+    const octR = await getMonthInsights(ctx.user.user_id, OCT);
+    const novR = await getMonthInsights(ctx.user.user_id, NOV);
+    expect(octR.summary.income).toBe(57000);
+    expect(novR.summary.income).toBe(0);
+    expect(await drill(OCT, I)).toBe(57000);
+    expect(await drill(NOV, I)).toBe(0);
+  });
+
+  test('effectiveMonthOf tolerates a salary category that matches nothing', () => {
+    const rule = { salaryCategoryId: 999_999n, cutoffDay: 25 };
+    const row = { type: I, categoryId: ctx.salary.category_id.toString(), date: oct.from + 26 * DAY };
+    expect(effectiveMonthOf(row, rule)).toEqual(OCT);
+    expect(effectiveMonthOf({ ...row, categoryId: '999999' }, rule)).toEqual(NOV);
+    expect(effectiveMonthOf({ ...row, type: E, categoryId: '999999' }, rule)).toEqual(OCT);
+  });
+
+  test('adjustments never count in insights but are still listed', async () => {
+    await prisma.transactions.create({
+      data: {
+        type: E,
+        amount: 99900,
+        date_timestamp: oct.from + 6 * DAY,
+        description: 'Reconciliation write-off',
+        accounts_account_from_id: ctx.bank.account_id,
+        is_adjustment: true,
+      },
+    });
+    const r = await getMonthInsights(ctx.user.user_id, OCT);
+    expect(r.summary.spending).toBe(10000 + 300 + 250 + 500 + 150 + 80);
+    expect(await drill(OCT, E)).toBe(r.summary.spending);
+    const listed = await TransactionService.getFilteredTransactionsByForUser(
+      ctx.user.user_id, 0, 1000, 'write-off', {}
+    );
+    expect((listed.results as unknown[]).length).toBe(1);
+    const excluded = await TransactionService.getFilteredTransactionsByForUser(
+      ctx.user.user_id, 0, 1000, 'write-off', { excludeAdjustments: true }
+    );
+    expect((excluded.results as unknown[]).length).toBe(0);
+  });
+
+  test('list rows carry effective_month', async () => {
+    await updateFinancialProfile(ctx.user.user_id, {
+      salary_category_id: Number(ctx.salary.category_id),
+    });
+    await addSalary(oct.from + 24 * DAY, 7000);
+    const rule = await salaryRuleFor(ctx.user.user_id);
+    const res = await TransactionService.getFilteredTransactionsByForUser(
+      ctx.user.user_id, 0, 1000, '', { effectiveMonth: NOV, salaryRule: rule }
+    );
+    const rows = res.results as Array<{ effective_month: string }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].effective_month).toBe('2026-11');
   });
 });

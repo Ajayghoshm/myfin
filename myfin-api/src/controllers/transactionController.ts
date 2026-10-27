@@ -6,6 +6,7 @@ import AccountService from '../services/accountService.js';
 import CategoryService from '../services/categoryService.js';
 import EntityService from '../services/entityService.js';
 import TransactionService from '../services/transactionService.js';
+import { salaryRuleFor } from '../services/insights/analyticsRules.js';
 import Logger from '../utils/Logger.js';
 import ConvertUtils from '../utils/convertUtils.js';
 import PhonePeImportService from '../services/phonePeImportService.js';
@@ -44,6 +45,10 @@ const structuredFilterKeys = {
     .empty(''),
   payee_key: joi.string().max(255).empty(''),
   account_id: joi.number().integer().positive().empty(''),
+  effective_month: joi
+    .string()
+    .pattern(/^\d{4}-(0[1-9]|1[0-2])$/)
+    .empty(''),
 };
 
 type StructuredFilterInput = {
@@ -52,6 +57,7 @@ type StructuredFilterInput = {
   category_id?: number | 'none';
   payee_key?: string;
   account_id?: number;
+  effective_month?: string;
 };
 
 const toTransactionFilter = (input: StructuredFilterInput) => ({
@@ -65,6 +71,15 @@ const toTransactionFilter = (input: StructuredFilterInput) => ({
         : BigInt(input.category_id),
   payeeKey: input.payee_key,
   accountId: input.account_id === undefined ? undefined : BigInt(input.account_id),
+  // A month drill-down mirrors Insights, which never counts balance adjustments.
+  excludeAdjustments: input.effective_month === undefined ? undefined : true,
+  effectiveMonth:
+    input.effective_month === undefined
+      ? undefined
+      : {
+          year: Number(input.effective_month.slice(0, 4)),
+          month: Number(input.effective_month.slice(5, 7)),
+        },
 });
 
 const getFilteredTrxByPageSchema = joi
@@ -90,7 +105,13 @@ const getFilteredTrxByPage = async (req, res, next) => {
       req.params.page,
       trx.page_size,
       trx.query,
-      { sortBy: trx.sort_by, sortDir: trx.sort_dir, type: trx.type, ...toTransactionFilter(trx) }
+      {
+        sortBy: trx.sort_by,
+        sortDir: trx.sort_dir,
+        type: trx.type,
+        ...toTransactionFilter(trx),
+        salaryRule: await salaryRuleFor(sessionData.userId),
+      }
     );
     res.send(trxList);
   } catch (err) {
@@ -429,6 +450,7 @@ const bulkUpdateTransactions = async (req: Request, res: Response, next: NextFun
               query: input.filter.query,
               type: input.filter.type,
               ...toTransactionFilter(input.filter),
+              salaryRule: await salaryRuleFor(sessionData.userId),
             },
           }
         : { transaction_ids: input.transaction_ids.map((id: number) => BigInt(id)) },

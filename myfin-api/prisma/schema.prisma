@@ -228,6 +228,7 @@ model transactions {
   accounts_account_to_id                                   BigInt?
   categories_category_id                                   BigInt?
   is_essential                                             Boolean                @default(false)
+  is_adjustment                                            Boolean                @default(false)
   external_id                                              String?                @db.VarChar(64)
   transaction_has_tags                                     transaction_has_tags[]
   accounts_transactions_accounts_account_to_idToaccounts   accounts?              @relation("transactions_accounts_account_to_idToaccounts", fields: [accounts_account_to_id], references: [account_id], onDelete: NoAction, onUpdate: NoAction, map: "transactions_accounts_account_id_fk")

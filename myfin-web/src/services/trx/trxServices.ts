@@ -26,6 +26,8 @@ export type Transaction = {
   is_essential: 0 | 1;
   tag_names?: Array<string>;
   tags?: Array<Tag>;
+  /** 'YYYY-MM' the row counts in for analytics (late salary counts in the next month). */
+  effective_month?: string;
 };
 
 export enum TransactionType {
@@ -56,6 +58,8 @@ export type TransactionListOptions = {
   payeeKey?: string;
   /** matches either side of a transaction */
   accountId?: string;
+  /** 'YYYY-MM' effective month (see Insights drill-down) */
+  effectiveMonth?: string;
 };
 
 const getTransactions = (
@@ -76,6 +80,7 @@ const getTransactions = (
       category_id: options.categoryId,
       payee_key: options.payeeKey,
       account_id: options.accountId,
+      effective_month: options.effectiveMonth,
     },
   });
 };
@@ -277,6 +282,7 @@ export type BulkUpdateTransactionsRequest = {
     category_id?: string;
     payee_key?: string;
     account_id?: string;
+    effective_month?: string;
   };
   category_id?: bigint | null;
   entity_id?: bigint | null;
