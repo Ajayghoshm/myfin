@@ -1,28 +1,4 @@
 import {
-  Account,
-  AccountStatus,
-  AccountType,
-} from '../../services/auth/authServices.ts';
-import { Trans, useTranslation } from 'react-i18next';
-import { useLoading } from '../../providers/LoadingProvider.tsx';
-import {
-  AlertSeverity,
-  useSnackbar,
-} from '../../providers/SnackbarProvider.tsx';
-import Dialog from '@mui/material/Dialog';
-import DialogTitle from '@mui/material/DialogTitle';
-import DialogContent from '@mui/material/DialogContent';
-import Grid from '@mui/material/Grid';
-import React, { useEffect, useState } from 'react';
-import {
-  Checkbox,
-  MenuItem,
-  ToggleButton,
-  ToggleButtonGroup,
-  Tooltip,
-  Typography,
-} from '@mui/material';
-import {
   AccountCircle,
   AcUnit,
   Description,
@@ -32,18 +8,44 @@ import {
   Send,
   Undo,
 } from '@mui/icons-material';
-import FormControlLabel from '@mui/material/FormControlLabel';
-import { cssGradients } from '../../utils/gradientUtils.ts';
-import { ColorGradient } from '../../consts/index.ts';
-import TextField from '@mui/material/TextField';
-import Stack from '@mui/material/Stack';
-import InputAdornment from '@mui/material/InputAdornment';
+import {
+  Checkbox,
+  MenuItem,
+  ToggleButton,
+  ToggleButtonGroup,
+  Tooltip,
+  Typography,
+} from '@mui/material';
 import Button from '@mui/material/Button';
+import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
+import DialogContent from '@mui/material/DialogContent';
+import DialogTitle from '@mui/material/DialogTitle';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import Grid from '@mui/material/Grid';
+import InputAdornment from '@mui/material/InputAdornment';
+import Stack from '@mui/material/Stack';
+import Switch from '@mui/material/Switch';
+import TextField from '@mui/material/TextField';
+import React, { useEffect, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
+import { ColorGradient } from '../../consts/index.ts';
+import { useLoading } from '../../providers/LoadingProvider.tsx';
+import {
+  AlertSeverity,
+  useSnackbar,
+} from '../../providers/SnackbarProvider.tsx';
 import {
   useAddAccount,
   useEditAccount,
 } from '../../services/account/accountHooks.ts';
+import {
+  Account,
+  AccountStatus,
+  AccountType,
+} from '../../services/auth/authServices.ts';
+import { apiErrorMessage } from '../../utils/apiErrorMessage.ts';
+import { cssGradients } from '../../utils/gradientUtils.ts';
 
 type Props = {
   isOpen: boolean;
@@ -86,6 +88,9 @@ const AddEditAccountDialog = (props: Props) => {
       ? ''
       : String(props.account.stale_after_days),
   );
+  const [isEmergencyFund, setIsEmergencyFund] = useState<boolean>(
+    props.account?.is_emergency_fund === true,
+  );
   const staleDaysNumber = staleDaysValue === '' ? null : Number(staleDaysValue);
   const typeOptions = Object.values(AccountType);
 
@@ -102,7 +107,10 @@ const AddEditAccountDialog = (props: Props) => {
   useEffect(() => {
     if (addAccountRequest.isError || editAccountRequest.isError) {
       snackbar.showSnackbar(
-        t('common.somethingWentWrongTryAgain'),
+        apiErrorMessage(
+          addAccountRequest.error ?? editAccountRequest.error,
+          t('common.somethingWentWrongTryAgain'),
+        ),
         AlertSeverity.ERROR,
       );
     }
@@ -235,6 +243,8 @@ const AddEditAccountDialog = (props: Props) => {
                 exclude_from_budgets: excludeFromBudgetsValue,
                 color_gradient: colorValue as ColorGradient,
                 new_stale_after_days: staleDaysNumber,
+                new_is_emergency_fund:
+                  typeValue === AccountType.Investing ? false : isEmergencyFund,
               });
             } else {
               // Create
@@ -246,6 +256,8 @@ const AddEditAccountDialog = (props: Props) => {
                 exclude_from_budgets: excludeFromBudgetsValue,
                 color_gradient: colorValue as ColorGradient,
                 stale_after_days: staleDaysNumber,
+                is_emergency_fund:
+                  typeValue !== AccountType.Investing && isEmergencyFund,
               });
             }
           },
@@ -415,6 +427,27 @@ const AddEditAccountDialog = (props: Props) => {
                 slotProps={{ htmlInput: { min: 0, max: 365, step: 1 } }}
               />
             </Grid>
+            {typeValue !== AccountType.Investing && (
+              <Grid size={12}>
+                {/* Emergency fund */}
+                <Tooltip
+                  title={t('accounts.emergencyFundHelp')}
+                  placement="right"
+                >
+                  <FormControlLabel
+                    sx={{ width: 'fit-content' }}
+                    control={
+                      <Switch
+                        checked={isEmergencyFund}
+                        onChange={(_e, checked) => setIsEmergencyFund(checked)}
+                        name="is_emergency_fund"
+                      />
+                    }
+                    label={t('accounts.emergencyFund')}
+                  />
+                </Tooltip>
+              </Grid>
+            )}
           </Grid>
         </Grid>
       </DialogContent>

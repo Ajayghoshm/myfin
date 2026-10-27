@@ -45,6 +45,12 @@ export interface BackupData {
     salary_category_id: bigint | null;
     salary_cutoff_day: number;
     updated_at: bigint;
+    savings_target_mode?: string;
+    savings_target_value?: bigint | number;
+    savings_target_account_id?: bigint | null;
+    sinking_fund_account_id?: bigint | null;
+    emergency_fund_target_months?: number;
+    emergency_topup_percent?: number;
   } | null;
 }
 
@@ -186,7 +192,17 @@ class BackupManager {
       financial_profile: await dbClient.user_financial_profile
         .findUnique({
           where: { users_user_id: userId },
-          select: { salary_category_id: true, salary_cutoff_day: true, updated_at: true },
+          select: {
+            salary_category_id: true,
+            salary_cutoff_day: true,
+            updated_at: true,
+            savings_target_mode: true,
+            savings_target_value: true,
+            savings_target_account_id: true,
+            sinking_fund_account_id: true,
+            emergency_fund_target_months: true,
+            emergency_topup_percent: true,
+          },
         })
         .then((row) => row ?? null),
     };
@@ -330,6 +346,7 @@ class BackupManager {
           updated_timestamp: account.updated_timestamp,
           color_gradient: account.color_gradient,
           stale_after_days: account.stale_after_days ?? null,
+          is_emergency_fund: account.is_emergency_fund ?? false,
         },
       });
 
@@ -704,6 +721,19 @@ class BackupManager {
                 (categoryIdMap.get(oldCategoryId) ?? null)
               : null,
           salary_cutoff_day: profile.salary_cutoff_day,
+          savings_target_mode: profile.savings_target_mode ?? 'amount',
+          savings_target_value: BigInt(profile.savings_target_value ?? 0),
+          // Keyed by the raw backup value (a Number after a JSON round trip), like every other map
+          savings_target_account_id:
+            profile.savings_target_account_id != null
+              ? (accountIdMap.get(profile.savings_target_account_id) ?? null)
+              : null,
+          sinking_fund_account_id:
+            profile.sinking_fund_account_id != null
+              ? (accountIdMap.get(profile.sinking_fund_account_id) ?? null)
+              : null,
+          emergency_fund_target_months: profile.emergency_fund_target_months ?? 6,
+          emergency_topup_percent: profile.emergency_topup_percent ?? 10,
           updated_at: BigInt(profile.updated_at),
         },
       });

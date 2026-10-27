@@ -20,6 +20,7 @@ const createAccountSchema = joi.object({
   current_balance: joi.number().required(),
   color_gradient: joi.string().trim().optional(),
   stale_after_days: joi.number().integer().min(0).max(365).allow(null).optional(),
+  is_emergency_fund: joi.boolean().optional(),
 });
 
 const createAccount = async (req, res, next) => {
@@ -87,6 +88,7 @@ const updateAccountSchema = joi
     exclude_from_budgets: joi.boolean().required(),
     color_gradient: joi.string().trim().optional(),
     new_stale_after_days: joi.number().integer().min(0).max(365).allow(null).optional(),
+    new_is_emergency_fund: joi.boolean().optional(),
   })
   .unknown(true);
 

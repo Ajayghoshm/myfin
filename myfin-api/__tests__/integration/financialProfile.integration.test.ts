@@ -34,7 +34,7 @@ describe('Financial profile', () => {
   });
 
   test('GET with no row returns defaults', async () => {
-    expect(await getFinancialProfile(user.user_id)).toEqual({
+    expect(await getFinancialProfile(user.user_id)).toMatchObject({
       salary_category_id: null,
       salary_cutoff_day: 25,
     });
@@ -46,8 +46,8 @@ describe('Financial profile', () => {
       salary_cutoff_day: 20,
     });
     const expected = { salary_category_id: String(salary.category_id), salary_cutoff_day: 20 };
-    expect(put).toEqual(expected);
-    expect(await getFinancialProfile(user.user_id)).toEqual(expected);
+    expect(put).toMatchObject(expected);
+    expect(await getFinancialProfile(user.user_id)).toMatchObject(expected);
   });
 
   test('partial PUT keeps other field; null clears category', async () => {
@@ -58,7 +58,7 @@ describe('Financial profile', () => {
     expect((await updateFinancialProfile(user.user_id, { salary_cutoff_day: 10 })).salary_category_id).toBe(
       String(salary.category_id)
     );
-    expect(await updateFinancialProfile(user.user_id, { salary_category_id: null })).toEqual({
+    expect(await updateFinancialProfile(user.user_id, { salary_category_id: null })).toMatchObject({
       salary_category_id: null,
       salary_cutoff_day: 10,
     });
@@ -90,7 +90,7 @@ describe('Financial profile', () => {
     const cats = await prisma.categories.findMany({ where: { users_user_id: user.user_id } });
     expect(cats).toHaveLength(1);
     expect(cats[0].category_id).not.toBe(salary.category_id);
-    expect(await getFinancialProfile(user.user_id)).toEqual({
+    expect(await getFinancialProfile(user.user_id)).toMatchObject({
       salary_category_id: String(cats[0].category_id),
       salary_cutoff_day: 18,
     });
@@ -102,7 +102,7 @@ describe('Financial profile', () => {
     Reflect.deleteProperty(backup, 'financial_profile');
     await BackupManager.restoreBackup(user.user_id, backup);
     expect(await prisma.user_financial_profile.count({ where: { users_user_id: user.user_id } })).toBe(0);
-    expect(await getFinancialProfile(user.user_id)).toEqual({
+    expect(await getFinancialProfile(user.user_id)).toMatchObject({
       salary_category_id: null,
       salary_cutoff_day: 25,
     });

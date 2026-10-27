@@ -8,6 +8,12 @@ import CommonsController from './commonsController.js';
 const financialProfileSchema = joi.object({
   salary_category_id: joi.number().integer().positive().allow(null),
   salary_cutoff_day: joi.number().integer().min(1).max(28),
+  savings_target_mode: joi.string().valid('amount', 'percent'),
+  savings_target_value: joi.number().min(0),
+  savings_target_account_id: joi.number().integer().positive().allow(null),
+  sinking_fund_account_id: joi.number().integer().positive().allow(null),
+  emergency_fund_target_months: joi.number().integer().min(1).max(24),
+  emergency_topup_percent: joi.number().integer().min(0).max(100),
 });
 
 const getFinancialProfile = async (req: Request, res: Response, next: NextFunction) => {

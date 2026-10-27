@@ -20,6 +20,7 @@ model accounts {
   updated_timestamp                                            BigInt?
   color_gradient                                               String?             @db.VarChar(45)
   stale_after_days                                             Int?
+  is_emergency_fund                                            Boolean             @default(false)
   users                                                        users               @relation(fields: [users_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction, map: "accounts_users_user_id_fk")
   balances_snapshot                                            balances_snapshot[]
   transactions_transactions_accounts_account_to_idToaccounts   transactions[]      @relation("transactions_accounts_account_to_idToaccounts")
@@ -372,6 +373,12 @@ model user_financial_profile {
   users_user_id      BigInt  @id
   salary_category_id BigInt?
   salary_cutoff_day  Int     @default(25)
+  savings_target_mode          String  @default("amount") @db.VarChar(8)
+  savings_target_value         BigInt  @default(0)
+  savings_target_account_id    BigInt?
+  sinking_fund_account_id      BigInt?
+  emergency_fund_target_months Int     @default(6)
+  emergency_topup_percent      Int     @default(10)
   updated_at         BigInt
   users              users   @relation(fields: [users_user_id], references: [user_id], onDelete: Cascade)
 }

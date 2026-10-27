@@ -1,8 +1,10 @@
 import { performDatabaseRequest, prisma } from '../config/prisma.js';
 import { MYFIN } from '../consts.js';
+import APIError from '../errorHandling/apiError.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import DateTimeUtils from '../utils/DateTimeUtils.js';
 import ConvertUtils from '../utils/convertUtils.js';
+import { assertEarmarkAllowed } from './earmarkService.js';
 import UserService from './userService.js';
 
 const Account = prisma.accounts;
@@ -44,6 +46,7 @@ export type CreateAccountType = {
   current_balance: number;
   color_gradient?: string;
   stale_after_days?: number | null;
+  is_emergency_fund?: boolean;
   users_user_id: bigint;
 };
 
@@ -58,6 +61,8 @@ export type UpdateAccountType = {
   color_gradient?: string;
   /** Omitted = unchanged; null = type default; 0 = never. */
   new_stale_after_days?: number | null;
+  /** Omitted = unchanged. */
+  new_is_emergency_fund?: boolean;
   users_user_id: bigint;
 };
 
@@ -70,6 +75,10 @@ class AccountService {
     accountObj.users_user_id = userId;
     // eslint-disable-next-line no-param-reassign
     accountObj.current_balance = ConvertUtils.convertFloatToBigInteger(account.current_balance);
+    if (accountObj.is_emergency_fund) {
+      if (accountObj.type === MYFIN.ACCOUNT_TYPES.INVESTING)
+        throw APIError.badRequest('An investment account cannot be an emergency fund.');
+    }
     return dbClient.accounts.create({
       data: accountObj,
     });
@@ -107,6 +116,7 @@ class AccountService {
                                    a.status,
                                    a.color_gradient,
                                    a.stale_after_days,
+                                   a.is_emergency_fund,
                                    a.exclude_from_budgets,
                                    (a.current_balance / 100) as 'balance', a.users_user_id
                             FROM accounts a
@@ -149,6 +159,29 @@ class AccountService {
       users_user_id: userId,
     };
 
+    const current = await Account.findUnique({
+      where: { account_id: accountObj.account_id },
+      select: { is_emergency_fund: true },
+    });
+    const emergency = accountObj.new_is_emergency_fund ?? current?.is_emergency_fund ?? false;
+    if (accountObj.new_is_emergency_fund === true) {
+      await assertEarmarkAllowed(userId, accountObj.account_id, 'emergency');
+    } else if (accountObj.new_type === MYFIN.ACCOUNT_TYPES.INVESTING) {
+      // A type change to INVAC must not leave an earmarked role behind
+      const profile = await prisma.user_financial_profile.findUnique({
+        where: { users_user_id: userId },
+        select: { sinking_fund_account_id: true, savings_target_account_id: true },
+      });
+      if (
+        emergency ||
+        profile?.sinking_fund_account_id === accountObj.account_id ||
+        profile?.savings_target_account_id === accountObj.account_id
+      )
+        throw APIError.badRequest(
+          'An investment account cannot be earmarked (emergency, sinking fund or savings target).'
+        );
+    }
+
     return Account.update({
       where: { account_id: accountObj.account_id },
       data: {
@@ -158,6 +191,9 @@ class AccountService {
         exclude_from_budgets: accountObj.exclude_from_budgets,
         status: accountObj.new_status,
         color_gradient: accountObj.color_gradient,
+        ...(accountObj.new_is_emergency_fund !== undefined && {
+          is_emergency_fund: accountObj.new_is_emergency_fund,
+        }),
         ...(accountObj.new_stale_after_days !== undefined && {
           stale_after_days: accountObj.new_stale_after_days,
         }),
@@ -672,6 +708,7 @@ class AccountService {
                                    a.status,
                                    a.color_gradient,
                                    a.stale_after_days,
+                                   a.is_emergency_fund,
                                    a.exclude_from_budgets,
                                    (a.current_balance / 100) as 'balance', a.users_user_id
                             FROM accounts a

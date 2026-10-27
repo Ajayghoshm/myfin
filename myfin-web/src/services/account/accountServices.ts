@@ -1,6 +1,6 @@
+import { ColorGradient } from '../../consts/index.ts';
 import { axios } from '../../data/axios.ts';
 import { Account, AccountStatus, AccountType } from '../auth/authServices.ts';
-import { ColorGradient } from '../../consts/index.ts';
 
 const getAccounts = () => {
   return axios.get<Account[]>(`/accounts`);
@@ -19,6 +19,7 @@ export type AddAccountRequest = {
   current_balance?: number;
   color_gradient: ColorGradient;
   stale_after_days?: number | null;
+  is_emergency_fund?: boolean;
 };
 
 const addAccount = (request: AddAccountRequest) => {
@@ -35,6 +36,7 @@ export type EditAccountRequest = {
   current_balance?: number;
   color_gradient: ColorGradient;
   new_stale_after_days?: number | null;
+  new_is_emergency_fund?: boolean;
 };
 
 const editAccount = (request: EditAccountRequest) => {

@@ -1,5 +1,5 @@
-import { axios } from '../../data/axios.ts';
 import { CurrencyCode } from '../../consts/Currency.ts';
+import { axios } from '../../data/axios.ts';
 
 export enum AccountStatus {
   Active = 'Ativa',
@@ -17,6 +17,7 @@ export type Account = {
   balance: number;
   /** null = default for the account type, 0 = never. */
   stale_after_days?: number | null;
+  is_emergency_fund?: boolean;
   last_transaction_at?: number | null;
   last_balance_check_at?: number | null;
   days_since_last_transaction?: number | null;
