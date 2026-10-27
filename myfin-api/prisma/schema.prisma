@@ -512,6 +512,9 @@ model debt_payments {
   principal_transaction_id BigInt?
   installment_no           Int?
   manual                   Boolean       @default(false)
+  /// A matched EMI: the bank debit's amount and category before it became the interest part
+  original_amount          BigInt?
+  original_category_id     BigInt?
   debts                    debts         @relation(fields: [debts_debt_id], references: [debt_id], onDelete: Cascade)
   transaction              transactions? @relation("debt_payment_trx", fields: [transaction_id], references: [transaction_id], onDelete: SetNull)
   principal_transaction    transactions? @relation("debt_payment_principal_trx", fields: [principal_transaction_id], references: [transaction_id], onDelete: SetNull)

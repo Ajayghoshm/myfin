@@ -21,6 +21,7 @@ import {
 } from './insights/analyticsRules.js';
 import { type YearMonth, dayStartIST, payeeKeySql } from './insights/insightsPrimitives.js';
 import { forgetDeletedTransactions, syncEditedTransaction } from './debts/debtService.js';
+import { assertLoanRowEditable, recalcAccounts } from './debts/loanLedger.js';
 
 const getTransactionsForUser = async (
   userId: bigint,
@@ -378,6 +379,9 @@ export type CreateTransactionType = {
   external_id?: string;
   /** Set only by the balance-check write-off; never exposed on the HTTP endpoints. */
   is_adjustment?: boolean;
+  /** Set only by the loan service (principal transfers and loan adjustments); never exposed on HTTP. */
+  debt_id?: bigint;
+  debt_role?: string;
 };
 /** Accounts whose balance a transaction moves: `to` for income, `from` for expense, both for a transfer. */
 const accountsAffectedBy = (trx: { type: string; account_from_id?: bigint; account_to_id?: bigint }) => {
@@ -432,6 +436,8 @@ const createTransaction = async (
         is_essential: trx.is_essential,
         external_id: trx.external_id || undefined,
         is_adjustment: trx.is_adjustment ?? false,
+        debt_id: trx.debt_id ?? null,
+        debt_role: trx.debt_role ?? null,
       },
     });
 
@@ -582,8 +588,9 @@ const deleteTransaction = async (userId: bigint, transactionId: number, dbClient
       },
     });
 
-    // Repayments backed by this transaction stop counting towards their debt
-    if (trx.debt_id != null) await forgetDeletedTransactions([trx.transaction_id], prismaTx);
+    // Repayments backed by this transaction stop counting towards their debt; a loan EMI is unpaid
+    const debtRecalcs =
+      trx.debt_id != null ? await forgetDeletedTransactions([trx.transaction_id], prismaTx) : new Map();
 
     // Delete transaction
     await prismaTx.transactions.delete({
@@ -637,6 +644,8 @@ const deleteTransaction = async (userId: bigint, transactionId: number, dbClient
         await AccountService.setNewAccountBalance(userId, oldAccountFrom, newBalance, prismaTx);
         break;
     }
+    // Rows an unpaid EMI restored or removed (the other half of the EMI)
+    await recalcAccounts(userId, debtRecalcs, prismaTx);
   }, undefined);
 };
 
@@ -687,6 +696,12 @@ const updateTransaction = async (
       throw APIError.badRequest(
         'This transaction is linked to a debt. Unlink it from the debt first to change its type.'
       );
+    assertLoanRowEditable(outdatedTrx, {
+      amount: trx.new_amount,
+      date: trx.new_date_timestamp,
+      accountFrom: trx.new_account_from_id,
+      accountTo: trx.new_account_to_id,
+    });
     const oldTimestamp = outdatedTrx.date_timestamp;
     const oldAccountTo = outdatedTrx.accounts_account_to_id;
     const oldAccountFrom = outdatedTrx.accounts_account_from_id;

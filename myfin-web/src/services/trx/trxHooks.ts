@@ -19,6 +19,8 @@ import {
 import { QUERY_KEY_GET_SALARY_PLAN } from '../salaryPlan/salaryPlanHooks.ts';
 import {
   QUERY_KEY_GET_DEBTS,
+  QUERY_KEY_GET_LOAN_MATCH_SUGGESTIONS,
+  QUERY_KEY_GET_LOANS,
   QUERY_KEY_GET_REPAYMENT_SUGGESTIONS,
 } from '../debts/debtQueryKeys.ts';
 import { useUserData } from '../../providers/UserProvider.tsx';
@@ -49,6 +51,8 @@ function invalidatePlanningFigures() {
     QUERY_KEY_GET_EMERGENCY_FUND,
     QUERY_KEY_GET_DEBTS,
     QUERY_KEY_GET_REPAYMENT_SUGGESTIONS,
+    QUERY_KEY_GET_LOANS,
+    QUERY_KEY_GET_LOAN_MATCH_SUGGESTIONS,
   ])
     void queryClient.invalidateQueries({ queryKey: [key] });
 }

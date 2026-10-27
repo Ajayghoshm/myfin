@@ -84,7 +84,104 @@ const getRepaymentSuggestions = (id: string) =>
 const deleteRepayment = (id: string, paymentId: string) =>
   axios.delete<Debt>(`/debts/${id}/repayments/${paymentId}`);
 
+export type InstallmentStatus = 'paid' | 'due' | 'missed';
+
+export type Installment = {
+  n: number;
+  /** YYYY-MM-DD. */
+  date: string;
+  date_epoch: number;
+  emi: number;
+  interest: number;
+  principal: number;
+  balance: number;
+  status: InstallmentStatus;
+  paid_via: 'matched' | 'manual' | null;
+  paid_date: number | null;
+  payment_id: string | null;
+  transaction_id: string | null;
+};
+
+export type Loan = {
+  debt_id: string;
+  kind: 'loan';
+  lender: string;
+  principal: number;
+  rate: number;
+  tenure_months: number;
+  emi: number;
+  emi_day: number;
+  account_id: string | null;
+  loan_account_id: string | null;
+  start_date: number;
+  status: 'open' | 'settled';
+  outstanding_principal: number;
+  interest_paid: number;
+  emis_paid: number;
+  emis_left: number;
+  missed_count: number;
+  end_date: string;
+  next_due: { n: number; date: string; emi: number } | null;
+  schedule: Installment[];
+};
+
+export type LoanInput = {
+  lender: string;
+  principal: number;
+  rate: number;
+  tenure_months: number;
+  emi?: number | null;
+  emi_day: number;
+  account_id: number;
+  start_date: number;
+  disbursement_transaction_id?: number | null;
+};
+
+export type LoanMatchSuggestion = {
+  n: number;
+  transaction_id: string;
+  description: string;
+  amount: number;
+  date: number;
+};
+
+export type PrepaymentResult = {
+  months_saved: number;
+  interest_saved: number;
+  new_end_date: string;
+};
+
+const getLoans = () => axios.get<Loan[]>('/debts/loans');
+const createLoan = (input: LoanInput) =>
+  axios.post<Loan>('/debts/loans', input);
+const getLoanMatchSuggestions = (id: string) =>
+  axios.get<LoanMatchSuggestion[]>(`/debts/loans/${id}/match-suggestions`);
+const matchInstallment = (id: string, n: number, transactionId: number) =>
+  axios.post<Loan>(`/debts/loans/${id}/installments/${n}/match`, {
+    transaction_id: transactionId,
+  });
+const markInstallmentPaid = (id: string, n: number, date?: number) =>
+  axios.post<Loan>(`/debts/loans/${id}/installments/${n}/mark-paid`, {
+    date: date ?? null,
+  });
+const unpayInstallment = (id: string, n: number) =>
+  axios.post<Loan>(`/debts/loans/${id}/installments/${n}/unpay`);
+const markPastInstallmentsPaid = (id: string) =>
+  axios.post<Loan>(`/debts/loans/${id}/mark-past-paid`);
+const getPrepayment = (id: string, amount: number, afterInstallment: number) =>
+  axios.get<PrepaymentResult>(`/debts/loans/${id}/prepayment`, {
+    params: { amount, after_installment: afterInstallment },
+  });
+
 export default {
+  getLoans,
+  createLoan,
+  getLoanMatchSuggestions,
+  matchInstallment,
+  markInstallmentPaid,
+  unpayInstallment,
+  markPastInstallmentsPaid,
+  getPrepayment,
   getDebts,
   createDebt,
   updateDebt,

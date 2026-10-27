@@ -139,6 +139,7 @@ class AccountService {
     // Loaded lazily: the planning services import transaction/account services themselves.
     const { skipBucketsForPlannedRows } = await import('./planning/salaryPlanService.js');
     const { forgetDeletedTransactions } = await import('./debts/debtService.js');
+    const { recalcAccounts } = await import('./debts/loanLedger.js');
     await prisma.$transaction(async (tx) => {
       const account = await tx.accounts.findUnique({
         where: { account_id: accountId },
@@ -151,6 +152,8 @@ class AccountService {
       });
       if (account && plannedRows.length > 0)
         await skipBucketsForPlannedRows(account.users_user_id, plannedRows, tx);
+      if ((await tx.debts.count({ where: { loan_account_id: accountId } })) > 0)
+        throw APIError.badRequest('This account belongs to a loan. Delete the loan instead.');
       const debtLinked = await tx.transactions.findMany({
         where: {
           OR: [{ accounts_account_from_id: accountId }, { accounts_account_to_id: accountId }],
@@ -158,7 +161,7 @@ class AccountService {
         },
         select: { transaction_id: true },
       });
-      await forgetDeletedTransactions(
+      const debtRecalcs = await forgetDeletedTransactions(
         debtLinked.map((t) => t.transaction_id),
         tx
       );
@@ -167,6 +170,8 @@ class AccountService {
           OR: [{ accounts_account_from_id: accountId }, { accounts_account_to_id: accountId }],
         },
       });
+      // Other accounts touched by unpaid loan EMIs (e.g. a loan account losing its principal transfers)
+      if (account) await recalcAccounts(account.users_user_id, debtRecalcs, tx, [accountId]);
       await tx.balances_snapshot.deleteMany({ where: { accounts_account_id: accountId } });
       await tx.user_financial_profile.updateMany({
         where: { sinking_fund_account_id: accountId },

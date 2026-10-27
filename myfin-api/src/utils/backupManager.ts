@@ -105,6 +105,9 @@ export interface BackupData {
     principal_transaction_id: bigint | null;
     installment_no: number | null;
     manual: boolean;
+    /** Absent in backups made before loans. */
+    original_amount?: bigint | number | null;
+    original_category_id?: bigint | null;
   }[];
   /** Financial profile settings. Absent (or null) in older backups / when never set. */
   financial_profile?: {
@@ -482,7 +485,8 @@ class BackupManager {
         !isWhole(p.date) ||
         !isWhole(p.amount) ||
         !isWhole(p.principal_part) ||
-        (p.interest_part != null && !isWhole(p.interest_part))
+        (p.interest_part != null && !isWhole(p.interest_part)) ||
+        (p.original_amount != null && !isWhole(p.original_amount))
       ) {
         throw APIError.notAcceptable(
           'Debt payment not recognized in backup',
@@ -1040,6 +1044,9 @@ class BackupManager {
           principal_transaction_id: mapTrx(p.principal_transaction_id),
           installment_no: p.installment_no ?? null,
           manual: p.manual === true,
+          original_amount: p.original_amount != null ? BigInt(p.original_amount) : null,
+          original_category_id:
+            p.original_category_id != null ? (categoryIdMap.get(p.original_category_id) ?? null) : null,
         },
       });
     }

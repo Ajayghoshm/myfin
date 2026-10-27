@@ -5,6 +5,7 @@ import APIError from '../../errorHandling/apiError.js';
 import ConvertUtils from '../../utils/convertUtils.js';
 import { payeeKeySql } from '../insights/insightsPrimitives.js';
 import { ownershipSql } from '../insights/typicalMonth.js';
+import { type AccountRecalcs, addRecalc, undoLoanPayment } from './loanLedger.js';
 
 /**
  * Role of a transaction linked to a debt (`transactions.debt_role`). Only `interest` counts in
@@ -387,9 +388,15 @@ export async function updateDebt(userId: bigint, debtId: bigint, input: DebtUpda
   return debtDto(debtId);
 }
 
-/** Deletes an entry and its repayments; its transactions count again. */
+/** Deletes an entry and its repayments; its transactions count again. A loan is undone fully (ruling D3). */
 export async function deleteDebt(userId: bigint, debtId: bigint): Promise<void> {
-  await ownedDebt(userId, debtId);
+  const debt = await ownedDebt(userId, debtId);
+  if (debt.kind === 'loan') {
+    // Loaded lazily: the loan service imports TransactionService, which imports this module.
+    const { deleteLoan } = await import('./loanService.js');
+    await deleteLoan(userId, debtId);
+    return;
+  }
   await prisma.$transaction(async (tx) => {
     await tx.transactions.updateMany({
       where: { debt_id: debtId },
@@ -446,7 +453,7 @@ export async function addRepayment(userId: bigint, debtId: bigint, input: Repaym
 
 /** Removes a repayment; a linked transaction counts again. */
 export async function deleteRepayment(userId: bigint, debtId: bigint, paymentId: bigint): Promise<Debt> {
-  await ownedDebt(userId, debtId);
+  asPeople(await ownedDebt(userId, debtId));
   const payment = await prisma.debt_payments.findFirst({
     where: { payment_id: paymentId, debts_debt_id: debtId },
   });
@@ -525,18 +532,32 @@ export async function syncEditedTransaction(
 /**
  * Before transactions are deleted: drop repayments they backed (so they stop reducing what is
  * owed) and refresh those entries' status. Lend/borrow rows are unlinked by the FK.
+ * A loan EMI backed by a deleted row is unpaid: a deleted principal transfer gives the debit back
+ * its original amount; a deleted debit takes its principal transfer with it.
+ * Returns accounts whose balance the caller must recalculate once the rows are deleted.
  */
-export async function forgetDeletedTransactions(transactionIds: bigint[], db: DbClient = prisma): Promise<void> {
-  if (transactionIds.length === 0) return;
+export async function forgetDeletedTransactions(
+  transactionIds: bigint[],
+  db: DbClient = prisma
+): Promise<AccountRecalcs> {
+  const recalcs: AccountRecalcs = new Map();
+  if (transactionIds.length === 0) return recalcs;
   const payments = await db.debt_payments.findMany({
     where: {
       OR: [{ transaction_id: { in: transactionIds } }, { principal_transaction_id: { in: transactionIds } }],
     },
-    select: { payment_id: true, debts_debt_id: true },
+    include: { debts: { select: { kind: true } } },
   });
-  if (payments.length === 0) return;
-  await db.debt_payments.deleteMany({ where: { payment_id: { in: payments.map((p) => p.payment_id) } } });
+  if (payments.length === 0) return recalcs;
+  const gone = new Set(transactionIds.map(String));
+  const people = payments.filter((p) => p.debts.kind !== 'loan');
+  if (people.length > 0)
+    await db.debt_payments.deleteMany({ where: { payment_id: { in: people.map((p) => p.payment_id) } } });
+  for (const { debts: _debt, ...p } of payments.filter((x) => x.debts.kind === 'loan')) {
+    for (const r of (await undoLoanPayment(p, db, gone)).values()) addRecalc(recalcs, r.accountId, r.from);
+  }
   for (const debtId of new Set(payments.map((p) => p.debts_debt_id))) await refreshDebtStatus(debtId, db);
+  return recalcs;
 }
 
 export default {

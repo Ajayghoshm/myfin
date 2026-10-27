@@ -5,6 +5,7 @@ import BalanceCheckController from '../controllers/balanceCheckController.js';
 import BudgetController from '../controllers/budgetController.js';
 import CategoryController from '../controllers/categoryController.js';
 import DebtController from '../controllers/debtController.js';
+import LoanController from '../controllers/loanController.js';
 import EntityController from '../controllers/entityController.js';
 import FinancialProfileController from '../controllers/financialProfileController.js';
 import GoalController from '../controllers/goalController.js';
@@ -156,6 +157,23 @@ export const routeGroups: RouteGroup[] = [
       { method: 'get', path: '/:id/candidates', handlerName: 'getCandidates' },
       { method: 'put', path: '/:id', handlerName: 'updateYearlyCost' },
       { method: 'delete', path: '/:id', handlerName: 'deleteYearlyCost' },
+    ],
+  },
+  {
+    tag: 'Loans',
+    basePath: '/debts/loans',
+    controller: LoanController as ControllerModule,
+    controllerSourceBaseUrl: new URL('../controllers/loanController', import.meta.url).href,
+    routes: [
+      { method: 'get', path: '/', handlerName: 'getLoans' },
+      { method: 'post', path: '/', handlerName: 'createLoan' },
+      { method: 'get', path: '/:id', handlerName: 'getLoan' },
+      { method: 'get', path: '/:id/match-suggestions', handlerName: 'getMatchSuggestions' },
+      { method: 'get', path: '/:id/prepayment', handlerName: 'getPrepayment' },
+      { method: 'post', path: '/:id/mark-past-paid', handlerName: 'markPastInstallmentsPaid' },
+      { method: 'post', path: '/:id/installments/:n/match', handlerName: 'matchInstallment' },
+      { method: 'post', path: '/:id/installments/:n/mark-paid', handlerName: 'markInstallmentPaid' },
+      { method: 'post', path: '/:id/installments/:n/unpay', handlerName: 'unpayInstallment' },
     ],
   },
   {

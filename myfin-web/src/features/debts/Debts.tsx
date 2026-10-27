@@ -7,10 +7,12 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import PageHeader from '../../components/PageHeader.tsx';
 import { useGetDebts } from '../../services/debts/debtHooks.ts';
+import LoansTab from './LoansTab.tsx';
 import PeopleTab from './PeopleTab.tsx';
 
 export enum DebtsTab {
   People = 0,
+  Loans = 1,
 }
 
 const Debts = () => {
@@ -29,9 +31,13 @@ const Debts = () => {
         sx={{ mb: 2 }}
       >
         <Tab label={t('debts.tabPeople')} value={DebtsTab.People} />
+        <Tab label={t('debts.tabLoans')} value={DebtsTab.Loans} />
       </Tabs>
-      {isError && <Alert severity="error">{t('debts.loadFailed')}</Alert>}
-      {isLoading && !data && (
+      {tab === DebtsTab.Loans && <LoansTab />}
+      {tab === DebtsTab.People && isError && (
+        <Alert severity="error">{t('debts.loadFailed')}</Alert>
+      )}
+      {tab === DebtsTab.People && isLoading && !data && (
         <Typography color="text.secondary">{t('debts.loading')}</Typography>
       )}
       {data && tab === DebtsTab.People && (

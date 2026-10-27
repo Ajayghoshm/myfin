@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { queryClient } from '../../data/react-query.ts';
+import { QUERY_KEY_GET_ACCOUNTS } from '../account/accountHooks.ts';
 import {
   QUERY_KEY_GET_DAILY_SPEND,
   QUERY_KEY_GET_EMERGENCY_FUND,
@@ -11,10 +12,14 @@ import {
 import { QUERY_KEY_GET_TRANSACTIONS } from '../trx/trxHooks.ts';
 import {
   QUERY_KEY_GET_DEBTS,
+  QUERY_KEY_GET_LOAN_MATCH_SUGGESTIONS,
+  QUERY_KEY_GET_LOAN_PREPAYMENT,
+  QUERY_KEY_GET_LOANS,
   QUERY_KEY_GET_REPAYMENT_SUGGESTIONS,
 } from './debtQueryKeys.ts';
 import debtServices, {
   DebtUpdateInput,
+  LoanInput,
   PeopleDebtInput,
   RepaymentInput,
 } from './debtServices.ts';
@@ -33,6 +38,11 @@ const invalidateAll = () => {
     QUERY_KEY_GET_EMERGENCY_FUND,
     QUERY_KEY_GET_FORECAST,
     QUERY_KEY_GET_TRANSACTIONS,
+    QUERY_KEY_GET_LOANS,
+    QUERY_KEY_GET_LOAN_MATCH_SUGGESTIONS,
+    QUERY_KEY_GET_LOAN_PREPAYMENT,
+    // Loans own an account whose balance moves with every EMI
+    QUERY_KEY_GET_ACCOUNTS,
   ])
     void queryClient.invalidateQueries({ queryKey: [key] });
 };
@@ -88,6 +98,87 @@ export function useDeleteRepayment() {
   return useMutation({
     mutationFn: async (input: { id: string; paymentId: string }) =>
       (await debtServices.deleteRepayment(input.id, input.paymentId)).data,
+    onSuccess: invalidateAll,
+  });
+}
+
+export function useGetLoans() {
+  return useQuery({
+    queryKey: [QUERY_KEY_GET_LOANS],
+    queryFn: async () => (await debtServices.getLoans()).data,
+  });
+}
+
+export function useGetLoanMatchSuggestions(id: string | null) {
+  return useQuery({
+    queryKey: [QUERY_KEY_GET_LOAN_MATCH_SUGGESTIONS, id],
+    queryFn: async () =>
+      (await debtServices.getLoanMatchSuggestions(id as string)).data,
+    enabled: id !== null,
+  });
+}
+
+export function useGetPrepayment(
+  id: string,
+  amount: number | null,
+  afterInstallment: number,
+) {
+  return useQuery({
+    queryKey: [QUERY_KEY_GET_LOAN_PREPAYMENT, id, amount, afterInstallment],
+    queryFn: async () =>
+      (await debtServices.getPrepayment(id, amount as number, afterInstallment))
+        .data,
+    enabled: amount !== null && amount > 0,
+  });
+}
+
+export function useCreateLoan() {
+  return useMutation({
+    mutationFn: async (input: LoanInput) =>
+      (await debtServices.createLoan(input)).data,
+    onSuccess: invalidateAll,
+  });
+}
+
+export function useMatchInstallment() {
+  return useMutation({
+    mutationFn: async (input: {
+      id: string;
+      n: number;
+      transactionId: number;
+    }) =>
+      (
+        await debtServices.matchInstallment(
+          input.id,
+          input.n,
+          input.transactionId,
+        )
+      ).data,
+    onSuccess: invalidateAll,
+  });
+}
+
+export function useMarkInstallmentPaid() {
+  return useMutation({
+    mutationFn: async (input: { id: string; n: number; date?: number }) =>
+      (await debtServices.markInstallmentPaid(input.id, input.n, input.date))
+        .data,
+    onSuccess: invalidateAll,
+  });
+}
+
+export function useUnpayInstallment() {
+  return useMutation({
+    mutationFn: async (input: { id: string; n: number }) =>
+      (await debtServices.unpayInstallment(input.id, input.n)).data,
+    onSuccess: invalidateAll,
+  });
+}
+
+export function useMarkPastInstallmentsPaid() {
+  return useMutation({
+    mutationFn: async (id: string) =>
+      (await debtServices.markPastInstallmentsPaid(id)).data,
     onSuccess: invalidateAll,
   });
 }
