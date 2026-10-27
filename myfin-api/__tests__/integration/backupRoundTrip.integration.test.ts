@@ -52,7 +52,7 @@ describe('Backup JSON round trip', () => {
       where: { account_id: bank.account_id },
       data: { stale_after_days: 14 },
     });
-    // Pad the id sequence so old and new category ids differ after the restore.
+    // Restore recreates categories, so the salary category gets a new id afterwards.
     const salary = await prisma.categories.create({
       data: { name: 'Salary', type: 'I', users_user_id: uid, is_fixed: true },
     });
