@@ -51,6 +51,20 @@ export interface BackupData {
     created_at: bigint | number;
   }[];
   yearly_cost_dismissals?: { payee_key: string }[];
+  /** Planned (future) transactions. Absent in older backups. */
+  planned_transactions?: {
+    planned_id: bigint;
+    date_timestamp: bigint | number;
+    amount: bigint | number;
+    type: string;
+    accounts_account_from_id: bigint | null;
+    accounts_account_to_id: bigint | null;
+    categories_category_id: bigint | null;
+    description: string;
+    salary_plan_id: bigint | null;
+    bucket: string | null;
+    created_at: bigint | number;
+  }[];
   /** Financial profile settings. Absent (or null) in older backups / when never set. */
   financial_profile?: {
     salary_category_id: bigint | null;
@@ -209,6 +223,10 @@ class BackupManager {
         select: { payee_key: true },
         orderBy: { payee_key: 'asc' },
       }),
+      planned_transactions: await dbClient.planned_transactions.findMany({
+        where: { users_user_id: userId },
+        orderBy: { planned_id: 'asc' },
+      }),
       financial_profile: await dbClient.user_financial_profile
         .findUnique({
           where: { users_user_id: userId },
@@ -339,6 +357,22 @@ class BackupManager {
       ) {
         throw APIError.notAcceptable(
           'Yearly cost not recognized in backup',
+          RestoreUserErrorCodes.MalformedBackup
+        );
+      }
+    }
+    const plannedRows = data.planned_transactions ?? [];
+    for (const r of plannedRows) {
+      if (
+        typeof r?.description !== 'string' ||
+        r.description.length > 255 ||
+        typeof r.type !== 'string' ||
+        r.type.length !== 1 ||
+        !/^\d+$/.test(String(r.amount)) ||
+        !/^\d+$/.test(String(r.date_timestamp))
+      ) {
+        throw APIError.notAcceptable(
+          'Planned transaction not recognized in backup',
           RestoreUserErrorCodes.MalformedBackup
         );
       }
@@ -766,6 +800,32 @@ class BackupManager {
           myfin_balance: BigInt(check.myfin_balance),
           result: check.result,
           adjustment_transaction_id: null,
+        },
+      });
+    }
+    // endregion
+
+    // region Planned transactions (salary_plan_id is not restored: salary plans are restored separately)
+    for (const r of plannedRows) {
+      const fromId = r.accounts_account_from_id != null ? accountIdMap.get(r.accounts_account_from_id) : null;
+      const toId = r.accounts_account_to_id != null ? accountIdMap.get(r.accounts_account_to_id) : null;
+      // Drop rows whose accounts are missing from the backup
+      if (fromId === undefined || toId === undefined) continue;
+      if (fromId == null && toId == null) continue;
+      await dbClient.planned_transactions.create({
+        data: {
+          users_user_id: userId,
+          date_timestamp: BigInt(r.date_timestamp),
+          amount: BigInt(r.amount),
+          type: r.type,
+          accounts_account_from_id: fromId,
+          accounts_account_to_id: toId,
+          categories_category_id:
+            r.categories_category_id != null ? (categoryIdMap.get(r.categories_category_id) ?? null) : null,
+          description: r.description,
+          salary_plan_id: null,
+          bucket: r.bucket ?? null,
+          created_at: BigInt(r.created_at ?? 0),
         },
       });
     }

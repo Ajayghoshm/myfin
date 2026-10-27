@@ -31,6 +31,7 @@ import {
 import TopSummary from './TopSummary.tsx';
 import { ROUTE_PROFILE, ROUTE_AUTH } from '../providers/RoutesProvider.tsx';
 import { useTranslation } from 'react-i18next';
+import PlannedMatchPromptHost from '../features/transactions/PlannedMatchPromptHost.tsx';
 import { useUserData } from '../providers/UserProvider.tsx';
 
 const PrivateRoute = () => {
@@ -211,6 +212,7 @@ const PrivateRoute = () => {
               </Box>
             </AppBar>
             <Outlet />
+            <PlannedMatchPromptHost />
           </main>
         </Box>
       )}

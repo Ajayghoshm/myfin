@@ -831,6 +831,21 @@
       }
     }
   },
+  "planned": {
+    "filterChip": "Planifiées",
+    "chip": "Planifiée",
+    "markDone": "Marquer comme faite",
+    "skip": "Ignorer",
+    "match": "Associer…",
+    "empty": "Aucune transaction planifiée.",
+    "matchDialogTitle": "Associer un virement planifié",
+    "noCandidates": "Aucune transaction correspondante trouvée.",
+    "confirmTitle": "Marquer comme associée ?",
+    "confirmText": "Cela ressemble à votre virement planifié « {{description}} » ({{amount}}, {{date}}) — le marquer comme associé ?",
+    "confirmAlert": "L'entrée planifiée est supprimée et votre transaction réelle est conservée.",
+    "confirmYes": "Marquer comme associée",
+    "notNow": "Pas maintenant"
+  },
   "yearlyCosts": {
     "title": "Coûts annuels",
     "subtitle": "Factures annuelles, étalées sur les mois dans un compte de réserve.",

@@ -11,6 +11,7 @@ import InsightsController from '../controllers/insightsController.js';
 import InvestAssetsController from '../controllers/investAssetsController.js';
 import InvestReportsController from '../controllers/investReportsController.js';
 import InvestTransactionsController from '../controllers/investTransactionsController.js';
+import PlannedTransactionController from '../controllers/plannedTransactionController.js';
 import RuleController from '../controllers/ruleController.js';
 import SetupController from '../controllers/setupController.js';
 import StatsController from '../controllers/statsController.js';
@@ -107,6 +108,20 @@ export const routeGroups: RouteGroup[] = [
       { method: 'get', path: '/emergency-fund', handlerName: 'getEmergencyFund' },
       { method: 'get', path: '/safe-to-spend', handlerName: 'getSafeToSpend' },
       { method: 'put', path: '/payee-classification', handlerName: 'setPayeeClassification' },
+    ],
+  },
+  {
+    tag: 'Planned Transactions',
+    basePath: '/planned-transactions',
+    controller: PlannedTransactionController as ControllerModule,
+    controllerSourceBaseUrl: new URL('../controllers/plannedTransactionController', import.meta.url).href,
+    routes: [
+      { method: 'get', path: '/', handlerName: 'getPlanned' },
+      { method: 'get', path: '/matches', handlerName: 'getMatches' },
+      { method: 'get', path: '/:id/candidates', handlerName: 'getCandidates' },
+      { method: 'post', path: '/:id/done', handlerName: 'markDone' },
+      { method: 'post', path: '/:id/skip', handlerName: 'skipPlanned' },
+      { method: 'post', path: '/:id/match', handlerName: 'confirmMatch' },
     ],
   },
   {

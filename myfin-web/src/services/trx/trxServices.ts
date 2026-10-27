@@ -126,8 +126,13 @@ export type AddTransactionRequest = {
   external_id?: string;
 };
 
-const addTransactionStep1 = (data: AddTransactionRequest): Promise<string> => {
-  return axios.post('/trxs/step1', data);
+const addTransactionStep1 = (
+  data: AddTransactionRequest,
+) => {
+  return axios.post<{ message: string; transaction_id?: string | number }>(
+    '/trxs/step1',
+    data,
+  );
 };
 
 export type EditTransactionRequest = {
@@ -234,6 +239,7 @@ const importTransactionsStep1 = (request: ImportTransactionsStep1Request) => {
 export type ImportTransactionsStep2Response = {
   imported: number;
   skipped: number;
+  created_ids?: Array<string | number>;
 };
 
 const importTransactionsStep2 = (list: AddTransactionRequest[]) => {

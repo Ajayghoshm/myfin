@@ -903,6 +903,21 @@
       }
     }
   },
+  "planned": {
+    "filterChip": "Planned",
+    "chip": "Planned",
+    "markDone": "Mark done",
+    "skip": "Skip",
+    "match": "Match…",
+    "empty": "No planned transactions.",
+    "matchDialogTitle": "Match a planned transfer",
+    "noCandidates": "No matching transactions found.",
+    "confirmTitle": "Mark as matched?",
+    "confirmText": "This looks like your planned transfer \"{{description}}\" ({{amount}}, {{date}}) — mark it as matched?",
+    "confirmAlert": "The planned entry is removed and your real transaction is kept.",
+    "confirmYes": "Mark as matched",
+    "notNow": "Not now"
+  },
   "yearlyCosts": {
     "title": "Yearly costs",
     "subtitle": "Once-a-year bills, spread over the months into a sinking-fund account.",

@@ -62,6 +62,7 @@ import {
 import Button from '@mui/material/Button';
 import GenericConfirmationDialog from '../../components/GenericConfirmationDialog.tsx';
 import AddEditTransactionDialog from './AddEditTransactionDialog.tsx';
+import PlannedTransactionsList from './PlannedTransactionsList.tsx';
 import IconButton from '@mui/material/IconButton';
 import { inferTrxType } from '../../utils/transactionUtils.ts';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -92,6 +93,7 @@ function readUrlFilters(searchParams: URLSearchParams) {
   const cost = searchParams.get('cost');
   const yearlyCost = searchParams.get('yearly_cost');
   return {
+    planned: searchParams.get('planned') === '1',
     month: isYearMonth(month) ? month : null,
     type: type && TRX_TYPES.includes(type) ? (type as TransactionType) : null,
     category:
@@ -117,7 +119,8 @@ type UrlFilterParam =
   | 'payee'
   | 'account'
   | 'cost'
-  | 'yearly_cost';
+  | 'yearly_cost'
+  | 'planned';
 
 const Transactions = () => {
   const theme = useTheme();
@@ -817,8 +820,22 @@ const Transactions = () => {
               {t('transactions.filterTransfer')}
             </ToggleButton>
           </ToggleButtonGroup>
+          <Chip
+            sx={{ ml: 2 }}
+            label={t('planned.filterChip')}
+            color="primary"
+            variant={urlFilters.planned ? 'filled' : 'outlined'}
+            onClick={() =>
+              setUrlFilter('planned', urlFilters.planned ? null : '1')
+            }
+          />
         </Grid>
-        {filterChips.length > 0 && (
+        {urlFilters.planned && (
+          <Grid size={12}>
+            <PlannedTransactionsList />
+          </Grid>
+        )}
+        {!urlFilters.planned && filterChips.length > 0 && (
           <Grid size={12}>
             <Stack direction="row" gap={1} flexWrap="wrap">
               {filterChips.map((chip) => (
@@ -833,7 +850,7 @@ const Transactions = () => {
             </Stack>
           </Grid>
         )}
-        {selectedCount > 0 && (
+        {!urlFilters.planned && selectedCount > 0 && (
           <Grid size={12}>
             <Alert
               severity="info"
@@ -882,6 +899,7 @@ const Transactions = () => {
             onApply={applyBulkEdit}
           />
         )}
+        {!urlFilters.planned && (
         <Grid size={12}>
           <MyFinTable
             isRefetching={getTransactionsRequest.isRefetching}
@@ -908,6 +926,7 @@ const Transactions = () => {
             }}
           />
         </Grid>
+        )}
       </Grid>
     </Paper>
   );

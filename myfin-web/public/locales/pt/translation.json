@@ -905,6 +905,21 @@
       }
     }
   },
+  "planned": {
+    "filterChip": "Planeadas",
+    "chip": "Planeada",
+    "markDone": "Marcar como feita",
+    "skip": "Ignorar",
+    "match": "Associar…",
+    "empty": "Sem transações planeadas.",
+    "matchDialogTitle": "Associar uma transferência planeada",
+    "noCandidates": "Não foram encontradas transações correspondentes.",
+    "confirmTitle": "Marcar como associada?",
+    "confirmText": "Isto parece a sua transferência planeada \"{{description}}\" ({{amount}}, {{date}}) — marcar como associada?",
+    "confirmAlert": "A entrada planeada é removida e a sua transação real é mantida.",
+    "confirmYes": "Marcar como associada",
+    "notNow": "Agora não"
+  },
   "yearlyCosts": {
     "title": "Custos anuais",
     "subtitle": "Contas anuais, distribuídas pelos meses numa conta de reserva.",

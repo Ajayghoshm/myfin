@@ -11,6 +11,7 @@ import TrxServices, {
   TransactionListOptions,
   TransactionsInMonthForCategoryRequest,
 } from './trxServices.ts';
+import { announceCreatedTransactions } from '../planned/plannedMatchBus.ts';
 import { useUserData } from '../../providers/UserProvider.tsx';
 
 export const QUERY_KEY_GET_TRANSACTIONS = 'QUERY_KEY_GET_TRANSACTIONS';
@@ -133,6 +134,9 @@ export function useAddTransactionStep1() {
     void queryClient.invalidateQueries({
       queryKey: [QUERY_KEY_GET_BUDGET_MATRIX],
     });
+    if (request.data?.transaction_id != null) {
+      announceCreatedTransactions([request.data.transaction_id]);
+    }
     return request;
   }
 
@@ -224,6 +228,7 @@ export function useImportTransactionsStep2() {
     void queryClient.invalidateQueries({
       queryKey: [QUERY_KEY_GET_BUDGET_MATRIX],
     });
+    announceCreatedTransactions(data.data.created_ids ?? []);
     return data.data;
   }
 

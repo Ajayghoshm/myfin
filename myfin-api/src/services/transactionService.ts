@@ -454,6 +454,7 @@ const createTransactionsInBulk = async (
   performDatabaseRequest(async (prismaTx) => {
     let importedCnt = 0;
     let skippedCnt = 0;
+    const createdIds: bigint[] = [];
 
     // Rows carrying an external_id (e.g. PhonePe) are skipped if already stored for this user,
     // or if repeated earlier in this same list. Rows without one (paste import) always import.
@@ -502,7 +503,8 @@ const createTransactionsInBulk = async (
         }
       }
 
-      await createTransaction(userId, trx, prismaTx, { skipBalanceUpdate: true });
+      const created = await createTransaction(userId, trx, prismaTx, { skipBalanceUpdate: true });
+      createdIds.push(created.transaction_id);
       for (const accountId of accountsAffectedBy(trx)) {
         if (!accountId) continue;
         const key = String(accountId);
@@ -520,7 +522,7 @@ const createTransactionsInBulk = async (
       await updateAccountBalanceFrom(userId, accountId, date - 1, prismaTx);
     }
 
-    return { imported: importedCnt, skipped: skippedCnt };
+    return { imported: importedCnt, skipped: skippedCnt, created_ids: createdIds };
   }, dbClient, { timeout: 60_000, maxWait: 10_000 });
 
 const deleteTransaction = async (userId: bigint, transactionId: number, dbClient = undefined) => {

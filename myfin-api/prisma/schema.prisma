@@ -28,6 +28,8 @@ model accounts {
   goal_has_account                                             goal_has_account[]
   import_instrument_mappings                                   import_instrument_mappings[]
   balance_checks                                               balance_checks[]
+  planned_from                                                 planned_transactions[] @relation("planned_from")
+  planned_to                                                   planned_transactions[] @relation("planned_to")
 
   @@unique([name, users_user_id], map: "name_UNIQUE")
   @@index([users_user_id], map: "fk_accounts_users1_idx")
@@ -277,6 +279,7 @@ model users {
   user_financial_profile     user_financial_profile?
   yearly_costs               yearly_costs[]
   yearly_cost_dismissals     yearly_cost_dismissals[]
+  planned_transactions       planned_transactions[]
   currency                   String                       @default("EUR")
 }
 
@@ -422,4 +425,24 @@ model yearly_cost_dismissals {
   users         users  @relation(fields: [users_user_id], references: [user_id], onDelete: Cascade)
 
   @@id([users_user_id, payee_key])
+}
+
+model planned_transactions {
+  planned_id               BigInt    @id @default(autoincrement())
+  users_user_id            BigInt
+  date_timestamp           BigInt
+  amount                   BigInt
+  type                     String    @db.Char(1)
+  accounts_account_from_id BigInt?
+  accounts_account_to_id   BigInt?
+  categories_category_id   BigInt?
+  description              String    @db.VarChar(255)
+  salary_plan_id           BigInt?
+  bucket                   String?   @db.VarChar(16)
+  created_at               BigInt
+  users                    users     @relation(fields: [users_user_id], references: [user_id], onDelete: Cascade)
+  account_from             accounts? @relation("planned_from", fields: [accounts_account_from_id], references: [account_id], onDelete: Cascade)
+  account_to               accounts? @relation("planned_to", fields: [accounts_account_to_id], references: [account_id], onDelete: Cascade)
+
+  @@index([users_user_id, date_timestamp], map: "planned_transactions_user_date_idx")
 }

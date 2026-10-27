@@ -283,13 +283,15 @@ describe("PhonePe import (preview / categorize)", () => {
     test("imports all rows with external_id, moves balances, and a second run skips everything", async () => {
       const list = await toCreateList();
       const res = await TransactionService.createTransactionsInBulk(user.user_id, list.map((t) => ({ ...t })));
-      expect(res).toEqual({ imported: FIXTURE_ROWS, skipped: 0 });
+      expect(res).toMatchObject({ imported: FIXTURE_ROWS, skipped: 0 });
+      expect(res.created_ids).toHaveLength(FIXTURE_ROWS);
       expect(await prisma.transactions.count({ where: { external_id: { startsWith: "phonepe:" } } })).toBe(
         FIXTURE_ROWS
       );
 
       const again = await TransactionService.createTransactionsInBulk(user.user_id, list.map((t) => ({ ...t })));
-      expect(again).toEqual({ imported: 0, skipped: FIXTURE_ROWS });
+      expect(again).toMatchObject({ imported: 0, skipped: FIXTURE_ROWS });
+      expect(again.created_ids).toEqual([]);
       expect(await prisma.transactions.count()).toBe(FIXTURE_ROWS);
     });
 
@@ -323,16 +325,16 @@ describe("PhonePe import (preview / categorize)", () => {
       const list = await toCreateList();
       const swiggy = list.find((t) => t.external_id === SWIGGY_ID);
       const res = await TransactionService.createTransactionsInBulk(user.user_id, [{ ...swiggy }, { ...swiggy }]);
-      expect(res).toEqual({ imported: 1, skipped: 1 });
+      expect(res).toMatchObject({ imported: 1, skipped: 1 });
 
       const paste = () => {
         const { external_id, ...rest } = swiggy;
         return { ...rest };
       };
       const pasted = await TransactionService.createTransactionsInBulk(user.user_id, [paste(), paste()]);
-      expect(pasted).toEqual({ imported: 2, skipped: 0 });
+      expect(pasted).toMatchObject({ imported: 2, skipped: 0 });
       const again = await TransactionService.createTransactionsInBulk(user.user_id, [paste()]);
-      expect(again).toEqual({ imported: 1, skipped: 0 });
+      expect(again).toMatchObject({ imported: 1, skipped: 0 });
     });
 
     test("two concurrent saves of the same list import each row only once", async () => {
@@ -362,7 +364,7 @@ describe("PhonePe import (preview / categorize)", () => {
         external_id: `phonepe:TBULK${String(i).padStart(6, "0")}:DEBIT`,
       }));
       const res = await TransactionService.createTransactionsInBulk(user.user_id, list);
-      expect(res).toEqual({ imported: 300, skipped: 0 });
+      expect(res).toMatchObject({ imported: 300, skipped: 0 });
       expect(await prisma.transactions.count()).toBe(300);
       expect(await balanceOf(bank3300.account_id)).toBe(-((300 * 301) / 2) * 100);
     }, 120_000);

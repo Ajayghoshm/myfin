@@ -161,11 +161,11 @@ const createTransaction = async (req, res, next) => {
   try {
     const sessionData = await CommonsController.checkAuthSessionValidity(req);
     const trx = await createTransactionSchema.validateAsync(req.body);
-    await TransactionService.createTransaction(sessionData.userId, {
+    const created = await TransactionService.createTransaction(sessionData.userId, {
       ...trx,
       tags: JSON.parse(trx.tags),
     });
-    res.json(`Transaction successfully created`);
+    res.json({ message: 'Transaction successfully created', transaction_id: created.transaction_id });
   } catch (err) {
     Logger.addLog(err);
     next(err || APIError.internalServerError());
@@ -359,11 +359,11 @@ const importTransactionsStep2 = async (req: Request, res: Response, next: NextFu
     const sessionData = await CommonsController.checkAuthSessionValidity(req);
     const input = await importTrxStep2Schema.validateAsync(req.body);
 
-    const { imported, skipped } = await TransactionService.createTransactionsInBulk(
+    const { imported, skipped, created_ids } = await TransactionService.createTransactionsInBulk(
       sessionData.userId,
       JSON.parse(input.trx_list)
     );
-    res.json({ imported, skipped });
+    res.json({ imported, skipped, created_ids });
   } catch (err) {
     Logger.addLog(err);
     next(err || APIError.internalServerError());
