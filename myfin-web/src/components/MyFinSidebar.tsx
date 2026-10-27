@@ -8,6 +8,7 @@ import {
   DashboardOutlined,
   DisplaySettingsOutlined,
   DonutLargeOutlined,
+  EventRepeatOutlined,
   FolderSharedOutlined,
   InsertChartOutlined,
   InsightsOutlined,
@@ -27,6 +28,7 @@ import {
   ROUTE_ENTITIES,
   ROUTE_GOALS,
   ROUTE_INSIGHTS,
+  ROUTE_YEARLY_COSTS,
   ROUTE_INVEST,
   ROUTE_RULES,
   ROUTE_STATS,
@@ -169,6 +171,13 @@ const MyFinSidebar = () => {
           >
             {' '}
             {t('sidebar.insights')}
+          </MenuItem>
+          <MenuItem
+            icon={<EventRepeatOutlined />}
+            component={<NavLink to={ROUTE_YEARLY_COSTS} />}
+          >
+            {' '}
+            {t('sidebar.yearlyCosts')}
           </MenuItem>
           <MenuItem
             icon={<InsertChartOutlined />}

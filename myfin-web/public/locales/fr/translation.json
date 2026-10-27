@@ -73,6 +73,7 @@
     "logoAlt": "Logo MyFin",
     "statistics": "Statistiques",
     "insights": "Analyses",
+    "yearlyCosts": "Coûts annuels",
     "tags": "Étiquettes",
     "meta": "Méta"
   },
@@ -300,6 +301,7 @@
     "filterCategoryFallback": "Catégorie {{id}}",
     "filterAccountFallback": "Compte {{id}}",
     "adjustment": "Ajustement",
+    "yearlyCost": "Coût annuel",
     "countedInMonth": "compté en {{month}}"
   },
   "importTransactions": {
@@ -825,6 +827,41 @@
         "gainLoss": "Produit de vente moins frais de vente proportionnels, coût d'acquisition proportionnel et frais d'achat proportionnels."
       }
     }
+  },
+  "yearlyCosts": {
+    "title": "Coûts annuels",
+    "subtitle": "Factures annuelles, étalées sur les mois dans un compte de réserve.",
+    "statusTitle": "État de la réserve",
+    "statusEmpty": "Ajoutez vos coûts annuels pour voir combien mettre de côté chaque mois.",
+    "noAccount": "Choisissez un compte de réserve dans les Paramètres pour suivre cela. Mettez de côté {{monthly}} par mois.",
+    "onTrack": "Dans les temps. Continuez à mettre de côté {{monthly}} par mois.",
+    "behind": "En retard de {{behind}}. Virez {{transfer}} ce mois-ci.",
+    "statusDetail": "{{account}} contient {{balance}} ; il devrait contenir {{shouldHave}} à ce jour.",
+    "upcoming": "À venir : {{list}}",
+    "suggestionsTitle": "Suggestions issues de votre historique",
+    "suggestionsHelp": "Gros paiements ponctuels qui ressemblent à des factures annuelles.",
+    "accept": "Ajouter",
+    "ignore": "Ignorer",
+    "listTitle": "Vos coûts annuels",
+    "add": "Ajouter un coût annuel",
+    "edit": "Modifier le coût annuel",
+    "empty": "Aucun coût annuel pour l'instant.",
+    "rowDetail_one": "Échéance en {{month}} · {{monthly}} par mois · {{count}} paiement lié",
+    "rowDetail_other": "Échéance en {{month}} · {{monthly}} par mois · {{count}} paiements liés",
+    "linkPayments": "Lier des paiements",
+    "link": "Lier",
+    "candidatesTitle": "Lier des paiements à {{name}}",
+    "candidatesHelp": "Paiements des 13 derniers mois qui ressemblent à ce coût. Les paiements liés ne comptent plus dans votre mois type.",
+    "noCandidates": "Aucun paiement correspondant.",
+    "name": "Nom",
+    "save": "Enregistrer",
+    "yearlyAmount": "Montant annuel",
+    "dueMonth": "Mois d'échéance",
+    "category": "Catégorie",
+    "noCategory": "Sans catégorie",
+    "deleteTitle": "Supprimer le coût annuel",
+    "deleteDescription": "Supprimer « {{name}} » ?",
+    "deleteAlert": "Les paiements liés sont conservés et déliés."
   },
   "emergencyFund": {
     "title": "Fonds d'urgence",

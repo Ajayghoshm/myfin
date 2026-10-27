@@ -234,11 +234,13 @@ model transactions {
   is_essential                                             Boolean                @default(false)
   is_adjustment                                            Boolean                @default(false)
   external_id                                              String?                @db.VarChar(64)
+  yearly_cost_id                                           BigInt?
   transaction_has_tags                                     transaction_has_tags[]
   accounts_transactions_accounts_account_to_idToaccounts   accounts?              @relation("transactions_accounts_account_to_idToaccounts", fields: [accounts_account_to_id], references: [account_id], onDelete: NoAction, onUpdate: NoAction, map: "transactions_accounts_account_id_fk")
   accounts_transactions_accounts_account_from_idToaccounts accounts?              @relation("transactions_accounts_account_from_idToaccounts", fields: [accounts_account_from_id], references: [account_id], onDelete: NoAction, onUpdate: NoAction, map: "transactions_accounts_account_id_fk2")
   entities                                                 entities?              @relation(fields: [entities_entity_id], references: [entity_id], onUpdate: NoAction, map: "transactions_ibfk_1")
   categories                                               categories?            @relation(fields: [categories_category_id], references: [category_id], onUpdate: NoAction, map: "transactions_ibfk_2")
+  yearly_costs                                             yearly_costs?          @relation(fields: [yearly_cost_id], references: [yearly_cost_id], onDelete: SetNull, onUpdate: NoAction, map: "transactions_yearly_cost_fk")
 
   @@index([accounts_account_from_id, accounts_account_to_id], map: "fk_transactions_accounts1_idx")
   @@index([categories_category_id], map: "fk_transactions_categories1_idx")
@@ -246,6 +248,7 @@ model transactions {
   @@index([entities_entity_id], map: "fk_transactions_entities2_idx")
   @@index([accounts_account_to_id], map: "transactions_accounts_account_to_id_index")
   @@index([external_id])
+  @@index([yearly_cost_id], map: "transactions_yearly_cost_idx")
 }
 
 model users {
@@ -272,6 +275,8 @@ model users {
   import_instrument_mappings import_instrument_mappings[]
   payee_classifications      payee_classifications[]
   user_financial_profile     user_financial_profile?
+  yearly_costs               yearly_costs[]
+  yearly_cost_dismissals     yearly_cost_dismissals[]
   currency                   String                       @default("EUR")
 }
 
@@ -394,4 +399,27 @@ model balance_checks {
   accounts                  accounts @relation(fields: [accounts_account_id], references: [account_id], onDelete: Cascade)
 
   @@index([accounts_account_id, checked_at], map: "idx_balance_checks_account")
+}
+
+model yearly_costs {
+  yearly_cost_id BigInt         @id @default(autoincrement())
+  users_user_id  BigInt
+  name           String         @db.VarChar(255)
+  amount         BigInt
+  due_month      Int
+  category_id    BigInt?
+  active         Boolean        @default(true)
+  created_at     BigInt
+  users          users          @relation(fields: [users_user_id], references: [user_id], onDelete: Cascade)
+  transactions   transactions[]
+
+  @@index([users_user_id], map: "yearly_costs_user_idx")
+}
+
+model yearly_cost_dismissals {
+  users_user_id BigInt
+  payee_key     String @db.VarChar(255)
+  users         users  @relation(fields: [users_user_id], references: [user_id], onDelete: Cascade)
+
+  @@id([users_user_id, payee_key])
 }

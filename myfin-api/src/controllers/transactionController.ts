@@ -50,6 +50,7 @@ const structuredFilterKeys = {
     .pattern(/^\d{4}-(0[1-9]|1[0-2])$/)
     .empty(''),
   cost_kind: joi.string().valid('fixed', 'flexible', 'unsorted').empty(''),
+  yearly_cost: joi.string().valid('linked', 'unlinked').empty(''),
 };
 
 type StructuredFilterInput = {
@@ -60,6 +61,7 @@ type StructuredFilterInput = {
   account_id?: number;
   effective_month?: string;
   cost_kind?: 'fixed' | 'flexible' | 'unsorted';
+  yearly_cost?: 'linked' | 'unlinked';
   type?: string;
 };
 
@@ -82,6 +84,7 @@ const toTransactionFilter = (input: StructuredFilterInput) => ({
       ? true
       : undefined,
   costKind: input.cost_kind,
+  yearlyCost: input.yearly_cost,
   effectiveMonth:
     input.effective_month === undefined
       ? undefined

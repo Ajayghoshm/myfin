@@ -26,6 +26,8 @@ export type Transaction = {
   is_essential: 0 | 1;
   /** Balance-check write-off: not counted as spending or income. */
   is_adjustment?: 0 | 1 | boolean;
+  /** Set when the payment is linked to a yearly cost. */
+  yearly_cost_id?: string | null;
   tag_names?: Array<string>;
   tags?: Array<Tag>;
   /** 'YYYY-MM' the row counts in for analytics (late salary counts in the next month). */

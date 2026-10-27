@@ -17,6 +17,7 @@ import StatsController from '../controllers/statsController.js';
 import TagController from '../controllers/tagController.js';
 import TransactionController from '../controllers/transactionController.js';
 import UserController from '../controllers/userController.js';
+import YearlyCostController from '../controllers/yearlyCostController.js';
 
 export type RouteMethod = 'get' | 'post' | 'put' | 'delete' | 'patch';
 
@@ -105,6 +106,22 @@ export const routeGroups: RouteGroup[] = [
       { method: 'get', path: '/month', handlerName: 'getMonthInsights' },
       { method: 'get', path: '/emergency-fund', handlerName: 'getEmergencyFund' },
       { method: 'put', path: '/payee-classification', handlerName: 'setPayeeClassification' },
+    ],
+  },
+  {
+    tag: 'Yearly Costs',
+    basePath: '/yearly-costs',
+    controller: YearlyCostController as ControllerModule,
+    controllerSourceBaseUrl: new URL('../controllers/yearlyCostController', import.meta.url).href,
+    routes: [
+      { method: 'get', path: '/', handlerName: 'getYearlyCosts' },
+      { method: 'post', path: '/', handlerName: 'createYearlyCost' },
+      { method: 'get', path: '/suggestions', handlerName: 'getSuggestions' },
+      { method: 'post', path: '/suggestions/dismiss', handlerName: 'dismissSuggestion' },
+      { method: 'post', path: '/link', handlerName: 'linkTransaction' },
+      { method: 'get', path: '/:id/candidates', handlerName: 'getCandidates' },
+      { method: 'put', path: '/:id', handlerName: 'updateYearlyCost' },
+      { method: 'delete', path: '/:id', handlerName: 'deleteYearlyCost' },
     ],
   },
   {

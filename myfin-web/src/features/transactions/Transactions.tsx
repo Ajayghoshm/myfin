@@ -376,6 +376,15 @@ const Transactions = () => {
                 label={t('transactions.adjustment')}
               />
             )}
+            {params.value.yearlyCost && (
+              <Chip
+                size="small"
+                variant="outlined"
+                color="secondary"
+                sx={{ ml: 1 }}
+                label={t('transactions.yearlyCost')}
+              />
+            )}
             {params.value.countedIn && (
               <Chip
                 size="small"
@@ -645,6 +654,7 @@ const Transactions = () => {
           category_icon_key: result.category_icon_key,
           tags: result.tags,
           isAdjustment: !!result.is_adjustment,
+          yearlyCost: result.yearly_cost_id != null,
           countedIn:
             result.effective_month &&
             result.date_timestamp != null &&

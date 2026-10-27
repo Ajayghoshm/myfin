@@ -40,6 +40,17 @@ export interface BackupData {
   balance_checks?: Prisma.balance_checksGetPayload<object>[];
   /** Person/merchant corrections. Absent in backups made before insights. */
   payee_classifications?: { payee_key: string; kind: string }[];
+  /** Yearly (sinking fund) costs and dismissed suggestions. Absent in older backups. */
+  yearly_costs?: {
+    yearly_cost_id: bigint;
+    name: string;
+    amount: bigint | number;
+    due_month: number;
+    category_id: bigint | null;
+    active: boolean;
+    created_at: bigint | number;
+  }[];
+  yearly_cost_dismissals?: { payee_key: string }[];
   /** Financial profile settings. Absent (or null) in older backups / when never set. */
   financial_profile?: {
     salary_category_id: bigint | null;
@@ -189,6 +200,15 @@ class BackupManager {
         select: { payee_key: true, kind: true },
         orderBy: { payee_key: 'asc' },
       }),
+      yearly_costs: await dbClient.yearly_costs.findMany({
+        where: { users_user_id: userId },
+        orderBy: { yearly_cost_id: 'asc' },
+      }),
+      yearly_cost_dismissals: await dbClient.yearly_cost_dismissals.findMany({
+        where: { users_user_id: userId },
+        select: { payee_key: true },
+        orderBy: { payee_key: 'asc' },
+      }),
       financial_profile: await dbClient.user_financial_profile
         .findUnique({
           where: { users_user_id: userId },
@@ -303,6 +323,34 @@ class BackupManager {
         'Financial profile not recognized in backup',
         RestoreUserErrorCodes.MalformedBackup
       );
+    }
+
+    // Validate yearly costs and dismissals before wiping anything
+    const yearlyCosts = data.yearly_costs ?? [];
+    for (const c of yearlyCosts) {
+      if (
+        typeof c?.name !== 'string' ||
+        c.name.length === 0 ||
+        c.name.length > 255 ||
+        !Number.isInteger(c.due_month) ||
+        c.due_month < 1 ||
+        c.due_month > 12 ||
+        !/^\d+$/.test(String(c.amount))
+      ) {
+        throw APIError.notAcceptable(
+          'Yearly cost not recognized in backup',
+          RestoreUserErrorCodes.MalformedBackup
+        );
+      }
+    }
+    const dismissals = data.yearly_cost_dismissals ?? [];
+    for (const d of dismissals) {
+      if (typeof d?.payee_key !== 'string' || d.payee_key.length === 0 || d.payee_key.length > 255) {
+        throw APIError.notAcceptable(
+          'Yearly cost dismissal not recognized in backup',
+          RestoreUserErrorCodes.MalformedBackup
+        );
+      }
     }
 
     // Delete all previous records
@@ -498,6 +546,31 @@ class BackupManager {
     ]);
     Logger.addLog('BackupManager > Restore | Core entities successfully imported!');
 
+    // region Yearly costs (before transactions, which link to them)
+    const yearlyCostIdMap: Map<bigint, bigint> = new Map(); // <old id, new id>
+    for (const c of yearlyCosts) {
+      const created = await dbClient.yearly_costs.create({
+        data: {
+          users_user_id: userId,
+          name: c.name,
+          amount: BigInt(c.amount),
+          due_month: c.due_month,
+          // Keyed by the raw backup value (a Number after a JSON round trip), like every other map
+          category_id: c.category_id != null ? (categoryIdMap.get(c.category_id) ?? null) : null,
+          active: c.active ?? true,
+          created_at: BigInt(c.created_at ?? 0),
+        },
+      });
+      yearlyCostIdMap.set(c.yearly_cost_id, created.yearly_cost_id);
+    }
+    if (dismissals.length > 0) {
+      await dbClient.yearly_cost_dismissals.createMany({
+        data: dismissals.map((d) => ({ users_user_id: userId, payee_key: d.payee_key })),
+        skipDuplicates: true,
+      });
+    }
+    // endregion
+
     // region Rules
     // check if all values are valid
     const rulePromises = data.rules.map(async (rule) => {
@@ -574,6 +647,8 @@ class BackupManager {
           is_adjustment: trx.is_adjustment ?? false,
           // Older backups have no external_id; keep it when present so re-imports still dedupe.
           external_id: trx.external_id ?? undefined,
+          yearly_cost_id:
+            trx.yearly_cost_id != null ? (yearlyCostIdMap.get(trx.yearly_cost_id) ?? null) : null,
         },
       });
       return newTrx;

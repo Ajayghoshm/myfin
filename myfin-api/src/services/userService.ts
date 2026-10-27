@@ -533,6 +533,10 @@ const userService = {
           })
         );
 
+        // Delete yearly costs and dismissals (transactions referencing them are unlinked by the FK)
+        await prismaTx.yearly_cost_dismissals.deleteMany({ where: { users_user_id: userId } });
+        await prismaTx.yearly_costs.deleteMany({ where: { users_user_id: userId } });
+
         // Delete financial profile (references a category)
         await prismaTx.user_financial_profile.deleteMany({
           where: { users_user_id: userId },

@@ -42,6 +42,8 @@ export type Row = {
   fromId: string | null;
   fromName: string | null;
   payeeKey: string;
+  /** Linked to a yearly cost: left out of the typical month (the sinking fund covers it). */
+  yearlyCost: boolean;
   monthIdx: number; // index into the `months` passed to fetchRows
 };
 
@@ -56,6 +58,7 @@ type RawRow = {
   from_id: bigint | null;
   from_name: string | null;
   payee_key: string | null;
+  yearly_cost_id: bigint | null;
 };
 
 export const ownershipSql = (userId: bigint) => Prisma.sql`FROM transactions
@@ -89,7 +92,8 @@ export async function fetchRows(
            categories.is_fixed                 AS is_fixed,
            transactions.accounts_account_from_id AS from_id,
            acc_from.name                       AS from_name,
-           ${payeeKeySql}                      AS payee_key
+           ${payeeKeySql}                      AS payee_key,
+           transactions.yearly_cost_id         AS yearly_cost_id
     ${ownershipSql(userId)}
       AND ${countsForAnalyticsSql}
       AND transactions.date_timestamp >= ${from} AND transactions.date_timestamp < ${to}`;
@@ -112,6 +116,7 @@ export async function fetchRows(
       fromId: r.from_id == null ? null : r.from_id.toString(),
       fromName: r.from_name,
       payeeKey: r.payee_key ?? '',
+      yearlyCost: r.yearly_cost_id != null,
       monthIdx,
     });
   }
@@ -133,7 +138,7 @@ const median = (values: number[]): number => {
  * months. Also returns the one-off rows and the cleaned baseline rows for callers that need them.
  */
 export function computeTypical(rows: Row[], baselineIdx: number[]) {
-  const baseline = rows.filter((r) => baselineIdx.includes(r.monthIdx));
+  const baseline = rows.filter((r) => baselineIdx.includes(r.monthIdx) && !r.yearlyCost);
 
   // Expense one-offs: big payments to a payee seen in fewer than 2 baseline months.
   const monthsByKey = new Map<string, Set<number>>();

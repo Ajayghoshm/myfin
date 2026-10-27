@@ -133,6 +133,8 @@ export type TransactionFilter = {
   excludeAdjustments?: boolean;
   /** Expense split by the category's `is_fixed` flag; 'unsorted' = expenses without a category. */
   costKind?: CostKind;
+  /** Only rows linked / not linked to a yearly cost. */
+  yearlyCost?: 'linked' | 'unlinked';
 };
 
 export type TransactionListOptions = Omit<TransactionFilter, 'query'> & {
@@ -175,6 +177,8 @@ export function structuredFilterSql(filter: TransactionFilter): Prisma.Sql {
       Prisma.sql`transactions.type = 'E' AND transactions.categories_category_id IN (SELECT category_id FROM categories WHERE is_fixed = ${fixed})`
     );
   }
+  if (filter.yearlyCost === 'linked') parts.push(Prisma.sql`transactions.yearly_cost_id IS NOT NULL`);
+  else if (filter.yearlyCost === 'unlinked') parts.push(Prisma.sql`transactions.yearly_cost_id IS NULL`);
   if (parts.length === 0) return Prisma.empty;
   return Prisma.sql`AND ${Prisma.join(parts, ' AND ')}`;
 }
@@ -227,6 +231,7 @@ const getFilteredTransactionsByForUser = async (
     salaryRule: options.salaryRule,
     excludeAdjustments: options.excludeAdjustments,
     costKind: options.costKind,
+    yearlyCost: options.yearlyCost,
   };
   // ORDER BY can't be parameterised, so only whitelisted fragments are interpolated
   const sortDir = Prisma.raw(options.sortDir === 'asc' ? 'ASC' : 'DESC');
@@ -247,6 +252,7 @@ const getFilteredTransactionsByForUser = async (
   const mainQuery = prisma.$queryRaw`SELECT transaction_id,
                                             transactions.is_essential,
                                             transactions.is_adjustment,
+                                            transactions.yearly_cost_id,
                                             transactions.date_timestamp,
                                             (transactions.amount / 100) as amount,
                                             transactions.type,
