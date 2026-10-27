@@ -257,7 +257,9 @@ export function useImportPhonePeCategorize() {
 }
 
 export function useBulkUpdateTransactions() {
-  async function bulkUpdateTransactions(request: BulkUpdateTransactionsRequest) {
+  async function bulkUpdateTransactions(
+    request: BulkUpdateTransactionsRequest,
+  ) {
     const data = await TrxServices.bulkUpdateTransactions(request);
     void queryClient.invalidateQueries({
       queryKey: [QUERY_KEY_GET_TRANSACTIONS],

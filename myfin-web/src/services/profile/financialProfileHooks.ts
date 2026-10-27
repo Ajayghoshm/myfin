@@ -6,7 +6,8 @@ import financialProfileServices, {
   FinancialProfilePatch,
 } from './financialProfileServices.ts';
 
-export const QUERY_KEY_GET_FINANCIAL_PROFILE = 'QUERY_KEY_GET_FINANCIAL_PROFILE';
+export const QUERY_KEY_GET_FINANCIAL_PROFILE =
+  'QUERY_KEY_GET_FINANCIAL_PROFILE';
 
 export function useGetFinancialProfile() {
   async function getFinancialProfile() {
@@ -22,7 +23,8 @@ export function useGetFinancialProfile() {
 
 export function useUpdateFinancialProfile() {
   async function updateFinancialProfile(patch: FinancialProfilePatch) {
-    const response = await financialProfileServices.updateFinancialProfile(patch);
+    const response =
+      await financialProfileServices.updateFinancialProfile(patch);
     return response.data;
   }
 
