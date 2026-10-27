@@ -699,7 +699,10 @@ class BackupManager {
         data: {
           users_user_id: userId,
           salary_category_id:
-            oldCategoryId != null ? (categoryIdMap.get(BigInt(oldCategoryId)) ?? null) : null,
+            oldCategoryId != null
+              ? // Keyed by the raw backup value (a Number after a JSON round trip), like every other map
+                (categoryIdMap.get(oldCategoryId) ?? null)
+              : null,
           salary_cutoff_day: profile.salary_cutoff_day,
           updated_at: BigInt(profile.updated_at),
         },

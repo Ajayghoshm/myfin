@@ -204,6 +204,12 @@ const restoreUserSchema = joi.object({
   goals: joi.array().items(joi.object().pattern(joi.string(), joi.any())).required(),
   goal_has_accounts: joi.array().items(joi.object().pattern(joi.string(), joi.any())).required(),
   transactions: joi.array().items(joi.object().pattern(joi.string(), joi.any())).required(),
+  balance_checks: joi.array().items(joi.object().pattern(joi.string(), joi.any())).optional(),
+  payee_classifications: joi
+    .array()
+    .items(joi.object().pattern(joi.string(), joi.any()))
+    .optional(),
+  financial_profile: joi.object().pattern(joi.string(), joi.any()).allow(null).optional(),
 });
 
 export enum RestoreUserErrorCodes {
@@ -227,7 +233,7 @@ const restoreUser = async (req: Request, res: Response, next: NextFunction) => {
 const listFolderBackups = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const sessionData = await CommonsController.checkAuthSessionValidity(req);
-    const status = await FolderBackupService.status();
+    const status = await FolderBackupService.statusFor(sessionData.username);
     res.json({
       ...status,
       backups: status.available ? await FolderBackupService.list(sessionData.username) : [],

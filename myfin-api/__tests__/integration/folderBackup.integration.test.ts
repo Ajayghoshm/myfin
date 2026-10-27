@@ -156,6 +156,14 @@ describe('Folder backups', () => {
     }
   });
 
+  test('statusFor reports an unusable username as unavailable instead of throwing', async () => {
+    expect(await FolderBackupService.statusFor('demo')).toEqual({ available: true });
+    expect(await FolderBackupService.statusFor('sp ace')).toMatchObject({
+      available: false,
+      reason: expect.any(String),
+    });
+  });
+
   test('orders by name timestamp and numeric suffix; skips symlinks', async () => {
     const d = path.join(dir, 'demo');
     await mkdir(d);

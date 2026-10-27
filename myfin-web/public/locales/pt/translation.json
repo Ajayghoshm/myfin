@@ -304,7 +304,6 @@
     "clearSelection": "Limpar",
     "filterFixed": "Custos fixos",
     "filterFlexible": "Custos flexíveis",
-    "filterUnsorted": "Por classificar (sem categoria)",
     "filterUncategorised": "Sem categoria",
     "filterCategoryFallback": "Categoria {{id}}",
     "filterAccountFallback": "Conta {{id}}",

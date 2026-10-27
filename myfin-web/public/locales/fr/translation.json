@@ -284,7 +284,6 @@
     "addAnotherTagPlaceholder": "Ajouter une autre étiquette",
     "filterFixed": "Coûts fixes",
     "filterFlexible": "Coûts flexibles",
-    "filterUnsorted": "Non classées (sans catégorie)",
     "filterUncategorised": "Sans catégorie",
     "filterCategoryFallback": "Catégorie {{id}}",
     "filterAccountFallback": "Compte {{id}}",

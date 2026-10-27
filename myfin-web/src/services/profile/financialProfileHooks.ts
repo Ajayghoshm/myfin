@@ -1,5 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { queryClient } from '../../data/react-query.ts';
+import { QUERY_KEY_GET_MONTH_INSIGHTS } from '../insights/insightsHooks.ts';
+import { QUERY_KEY_GET_TRANSACTIONS } from '../trx/trxHooks.ts';
 import financialProfileServices, {
   FinancialProfilePatch,
 } from './financialProfileServices.ts';
@@ -29,6 +31,12 @@ export function useUpdateFinancialProfile() {
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: [QUERY_KEY_GET_FINANCIAL_PROFILE],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: [QUERY_KEY_GET_MONTH_INSIGHTS],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: [QUERY_KEY_GET_TRANSACTIONS],
       });
     },
   });

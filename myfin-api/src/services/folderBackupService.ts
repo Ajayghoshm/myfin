@@ -90,6 +90,18 @@ const listIn = async (dir: string) => {
   return items.sort((a, b) => compareNewestFirst(a.file, b.file));
 };
 
+const isUsableUsername = (username: unknown) =>
+  typeof username === 'string' && username !== '.' && username !== '..' && USERNAME_RE.test(username);
+
+/** Like status(), but also reports a username that cannot name a folder (create/restore still 400). */
+const statusFor = async (username: string): Promise<Status> => {
+  const s = await status();
+  if (s.available && !isUsableUsername(username)) {
+    return { available: false, reason: 'Username cannot be used as a backup folder name' };
+  }
+  return s;
+};
+
 const list = async (username: string) => {
   const root = process.env.BACKUP_DIR;
   if (!root) return [];
@@ -176,4 +188,4 @@ const restore = async (userId: bigint, username: string, file: string, password:
   await UserService.restoreUser(userId, data);
 };
 
-export default { status, list, create, restore };
+export default { status, statusFor, list, create, restore };

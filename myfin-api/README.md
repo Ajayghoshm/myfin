@@ -73,6 +73,8 @@ Here's some of the features currently in development or planned for the near fut
 # 🔰 Getting Started
 
 > Local runs of the API should set `TZ=Asia/Kolkata` (the Docker compose files already do) so month and day boundaries match IST.
+>
+> After switching an existing install to IST, run the balance recalculation once (`GET /accounts/recalculate-balance/all`, authenticated) so the monthly balance snapshots move to IST months. The server only defaults to UTC when `TZ` is unset.
 
 This project relies on NodeJS's Express framework for its backend and there's where most of the initial setup will take place
 if you want to deploy this solution to your own server.

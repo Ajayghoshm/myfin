@@ -2,8 +2,8 @@ import 'dotenv/config.js';
 import app from './app.js';
 import DemoAccountScheduler from './utils/demoAccountScheduler.js';
 
-// Set UTC as default timezone
-process.env.TZ = 'Etc/UTC';
+// Default to UTC only when the deployment did not choose a time zone (e.g. TZ=Asia/Kolkata)
+process.env.TZ ??= 'Etc/UTC';
 
 const PORT = process.env.PORT || 3001;
 DemoAccountScheduler.start();

@@ -13,7 +13,7 @@ import TrxServices, {
 } from './trxServices.ts';
 import { useUserData } from '../../providers/UserProvider.tsx';
 
-const QUERY_KEY_GET_TRANSACTIONS = 'QUERY_KEY_GET_TRANSACTIONS';
+export const QUERY_KEY_GET_TRANSACTIONS = 'QUERY_KEY_GET_TRANSACTIONS';
 const QUERY_KEY_ADD_TRANSACTION_STEP0 = 'QUERY_KEY_ADD_TRANSACTION_STEP0';
 export const QUERY_KEY_IMPORT_TRANSACTIONS_STEP0 =
   'QUERY_KEY_IMPORT_TRANSACTIONS_STEP0';
@@ -62,6 +62,7 @@ export function useGetTransactions(
       options.categoryId,
       options.payeeKey,
       options.accountId,
+      options.costKind,
     ],
     queryFn: getTransactions,
     placeholderData: keepPreviousData,
