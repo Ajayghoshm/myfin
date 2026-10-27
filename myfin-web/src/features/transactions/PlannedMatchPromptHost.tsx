@@ -2,6 +2,10 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import GenericConfirmationDialog from '../../components/GenericConfirmationDialog.tsx';
 import {
+  AlertSeverity,
+  useSnackbar,
+} from '../../providers/SnackbarProvider.tsx';
+import {
   useConfirmPlannedMatch,
   useGetPlannedMatches,
 } from '../../services/planned/plannedHooks.ts';
@@ -18,6 +22,7 @@ const MatchQueue = ({
   onDone: () => void;
 }) => {
   const { t } = useTranslation();
+  const snackbar = useSnackbar();
   const matchesRequest = useGetPlannedMatches(transactionIds);
   const confirmMatch = useConfirmPlannedMatch();
   const [index, setIndex] = useState(0);
@@ -26,6 +31,15 @@ const MatchQueue = ({
   useEffect(() => {
     if (matchesRequest.isSuccess && index >= matches.length) onDone();
   }, [matchesRequest.isSuccess, index, matches.length]);
+
+  useEffect(() => {
+    if (!matchesRequest.isError) return;
+    snackbar.showSnackbar(
+      t('common.somethingWentWrongTryAgain'),
+      AlertSeverity.ERROR,
+    );
+    onDone();
+  }, [matchesRequest.isError]);
 
   const current = matches[index];
   if (!current) return null;
@@ -37,10 +51,19 @@ const MatchQueue = ({
       onClose={next}
       onNegativeClick={next}
       onPositiveClick={() => {
-        confirmMatch.mutate({
-          plannedId: current.planned.planned_id,
-          transactionId: current.transaction_id,
-        });
+        confirmMatch.mutate(
+          {
+            plannedId: current.planned.planned_id,
+            transactionId: current.transaction_id,
+          },
+          {
+            onError: () =>
+              snackbar.showSnackbar(
+                t('common.somethingWentWrongTryAgain'),
+                AlertSeverity.ERROR,
+              ),
+          },
+        );
         next();
       }}
       titleText={t('planned.confirmTitle')}

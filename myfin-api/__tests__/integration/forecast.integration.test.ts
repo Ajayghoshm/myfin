@@ -108,6 +108,35 @@ describe('forecast to budget', () => {
     expect(f).toMatchObject({ total: 57000, low: 56200, high: 57800, unsorted: 300, income: 100000 });
   });
 
+  test('income is the typical monthly income; uncategorised income is shown separately', async () => {
+    const ctx = await setup();
+    const interest = await prisma.categories.create({ data: { name: 'Interest', type: I, users_user_id: ctx.uid } });
+    const cashback = await prisma.categories.create({ data: { name: 'Cashback', type: I, users_user_id: ctx.uid } });
+    const bank = await prisma.accounts.findFirstOrThrow({ where: { users_user_id: ctx.uid } });
+    const earn = (amount: number, ym: YearMonth, category_id?: bigint) =>
+      TransactionService.createTransaction(ctx.uid, {
+        account_to_id: bank.account_id,
+        amount,
+        type: I,
+        description: 'Other income',
+        date_timestamp: at(ym, 10),
+        is_essential: false,
+        category_id,
+      } as never);
+    for (const m of [8, 9, 10]) {
+      const ym = { year: 2026, month: m };
+      await earn(150, ym, interest.category_id);
+      await earn(150, ym, cashback.category_id);
+      await earn(5000, ym);
+    }
+    const f = await forecast(ctx.uid, DEC, NOW);
+    // Lines round up separately (200 + 200), the total is the typical income rounded once
+    expect(line(f, 'Interest')).toMatchObject({ kind: 'income', amount: 200 });
+    expect(line(f, 'Cashback')).toMatchObject({ kind: 'income', amount: 200 });
+    expect(f.income).toBe(105300);
+    expect(f.uncategorised_income).toBe(5000);
+  });
+
   test('a factor of 2.0 is clamped to 1.5', async () => {
     const ctx = await setup({ lastYear: 20000 });
     const f = await forecast(ctx.uid, DEC, NOW);
@@ -235,7 +264,7 @@ describe('forecast to budget', () => {
   test('a new user gets zeros and no lines', async () => {
     const user = await UserService.createUser({ username: 'fresh', password: '123', email: 'fresh@x.com' });
     const f = await forecast(user.user_id, DEC, NOW);
-    expect(f).toEqual({ month: '2026-12', income: 0, total: 0, low: 0, high: 0, unsorted: 0, categories: [] });
+    expect(f).toEqual({ month: '2026-12', income: 0, uncategorised_income: 0, total: 0, low: 0, high: 0, unsorted: 0, categories: [] });
     const c = await budgetCompare(user.user_id, DEC, NOW);
     expect(c).toEqual({ budget_id: null, rows: [] });
   });

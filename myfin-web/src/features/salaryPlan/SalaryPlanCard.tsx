@@ -18,14 +18,15 @@ const SalaryPlanCard = () => {
   const { data } = useGetCurrentSalaryPlan();
   const [open, setOpen] = useState(false);
 
-  if (!data || data.state === 'none' || !data.month || !data.salary)
-    return null;
+  if (!data || data.state === 'none' || !data.month) return null;
+  // A confirmed plan keeps its link even if its salary transaction was deleted.
+  if (data.state === 'proposal' && !data.salary) return null;
   const label = monthLabel(data.month, i18n.language);
 
   return (
     <DataCard>
       <PanelTitle>{t('salaryPlan.cardTitle')}</PanelTitle>
-      {data.state === 'proposal' ? (
+      {data.state === 'proposal' && data.salary ? (
         <>
           <Typography variant="body2" color="text.secondary" mb={1}>
             {t('salaryPlan.cardProposal', {

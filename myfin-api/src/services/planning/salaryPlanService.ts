@@ -2,10 +2,10 @@ import { Prisma } from '../../generated/prisma/client.js';
 import { performDatabaseRequest, prisma } from '../../config/prisma.js';
 import { MYFIN } from '../../consts.js';
 import APIError from '../../errorHandling/apiError.js';
-import { emergencyAccountIds } from '../earmarkService.js';
+import { type AccountRole, assertEarmarkAllowed, emergencyAccountIds } from '../earmarkService.js';
 import { getFinancialProfile } from '../financialProfileService.js';
-import { effectiveMonthOf, formatYearMonth, salaryRuleFor } from '../insights/analyticsRules.js';
-import type { YearMonth } from '../insights/insightsPrimitives.js';
+import { cutoffOf, effectiveMonthOf, formatYearMonth, salaryRuleFor } from '../insights/analyticsRules.js';
+import { IST_OFFSET_SECONDS, type YearMonth, shiftMonth } from '../insights/insightsPrimitives.js';
 import { typicalMonth } from '../insights/typicalMonth.js';
 import { emergencyTopupGapCents } from './emergencyFundService.js';
 import { createPlanned, setOnPlannedResolved } from './plannedTransactionService.js';
@@ -55,6 +55,12 @@ type StoredBucket = {
 
 const BUCKETS: BucketName[] = ['fixed', 'yearly', 'emergency', 'savings', 'free'];
 const TRANSFER_BUCKETS: BucketName[] = ['yearly', 'emergency', 'savings'];
+/** Earmark role each transfer bucket's target account may hold. */
+const BUCKET_ROLE: Record<string, AccountRole> = {
+  yearly: 'sinking',
+  emergency: 'emergency',
+  savings: 'savings_target',
+};
 const BUCKET_LABEL: Record<BucketName, string> = {
   fixed: 'fixed costs',
   yearly: 'yearly set-aside',
@@ -139,7 +145,9 @@ async function propose(userId: bigint, ym: YearMonth, salary: SalaryTrx, now: nu
   const [typical, yearlyCents, gap, emergencyIds, sinkingId, savingsId] = await Promise.all([
     typicalMonth(userId, ym),
     yearlySetasideMonthlyCents(userId),
-    emergencyTopupGapCents(userId, now),
+    // Gap on the plan month's basis, like safe-to-spend for that month. The plan caps the top-up at a
+    // percentage of this salary; safe-to-spend (without a plan) at a percentage of expected income.
+    emergencyTopupGapCents(userId, now, ym),
     emergencyAccountIds(userId),
     activeAccountId(userId, profile.sinking_fund_account_id),
     activeAccountId(userId, profile.savings_target_account_id),
@@ -177,8 +185,10 @@ async function propose(userId: bigint, ym: YearMonth, salary: SalaryTrx, now: nu
 const EMPTY: SalaryPlan = { state: 'none', month: null, salary: null, buckets: [] };
 
 /**
- * The earliest salary-category income of the last 40 days whose effective month has no plan gets a
- * proposal; when the latest such month already has a plan, that plan is returned.
+ * Proposals are only made for the current effective month or later (ruling B7): today's IST month,
+ * or the next month once a salary-category income on/after this month's cut-off has landed. Among
+ * the last 40 days' salary incomes, the earliest one in such a month without a plan gets a proposal;
+ * older unplanned months are ignored. Otherwise the latest month's confirmed plan is returned.
  */
 export async function currentSalaryPlan(userId: bigint, now: number = nowSeconds()): Promise<SalaryPlan> {
   const rule = await salaryRuleFor(userId);
@@ -200,11 +210,16 @@ export async function currentSalaryPlan(userId: bigint, now: number = nowSeconds
       rule
     ),
   }));
+  const d = new Date((now + IST_OFFSET_SECONDS) * 1000);
+  const calendar: YearMonth = { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 };
+  const lateThisMonth = incomes.some((t) => Number(t.date_timestamp) >= cutoffOf(calendar, rule));
+  const currentEffective = monthInt(lateThisMonth ? shiftMonth(calendar, 1) : calendar);
+
   const plans = await prisma.salary_plans.findMany({
     where: { users_user_id: userId, month: { in: [...new Set(withMonth.map((w) => monthInt(w.ym)))] } },
   });
   const planned = new Set(plans.map((p) => p.month));
-  const open = withMonth.find((w) => !planned.has(monthInt(w.ym)));
+  const open = withMonth.find((w) => monthInt(w.ym) >= currentEffective && !planned.has(monthInt(w.ym)));
   if (open) return propose(userId, open.ym, open.trx, now);
   const latest = withMonth[withMonth.length - 1];
   const plan = plans.find((p) => p.month === monthInt(latest.ym));
@@ -256,11 +271,20 @@ export async function confirmSalaryPlan(userId: bigint, input: ConfirmInput): Pr
   if (accountIds.length > 0) {
     const accounts = await prisma.accounts.findMany({
       where: { account_id: { in: accountIds }, users_user_id: userId },
-      select: { type: true },
+      select: { type: true, status: true },
     });
     if (accounts.length !== accountIds.length) throw APIError.notAuthorized();
     if (accounts.some((a) => a.type === MYFIN.ACCOUNT_TYPES.INVESTING))
       throw APIError.badRequest('Investment accounts cannot receive a salary-plan transfer.');
+    if (accounts.some((a) => a.status !== MYFIN.ACCOUNT_STATUS.ACTIVE))
+      throw APIError.badRequest('Inactive accounts cannot receive a salary-plan transfer.');
+    if (accountIds.includes(salary.accounts_account_to_id))
+      throw APIError.badRequest('A salary-plan transfer cannot go to the account the salary was paid into.');
+    // An account holding another earmark (e.g. savings into the emergency account) is rejected.
+    for (const name of TRANSFER_BUCKETS) {
+      const to = byName.get(name)?.account_to_id;
+      if (to != null) await assertEarmarkAllowed(userId, to, BUCKET_ROLE[name]);
+    }
   }
 
   const salaryCents = Number(salary.amount);
@@ -324,9 +348,13 @@ export async function confirmSalaryPlan(userId: bigint, input: ConfirmInput): Pr
 }
 
 // A resolved planned row is already deleted when this runs, so find its plan through the bucket JSON.
-setOnPlannedResolved(async (plannedId, outcome, transactionId, prismaTx) => {
+// The plan rows are locked (FOR UPDATE) before the read-modify-write of their buckets.
+setOnPlannedResolved(async (userId, plannedId, outcome, transactionId, prismaTx) => {
   const rows = await prismaTx.$queryRaw<{ salary_plan_id: bigint }[]>(
-    Prisma.sql`SELECT salary_plan_id FROM salary_plans WHERE JSON_SEARCH(buckets, 'one', ${plannedId.toString()}, NULL, '$[*].planned_id') IS NOT NULL`
+    Prisma.sql`SELECT salary_plan_id FROM salary_plans
+      WHERE users_user_id = ${userId}
+        AND JSON_SEARCH(buckets, 'one', ${plannedId.toString()}, NULL, '$[*].planned_id') IS NOT NULL
+      FOR UPDATE`
   );
   for (const r of rows) {
     const plan = await prismaTx.salary_plans.findUnique({ where: { salary_plan_id: r.salary_plan_id } });
@@ -343,5 +371,41 @@ setOnPlannedResolved(async (plannedId, outcome, transactionId, prismaTx) => {
     });
   }
 });
+
+/**
+ * Account deletion cascades its planned rows away; mark the salary-plan buckets that pointed at
+ * them as skipped, in the caller's transaction.
+ */
+export async function skipBucketsForPlannedRows(
+  userId: bigint,
+  rows: { planned_id: bigint; salary_plan_id: bigint | null }[],
+  prismaTx: Prisma.TransactionClient
+): Promise<void> {
+  const byPlan = new Map<bigint, Set<string>>();
+  for (const r of rows) {
+    if (r.salary_plan_id == null) continue;
+    const set = byPlan.get(r.salary_plan_id) ?? new Set<string>();
+    set.add(r.planned_id.toString());
+    byPlan.set(r.salary_plan_id, set);
+  }
+  for (const [planId, ids] of byPlan) {
+    await prismaTx.$queryRaw`SELECT salary_plan_id FROM salary_plans WHERE salary_plan_id = ${planId} AND users_user_id = ${userId} FOR UPDATE`;
+    const plan = await prismaTx.salary_plans.findFirst({ where: { salary_plan_id: planId, users_user_id: userId } });
+    if (!plan) continue;
+    const stored = plan.buckets as unknown as StoredBucket[];
+    let changed = false;
+    for (const b of stored) {
+      if (b.planned_id == null || !ids.has(b.planned_id) || b.state !== 'planned') continue;
+      b.state = 'skipped';
+      b.transaction_id = null;
+      changed = true;
+    }
+    if (changed)
+      await prismaTx.salary_plans.update({
+        where: { salary_plan_id: planId },
+        data: { buckets: stored as unknown as Prisma.InputJsonValue },
+      });
+  }
+}
 
 export default { currentSalaryPlan, getSalaryPlan, confirmSalaryPlan };

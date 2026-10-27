@@ -6,7 +6,7 @@ import { prisma } from '../../src/config/prisma.js';
 import { MYFIN } from '../../src/consts.js';
 import { updateFinancialProfile } from '../../src/services/financialProfileService.js';
 import { monthRangeIST, type YearMonth } from '../../src/services/insights/insightsPrimitives.js';
-import { listPlanned, markDone, skip } from '../../src/services/planning/plannedTransactionService.js';
+import { confirmMatch, createPlanned, listPlanned, markDone, skip } from '../../src/services/planning/plannedTransactionService.js';
 import { confirmSalaryPlan, currentSalaryPlan } from '../../src/services/planning/salaryPlanService.js';
 import { createYearlyCost } from '../../src/services/planning/yearlyCostService.js';
 import AccountService from '../../src/services/accountService.js';
@@ -133,6 +133,25 @@ describe('salary-day plan', () => {
     expect(r.buckets[3].account_to_id).toBe(ctx.savings.account_id.toString());
   });
 
+  test('B7: enabling the salary category late proposes the current effective month, not a stale one', async () => {
+    const SEP: YearMonth = { year: 2026, month: 9 };
+    await ctx.income(100000, at(SEP, 28));
+    const oct = await ctx.income(100000, at(OCT, 28));
+    const r = await currentSalaryPlan(ctx.uid, at(OCT, 29));
+    expect(r.state).toBe('proposal');
+    expect(r.month).toBe('2026-11');
+    expect(r.salary?.transaction_id).toBe(oct.transaction_id.toString());
+  });
+
+  test('B7: before this month\'s salary lands, an unplanned older month is not proposed', async () => {
+    const SEP: YearMonth = { year: 2026, month: 9 };
+    // Sep 28 pays for October; on Oct 20 the current effective month is October, so it is proposed
+    await ctx.income(100000, at(SEP, 28));
+    expect((await currentSalaryPlan(ctx.uid, at(OCT, 20))).month).toBe('2026-10');
+    // On Nov 3 the current effective month is November: October's plan is stale
+    expect((await currentSalaryPlan(ctx.uid, at(NOV, 3))).state).toBe('none');
+  });
+
   test('a salary older than 40 days gives no proposal', async () => {
     await ctx.income(100000, SALARY_DATE);
     expect((await currentSalaryPlan(ctx.uid, SALARY_DATE + 41 * DAY)).state).toBe('none');
@@ -196,6 +215,78 @@ describe('salary-day plan', () => {
     const res = await fetchJson('/salary-plan/2026-11');
     expect(res.status).toBe(200);
     expect(res.body.buckets.filter((b: { state: string }) => b.state === 'done')).toHaveLength(1);
+  });
+
+  test('a transaction already recorded for a plan bucket cannot match another planned row', async () => {
+    const salary = await ctx.income(100000, SALARY_DATE);
+    await confirmDefault(ctx, salary.transaction_id);
+    const yearly = (await listPlanned(ctx.uid)).find((p) => p.bucket === 'yearly')!;
+    const trxId = await markDone(ctx.uid, BigInt(yearly.planned_id), NOW);
+    const [again] = await prisma.$transaction((tx) =>
+      createPlanned(
+        ctx.uid,
+        [
+          {
+            date_timestamp: SALARY_DATE,
+            amount: 1000_00,
+            type: 'T',
+            account_from_id: ctx.bank.account_id,
+            account_to_id: ctx.sinking.account_id,
+            description: 'Duplicate',
+          },
+        ],
+        tx as never
+      )
+    );
+    await expect(confirmMatch(ctx.uid, again, trxId)).rejects.toMatchObject({ code: 400 });
+    expect((await listPlanned(ctx.uid)).some((p) => p.planned_id === again.toString())).toBe(true);
+  });
+
+  test('confirm rejects inactive accounts, the salary account and earmark-conflicting targets', async () => {
+    const salary = await ctx.income(100000, SALARY_DATE);
+    const inactive = await prisma.accounts.create({
+      data: {
+        name: 'Old',
+        type: MYFIN.ACCOUNT_TYPES.SAVINGS,
+        description: '',
+        status: MYFIN.ACCOUNT_STATUS.INACTIVE,
+        exclude_from_budgets: false,
+        current_balance: 0,
+        users_user_id: ctx.uid,
+      },
+    });
+    for (const override of [
+      { bucket: 'savings', amount: 20000, account_to_id: inactive.account_id },
+      { bucket: 'savings', amount: 20000, account_to_id: ctx.bank.account_id },
+      { bucket: 'savings', amount: 20000, account_to_id: ctx.emergency.account_id },
+      { bucket: 'emergency', amount: 10000, account_to_id: ctx.sinking.account_id },
+    ]) {
+      await expect(
+        confirmSalaryPlan(ctx.uid, {
+          month: '2026-11',
+          salary_transaction_id: salary.transaction_id,
+          buckets: [
+            { bucket: 'fixed', amount: 30000, account_to_id: null },
+            { bucket: 'yearly', amount: 1000, account_to_id: ctx.sinking.account_id },
+            { bucket: 'emergency', amount: 10000, account_to_id: ctx.emergency.account_id },
+            { bucket: 'savings', amount: 20000, account_to_id: ctx.savings.account_id },
+            override,
+          ].filter((b, i, all) => all.findLastIndex((x) => x.bucket === b.bucket) === i) as never,
+        })
+      ).rejects.toMatchObject({ code: 400 });
+    }
+    expect(await prisma.salary_plans.count({ where: { users_user_id: ctx.uid } })).toBe(0);
+  });
+
+  test('deleting an account marks the buckets of its cascade-deleted planned rows as skipped', async () => {
+    const salary = await ctx.income(100000, SALARY_DATE);
+    await confirmDefault(ctx, salary.transaction_id);
+    await AccountService.deleteAccount(ctx.savings.account_id);
+    expect((await listPlanned(ctx.uid)).map((p) => p.bucket).sort()).toEqual(['emergency', 'yearly']);
+    const r = await currentSalaryPlan(ctx.uid, NOW);
+    const by = Object.fromEntries(r.buckets.map((b) => [b.bucket, b]));
+    expect(by.savings.state).toBe('skipped');
+    expect(by.yearly.state).toBe('planned');
   });
 
   test('overdue is a planned row more than 15 days past its date', async () => {

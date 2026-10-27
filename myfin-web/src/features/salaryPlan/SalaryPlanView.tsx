@@ -40,6 +40,8 @@ const SalaryPlanView = () => {
     (b) => TRANSFER.includes(b.bucket) && b.state !== 'none',
   );
   const done = transfers.filter((b) => b.state === 'done').length;
+  // Skipped transfers are not part of "N of M done"; they are counted separately.
+  const skipped = transfers.filter((b) => b.state === 'skipped').length;
   const hasOverdue = transfers.some((b) => b.overdue);
 
   return (
@@ -53,7 +55,12 @@ const SalaryPlanView = () => {
       <Stack gap={3}>
         <DataCard>
           <PanelTitle>
-            {t('salaryPlan.transfersDone', { done, total: transfers.length })}
+            {t('salaryPlan.transfersDone', {
+              done,
+              total: transfers.length - skipped,
+            })}
+            {skipped > 0 &&
+              ` · ${t('salaryPlan.transfersSkipped', { count: skipped })}`}
           </PanelTitle>
           {hasOverdue && (
             <Alert severity="warning" sx={{ mb: 2 }}>

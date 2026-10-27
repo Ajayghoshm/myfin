@@ -402,11 +402,21 @@ const Transactions = () => {
                 sx={{ ml: 1 }}
                 label={t('transactions.yearlyCost')}
                 title={t('transactions.unlinkYearlyCost')}
+                disabled={unlinkYearlyCost.isPending}
                 onDelete={() =>
-                  unlinkYearlyCost.mutate({
-                    transactionId: params.value.transactionId,
-                    yearlyCostId: null,
-                  })
+                  unlinkYearlyCost.mutate(
+                    {
+                      transactionId: params.value.transactionId,
+                      yearlyCostId: null,
+                    },
+                    {
+                      onError: () =>
+                        snackbar.showSnackbar(
+                          t('common.somethingWentWrongTryAgain'),
+                          AlertSeverity.ERROR,
+                        ),
+                    },
+                  )
                 }
               />
             )}

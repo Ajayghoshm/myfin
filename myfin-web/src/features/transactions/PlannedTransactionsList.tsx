@@ -17,6 +17,10 @@ import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  AlertSeverity,
+  useSnackbar,
+} from '../../providers/SnackbarProvider.tsx';
 import { useUserData } from '../../providers/UserProvider.tsx';
 import {
   useConfirmPlannedMatch,
@@ -36,6 +40,7 @@ const CandidatesDialog = ({
   onClose: () => void;
 }) => {
   const { t } = useTranslation();
+  const snackbar = useSnackbar();
   const candidates = useGetPlannedCandidates(plannedId);
   const confirmMatch = useConfirmPlannedMatch();
   return (
@@ -49,10 +54,18 @@ const CandidatesDialog = ({
           {candidates.data?.map((c) => (
             <ListItemButton
               key={c.transaction_id}
+              disabled={confirmMatch.isPending}
               onClick={() => {
                 confirmMatch.mutate(
                   { plannedId, transactionId: c.transaction_id },
-                  { onSuccess: onClose },
+                  {
+                    onSuccess: onClose,
+                    onError: () =>
+                      snackbar.showSnackbar(
+                        t('common.somethingWentWrongTryAgain'),
+                        AlertSeverity.ERROR,
+                      ),
+                  },
                 );
               }}
             >
@@ -74,10 +87,17 @@ const CandidatesDialog = ({
 /** The Transactions grid's "Planned" view: future rows that move nothing until resolved. */
 const PlannedTransactionsList = () => {
   const { t } = useTranslation();
+  const snackbar = useSnackbar();
   const { userAccounts } = useUserData();
   const planned = useGetPlanned();
   const markDone = useMarkPlannedDone();
   const skip = useSkipPlanned();
+  const busy = markDone.isPending || skip.isPending;
+  const onError = () =>
+    snackbar.showSnackbar(
+      t('common.somethingWentWrongTryAgain'),
+      AlertSeverity.ERROR,
+    );
   const [matchingId, setMatchingId] = useState<string | null>(null);
 
   const accountName = (id: string | null) =>
@@ -134,20 +154,21 @@ const PlannedTransactionsList = () => {
                 <Stack direction="row" gap={0.5} flexWrap="wrap">
                   <Button
                     size="small"
-                    disabled={markDone.isPending}
-                    onClick={() => markDone.mutate(row.planned_id)}
+                    disabled={busy}
+                    onClick={() => markDone.mutate(row.planned_id, { onError })}
                   >
                     {t('planned.markDone')}
                   </Button>
                   <Button
                     size="small"
-                    disabled={skip.isPending}
-                    onClick={() => skip.mutate(row.planned_id)}
+                    disabled={busy}
+                    onClick={() => skip.mutate(row.planned_id, { onError })}
                   >
                     {t('planned.skip')}
                   </Button>
                   <Button
                     size="small"
+                    disabled={busy}
                     onClick={() => setMatchingId(row.planned_id)}
                   >
                     {t('planned.match')}

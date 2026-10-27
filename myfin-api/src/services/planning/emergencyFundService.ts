@@ -1,7 +1,7 @@
 import { prisma } from '../../config/prisma.js';
 import { emergencyAccountIds } from '../earmarkService.js';
 import { getFinancialProfile } from '../financialProfileService.js';
-import { IST_OFFSET_SECONDS } from '../insights/insightsPrimitives.js';
+import { IST_OFFSET_SECONDS, type YearMonth } from '../insights/insightsPrimitives.js';
 import { typicalMonth } from '../insights/typicalMonth.js';
 
 export type EmergencyFund = {
@@ -18,7 +18,7 @@ const RED_BELOW_MONTHS = 3;
 
 type Computed = { result: EmergencyFund; gapCents: number };
 
-async function compute(userId: bigint, now: number): Promise<Computed> {
+async function compute(userId: bigint, now: number, ym?: YearMonth): Promise<Computed> {
   const profile = await getFinancialProfile(userId);
   const target = profile.emergency_fund_target_months;
   const ids = await emergencyAccountIds(userId);
@@ -46,9 +46,10 @@ async function compute(userId: bigint, now: number): Promise<Computed> {
       gapCents: 0,
     };
 
-  // Effective month containing `now` (IST calendar month; salary shifting only affects income rows).
+  // Effective month containing `now` (IST calendar month; salary shifting only affects income rows),
+  // unless the caller names the month it is planning for.
   const d = new Date((now + IST_OFFSET_SECONDS) * 1000);
-  const typical = await typicalMonth(userId, { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 });
+  const typical = await typicalMonth(userId, ym ?? { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 });
   const fixedCents = typical.fixedCents;
   if (fixedCents == null || fixedCents <= 0)
     return {
@@ -56,14 +57,15 @@ async function compute(userId: bigint, now: number): Promise<Computed> {
       gapCents: 0,
     };
 
-  const months = fundCents / fixedCents;
+  // Colour follows the displayed (rounded) figure so "3.0 months" is never red.
+  const months = Math.round((fundCents / fixedCents) * 10) / 10;
   const gapCents = Math.max(0, Math.round(target * fixedCents - fundCents));
   const status = months < RED_BELOW_MONTHS ? 'red' : months < target ? 'amber' : 'green';
   return {
     result: {
       ...base,
       monthly_fixed: fixedCents / 100,
-      months_covered: Math.round(months * 10) / 10,
+      months_covered: months,
       more_needed: gapCents / 100,
       status,
     },
@@ -78,12 +80,16 @@ export async function emergencyFund(
   return (await compute(userId, now)).result;
 }
 
-/** max(0, target * monthly_fixed - fund) in cents; 0 for no_accounts / no_fixed. */
+/**
+ * max(0, target * monthly_fixed - fund) in cents; 0 for no_accounts / no_fixed. `ym` is the
+ * effective month whose typical fixed costs are the basis (defaults to the IST month of `now`).
+ */
 export async function emergencyTopupGapCents(
   userId: bigint,
-  now: number = Math.floor(Date.now() / 1000)
+  now: number = Math.floor(Date.now() / 1000),
+  ym?: YearMonth
 ): Promise<number> {
-  return (await compute(userId, now)).gapCents;
+  return (await compute(userId, now, ym)).gapCents;
 }
 
 export default { emergencyFund, emergencyTopupGapCents };

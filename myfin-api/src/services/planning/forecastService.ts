@@ -22,7 +22,10 @@ export type ForecastLine = {
 
 export type Forecast = {
   month: string;
+  /** Typical monthly income, rounded once to ₹100 (not the sum of the rounded income lines). */
   income: number;
+  /** Typical income with no category: part of `income`, but no budget line can hold it. */
+  uncategorised_income: number;
   total: number;
   low: number;
   high: number;
@@ -115,14 +118,15 @@ export async function forecast(
 
   const lines: ForecastLine[] = [];
   const sds: number[] = [];
-  let income = 0;
+  const incomeCents = typical.incomeCents ?? 0;
+  let categorisedIncome = 0;
   for (const id of ids) {
     const t = typical.byCategory.get(id);
     const info = catInfo.get(id);
     if (!info) continue;
     if (t?.kind === 'income') {
       const amount = round100(t.avgCents);
-      income += amount;
+      categorisedIncome += t.avgCents;
       lines.push({ category_id: id, name: info.name, kind: 'income', amount: currency(amount), yearly_costs: 0, seasonal_factor: null });
       continue;
     }
@@ -158,7 +162,8 @@ export async function forecast(
   const spread = round100(Math.sqrt(sds.reduce((s, v) => s + v * v, 0)));
   return {
     month: formatYearMonth(month),
-    income: currency(income),
+    income: currency(round100(incomeCents)),
+    uncategorised_income: currency(round100(incomeCents - categorisedIncome)),
     total: currency(total),
     low: currency(total - spread),
     high: currency(total + spread),

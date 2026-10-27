@@ -8,8 +8,6 @@ import { assertEarmarkAllowed } from './earmarkService.js';
 import UserService from './userService.js';
 
 const Account = prisma.accounts;
-const Transaction = prisma.transactions;
-const BalanceSnapshot = prisma.balances_snapshot;
 
 interface BalanceSnapshot {
   month: number;
@@ -136,36 +134,36 @@ class AccountService {
   }
 
   static async deleteAccount(accountId: bigint) {
-    const deleteTransactions = Transaction.deleteMany({
-      where: {
-        OR: [{ accounts_account_from_id: accountId }, { accounts_account_to_id: accountId }],
-      },
+    // Loaded lazily: the planning services import transaction/account services themselves.
+    const { skipBucketsForPlannedRows } = await import('./planning/salaryPlanService.js');
+    await prisma.$transaction(async (tx) => {
+      const account = await tx.accounts.findUnique({
+        where: { account_id: accountId },
+        select: { users_user_id: true },
+      });
+      // Planned rows of this account are cascade-deleted with it: their plan buckets become skipped.
+      const plannedRows = await tx.planned_transactions.findMany({
+        where: { OR: [{ accounts_account_from_id: accountId }, { accounts_account_to_id: accountId }] },
+        select: { planned_id: true, salary_plan_id: true },
+      });
+      if (account && plannedRows.length > 0)
+        await skipBucketsForPlannedRows(account.users_user_id, plannedRows, tx);
+      await tx.transactions.deleteMany({
+        where: {
+          OR: [{ accounts_account_from_id: accountId }, { accounts_account_to_id: accountId }],
+        },
+      });
+      await tx.balances_snapshot.deleteMany({ where: { accounts_account_id: accountId } });
+      await tx.user_financial_profile.updateMany({
+        where: { sinking_fund_account_id: accountId },
+        data: { sinking_fund_account_id: null },
+      });
+      await tx.user_financial_profile.updateMany({
+        where: { savings_target_account_id: accountId },
+        data: { savings_target_account_id: null },
+      });
+      await tx.accounts.delete({ where: { account_id: accountId } });
     });
-
-    const deleteBalanceSnapshots = BalanceSnapshot.deleteMany({
-      where: { accounts_account_id: accountId },
-    });
-
-    const clearSinking = prisma.user_financial_profile.updateMany({
-      where: { sinking_fund_account_id: accountId },
-      data: { sinking_fund_account_id: null },
-    });
-    const clearSavings = prisma.user_financial_profile.updateMany({
-      where: { savings_target_account_id: accountId },
-      data: { savings_target_account_id: null },
-    });
-
-    const deleteAccount = Account.delete({
-      where: { account_id: accountId },
-    });
-
-    await prisma.$transaction([
-      deleteTransactions,
-      deleteBalanceSnapshots,
-      clearSinking,
-      clearSavings,
-      deleteAccount,
-    ]);
   }
 
   static async updateAccount(account: UpdateAccountType, userId: bigint) {

@@ -8,7 +8,7 @@ import { QUERY_KEY_GET_BUDGET_MATRIX } from '../budget/budgetHooks.ts';
 import { useUserData } from '../../providers/UserProvider.tsx';
 import { QUERY_KEY_IMPORT_TRANSACTIONS_STEP0 } from '../trx/trxHooks.ts';
 
-const QUERY_KEY_GET_ACCOUNTS = 'QUERY_KEY_GET_ACCOUNTS';
+export const QUERY_KEY_GET_ACCOUNTS = 'QUERY_KEY_GET_ACCOUNTS';
 
 export function useGetAccounts() {
   const { updateUserAccounts } = useUserData();

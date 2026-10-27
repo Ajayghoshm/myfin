@@ -85,11 +85,6 @@ const SafeToSpendCard = () => {
               perDay: money(data.per_day),
             })}
       </Typography>
-      {negative && (
-        <Typography variant="body2" sx={{ color }}>
-          {t('safeToSpend.over', { amount: money(-data.safe_to_spend) })}
-        </Typography>
-      )}
       <Button size="small" onClick={() => setOpen(true)} sx={{ mt: 1 }}>
         {t('safeToSpend.details')}
       </Button>
@@ -129,6 +124,11 @@ const SafeToSpendCard = () => {
               label={t('safeToSpend.fixedStillToCome')}
               value={`− ${money(data.fixed_still_to_come)}`}
             />
+            {data.has_fixed_categories && data.fixed_lines.length === 0 && (
+              <Typography variant="caption" color="text.secondary">
+                {t('safeToSpend.noFixedTypical')}
+              </Typography>
+            )}
             {data.has_fixed_categories ? (
               data.fixed_lines.map((l) => (
                 <Typography
@@ -149,18 +149,33 @@ const SafeToSpendCard = () => {
                 {t('safeToSpend.noFixedCategories')}
               </Typography>
             )}
-            <Line
-              label={t('safeToSpend.savingsTarget')}
-              value={`− ${money(data.savings_target)}`}
-            />
-            <Line
-              label={t('safeToSpend.yearlySetaside')}
-              value={`− ${money(data.yearly_setaside)}`}
-            />
-            <Line
-              label={t('safeToSpend.emergencyTopup')}
-              value={`− ${money(data.emergency_topup)}`}
-            />
+            {(
+              [
+                ['savingsTarget', data.savings_deducted, data.savings_target],
+                ['yearlySetaside', data.yearly_deducted, data.yearly_setaside],
+                [
+                  'emergencyTopup',
+                  data.emergency_deducted,
+                  data.emergency_topup,
+                ],
+              ] as const
+            ).map(([key, deducted, still]) => (
+              <Stack key={key}>
+                <Line
+                  label={t(`safeToSpend.${key}`)}
+                  value={`− ${money(deducted)}`}
+                />
+                {deducted > 0 && (
+                  <Typography variant="caption" color="text.secondary">
+                    {still > 0
+                      ? t('safeToSpend.stillToTransfer', {
+                          amount: money(still),
+                        })
+                      : t('safeToSpend.allTransferred')}
+                  </Typography>
+                )}
+              </Stack>
+            ))}
             <Line
               bold
               label={t('safeToSpend.safe')}

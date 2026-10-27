@@ -2,8 +2,8 @@ import { prisma } from '../../config/prisma.js';
 import { MYFIN } from '../../consts.js';
 import { emergencyAccountIds } from '../earmarkService.js';
 import { getFinancialProfile } from '../financialProfileService.js';
-import { formatYearMonth, salaryRuleFor } from '../insights/analyticsRules.js';
-import { IST_OFFSET_SECONDS, monthRangeIST } from '../insights/insightsPrimitives.js';
+import { cutoffOf, formatYearMonth, salaryRuleFor } from '../insights/analyticsRules.js';
+import { IST_OFFSET_SECONDS, monthRangeIST, shiftMonth } from '../insights/insightsPrimitives.js';
 import { fetchRows, typicalMonth } from '../insights/typicalMonth.js';
 import { emergencyTopupGapCents } from './emergencyFundService.js';
 import { yearlySetasideMonthlyCents } from './yearlyCostService.js';
@@ -19,13 +19,36 @@ export type SafeToSpend = {
   spent_so_far: number;
   fixed_still_to_come: number;
   fixed_lines: { category_id: string; name: string; typical: number; spent: number; remaining: number }[];
+  /** Still to transfer this month: max(0, target − transferred). */
   savings_target: number;
   yearly_setaside: number;
   emergency_topup: number;
+  /** Deducted from safe-to-spend: max(target, transferred) — money already moved out counts as set aside. */
+  savings_deducted: number;
+  yearly_deducted: number;
+  emergency_deducted: number;
   has_fixed_categories: boolean;
 };
 
 const DAY = 86_400;
+
+type StoredBucket = { bucket: string; amount: number; account_to_id: string | null };
+
+/** Bucket amounts (cents) and target accounts of the confirmed salary plan for `month` (YYYYMM), if any. */
+async function planBuckets(userId: bigint, month: number): Promise<Map<string, StoredBucket> | null> {
+  const plan = await prisma.salary_plans.findUnique({
+    where: { users_user_id_month: { users_user_id: userId, month } },
+    select: { buckets: true },
+  });
+  if (!plan) return null;
+  return new Map((plan.buckets as unknown as StoredBucket[]).map((b) => [b.bucket, b]));
+}
+
+/** A set-aside line: what still has to move and what safe-to-spend deducts. */
+const setAside = (target: number, transferred: number) => ({
+  still: Math.max(0, target - transferred),
+  deducted: Math.max(target, transferred),
+});
 
 /** Active account id when `id` is set and still an active account of the user, else null. */
 async function activeRoleAccount(userId: bigint, id: string | null): Promise<bigint | null> {
@@ -66,7 +89,7 @@ export async function safeToSpend(
     salaryRuleFor(userId),
     getFinancialProfile(userId),
     yearlySetasideMonthlyCents(userId),
-    emergencyTopupGapCents(userId, now),
+    emergencyTopupGapCents(userId, now, ym),
     emergencyAccountIds(userId),
     prisma.categories.findMany({
       where: { users_user_id: userId, is_fixed: true },
@@ -93,29 +116,46 @@ export async function safeToSpend(
     .filter((l) => l.typical > 0);
   const fixedStill = fixedLines.reduce((s, l) => s + l.remaining, 0);
 
+  // Set-aside window (ruling B5): with a salary category, a late salary's plan transfers are dated in
+  // the previous month, so month M counts transfers in [cutoff(M−1), cutoff(M)); else the calendar month.
+  const window =
+    rule.salaryCategoryId == null
+      ? range
+      : { from: cutoffOf(shiftMonth(ym, -1), rule), to: cutoffOf(ym, rule) };
+  const plan = await planBuckets(userId, ym.year * 100 + ym.month);
+  const planAccount = (bucket: string): bigint[] => {
+    const id = plan?.get(bucket)?.account_to_id;
+    return id == null ? [] : [BigInt(id)];
+  };
+  const moved = (ids: bigint[]) => transfersInto(userId, [...new Set(ids)], window.from, window.to);
+
   const savingsAccount = await activeRoleAccount(userId, profile.savings_target_account_id);
   const sinkingAccount = await activeRoleAccount(userId, profile.sinking_fund_account_id);
+  // Targets (ruling B6): the confirmed plan's bucket for this month when there is one, else the settings.
   const savingsTargetFull =
-    profile.savings_target_mode === 'percent'
+    plan?.get('savings')?.amount ??
+    (profile.savings_target_mode === 'percent'
       ? Math.round((profile.savings_target_value * expectedIncome) / 100)
-      : Math.round(profile.savings_target_value * 100);
-  const savingsTarget = Math.max(
-    0,
-    savingsTargetFull -
-      (savingsAccount ? await transfersInto(userId, [savingsAccount], range.from, range.to) : 0)
-  );
-  const yearlySetaside = Math.max(
-    0,
-    yearlyMonthly - (sinkingAccount ? await transfersInto(userId, [sinkingAccount], range.from, range.to) : 0)
-  );
+      : Math.round(profile.savings_target_value * 100));
+  const yearlyTarget = plan?.get('yearly')?.amount ?? yearlyMonthly;
+  // Same month basis as the salary plan (the effective month); here the cap is a percentage of the
+  // expected income, while the plan uses a percentage of the salary itself.
   const emergencyTarget =
-    gapCents > 0 ? Math.min(gapCents, Math.round((profile.emergency_topup_percent * expectedIncome) / 100)) : 0;
-  const emergencyTopup = Math.max(
-    0,
-    emergencyTarget - (await transfersInto(userId, emergencyIds, range.from, range.to))
-  );
+    plan?.get('emergency')?.amount ??
+    (gapCents > 0 ? Math.min(gapCents, Math.round((profile.emergency_topup_percent * expectedIncome) / 100)) : 0);
 
-  const safe = expectedIncome - spentSoFar - fixedStill - savingsTarget - yearlySetaside - emergencyTopup;
+  const savings = setAside(
+    savingsTargetFull,
+    await moved([...(savingsAccount ? [savingsAccount] : []), ...planAccount('savings')])
+  );
+  const yearly = setAside(
+    yearlyTarget,
+    await moved([...(sinkingAccount ? [sinkingAccount] : []), ...planAccount('yearly')])
+  );
+  const emergency = setAside(emergencyTarget, await moved([...emergencyIds, ...planAccount('emergency')]));
+
+  const safe =
+    expectedIncome - spentSoFar - fixedStill - savings.deducted - yearly.deducted - emergency.deducted;
   const c = (n: number) => n / 100;
   return {
     month: formatYearMonth(ym),
@@ -134,9 +174,12 @@ export async function safeToSpend(
       spent: c(l.spent),
       remaining: c(l.remaining),
     })),
-    savings_target: c(savingsTarget),
-    yearly_setaside: c(yearlySetaside),
-    emergency_topup: c(emergencyTopup),
+    savings_target: c(savings.still),
+    yearly_setaside: c(yearly.still),
+    emergency_topup: c(emergency.still),
+    savings_deducted: c(savings.deducted),
+    yearly_deducted: c(yearly.deducted),
+    emergency_deducted: c(emergency.deducted),
     has_fixed_categories: fixedCats.length > 0,
   };
 }

@@ -131,7 +131,10 @@ const ForecastCard = () => {
   const expenseLines =
     data?.categories.filter((c) => c.kind !== 'income') ?? [];
   const incomeLines = data?.categories.filter((c) => c.kind === 'income') ?? [];
-  const hasAny = expenseLines.length > 0 || incomeLines.length > 0;
+  const hasAny =
+    expenseLines.length > 0 ||
+    incomeLines.length > 0 ||
+    (data?.income ?? 0) > 0;
 
   return (
     <DataCard>
@@ -206,6 +209,13 @@ const ForecastCard = () => {
           />
           <Line label={t('forecast.unsorted')} value={money(data.unsorted)} />
           <Line label={t('forecast.income')} value={money(data.income)} />
+          {data.uncategorised_income !== 0 && (
+            <Typography variant="caption" color="text.secondary">
+              {t('forecast.uncategorisedIncome', {
+                amount: money(data.uncategorised_income),
+              })}
+            </Typography>
+          )}
           <Typography variant="caption" color="text.secondary">
             {t('forecast.rangeHelp')}
           </Typography>

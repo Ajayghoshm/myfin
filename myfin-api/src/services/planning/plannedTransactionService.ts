@@ -41,6 +41,7 @@ type Tx = Prisma.TransactionClient;
 type PlannedDb = Prisma.planned_transactionsGetPayload<object>;
 type ResolveOutcome = 'done' | 'skipped';
 type ResolvedHandler = (
+  userId: bigint,
   plannedId: bigint,
   outcome: ResolveOutcome,
   transactionId: bigint | null,
@@ -54,8 +55,13 @@ export function setOnPlannedResolved(fn: ResolvedHandler) {
   resolvedHandler = fn;
 }
 
-export const onPlannedResolved: ResolvedHandler = (plannedId, outcome, transactionId, prismaTx) =>
-  resolvedHandler(plannedId, outcome, transactionId, prismaTx);
+/** The registered handler (tests swap it temporarily and put it back). */
+export function getOnPlannedResolved(): ResolvedHandler {
+  return resolvedHandler;
+}
+
+export const onPlannedResolved: ResolvedHandler = (userId, plannedId, outcome, transactionId, prismaTx) =>
+  resolvedHandler(userId, plannedId, outcome, transactionId, prismaTx);
 
 const idStr = (v: bigint | null) => (v == null ? null : v.toString());
 
@@ -81,6 +87,13 @@ export async function createPlanned(userId: bigint, rows: PlannedInput[], prisma
   if (accountIds.length > 0) {
     const owned = await prismaTx.accounts.count({ where: { account_id: { in: accountIds }, users_user_id: userId } });
     if (owned !== accountIds.length) throw APIError.notAuthorized();
+  }
+  const categoryIds = [...new Set(rows.map((r) => r.category_id).filter((c): c is bigint => c != null))];
+  if (categoryIds.length > 0) {
+    const owned = await prismaTx.categories.count({
+      where: { category_id: { in: categoryIds }, users_user_id: userId },
+    });
+    if (owned !== categoryIds.length) throw APIError.notAuthorized();
   }
   const now = Math.floor(Date.now() / 1000);
   const ids: bigint[] = [];
@@ -137,6 +150,14 @@ export async function markDone(
   return performDatabaseRequest(async (prismaTx) => {
     const planned = await loadOwned(userId, plannedId, prismaTx);
     await removePlanned(userId, plannedId, prismaTx);
+    // The category may have been deleted since the row was planned (no FK): record it uncategorised.
+    const categoryId =
+      planned.categories_category_id != null &&
+      (await prismaTx.categories.count({
+        where: { category_id: planned.categories_category_id, users_user_id: userId },
+      })) > 0
+        ? planned.categories_category_id
+        : undefined;
     const trx = await TransactionService.createTransaction(
       userId,
       {
@@ -145,14 +166,14 @@ export async function markDone(
         description: planned.description,
         account_from_id: planned.accounts_account_from_id ?? undefined,
         account_to_id: planned.accounts_account_to_id ?? undefined,
-        category_id: planned.categories_category_id ?? undefined,
+        category_id: categoryId,
         // A plan for a future date that is done today happened today
         date_timestamp: Math.min(Number(planned.date_timestamp), now),
         is_essential: false,
       },
       prismaTx
     );
-    await onPlannedResolved(plannedId, 'done', trx.transaction_id, prismaTx);
+    await onPlannedResolved(userId, plannedId, 'done', trx.transaction_id, prismaTx);
     return trx.transaction_id as bigint;
   });
 }
@@ -161,7 +182,7 @@ export async function skip(userId: bigint, plannedId: bigint): Promise<void> {
   await performDatabaseRequest(async (prismaTx) => {
     await loadOwned(userId, plannedId, prismaTx);
     await removePlanned(userId, plannedId, prismaTx);
-    await onPlannedResolved(plannedId, 'skipped', null, prismaTx);
+    await onPlannedResolved(userId, plannedId, 'skipped', null, prismaTx);
   });
 }
 
@@ -268,8 +289,17 @@ export async function confirmMatch(userId: bigint, plannedId: bigint, transactio
     });
     if (!trx) throw APIError.notAuthorized();
     if (!isMatch(planned, trx)) throw APIError.badRequest('This transaction does not match the planned one');
+    // A transaction can stand for one planned row only: reject it when a plan bucket already records it
+    // (done or matched earlier).
+    const used = await prismaTx.$queryRaw<{ n: bigint }[]>(
+      Prisma.sql`SELECT COUNT(*) AS n FROM salary_plans
+        WHERE users_user_id = ${userId}
+          AND JSON_SEARCH(buckets, 'one', ${transactionId.toString()}, NULL, '$[*].transaction_id') IS NOT NULL`
+    );
+    if (Number(used[0]?.n ?? 0) > 0)
+      throw APIError.badRequest('This transaction is already recorded for another planned transfer');
     await removePlanned(userId, plannedId, prismaTx);
-    await onPlannedResolved(plannedId, 'done', transactionId, prismaTx);
+    await onPlannedResolved(userId, plannedId, 'done', transactionId, prismaTx);
   });
 }
 

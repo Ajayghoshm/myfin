@@ -93,15 +93,22 @@ export type SafeToSpend = {
     spent: number;
     remaining: number;
   }>;
+  /** Still to transfer this month. */
   savings_target: number;
   yearly_setaside: number;
   emergency_topup: number;
+  /** Deducted from safe-to-spend: max(target, already transferred). */
+  savings_deducted: number;
+  yearly_deducted: number;
+  emergency_deducted: number;
   has_fixed_categories: boolean;
 };
 
 export type Forecast = {
   month: string;
   income: number;
+  /** Part of `income` with no category (no budget line holds it). */
+  uncategorised_income: number;
   total: number;
   low: number;
   high: number;

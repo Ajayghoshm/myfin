@@ -91,6 +91,22 @@ describe('emergency fund meter', () => {
     expect((await emergencyFund(ctx.uid, NOW)).status).toBe('red');
   });
 
+  test('status follows the rounded months shown (2.999 shows as 3.0, so amber)', async () => {
+    await ctx.addRent();
+    await ctx.mkAcc('A', 29990, true);
+    const r = await emergencyFund(ctx.uid, NOW);
+    expect(r.months_covered).toBe(3);
+    expect(r.status).toBe('amber');
+  });
+
+  test('the gap can be computed for a named effective month', async () => {
+    await ctx.addRent();
+    await ctx.mkAcc('A', 30000, true);
+    expect(await emergencyTopupGapCents(ctx.uid, NOW, { year: 2026, month: 11 })).toBe(3_000_000);
+    // No baseline data for March 2027 → no fixed costs → no gap
+    expect(await emergencyTopupGapCents(ctx.uid, NOW, { year: 2027, month: 3 })).toBe(0);
+  });
+
   test('no ticked accounts, even with no fixed costs', async () => {
     const r = await emergencyFund(ctx.uid, NOW);
     expect(r).toMatchObject({ status: 'no_accounts', fund: 0, more_needed: 0, accounts: [] });

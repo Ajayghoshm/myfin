@@ -13,6 +13,7 @@ import {
   confirmMatch,
   createPlanned,
   findMatches,
+  getOnPlannedResolved,
   listPlanned,
   markDone,
   setOnPlannedResolved,
@@ -123,8 +124,10 @@ describe('planned transactions', () => {
 
   test('mark done creates a real T row, updates balances, removes the planned row, fires the hook', async () => {
     const calls: unknown[][] = [];
+    const previous = getOnPlannedResolved();
     setOnPlannedResolved(async (...args) => {
-      calls.push(args.slice(0, 3));
+      expect(args[0]).toBe(ctx.uid);
+      calls.push(args.slice(1, 4));
     });
     try {
       const [id] = await ctx.plan([{ date_timestamp: REAL_NOW() - 2 * DAY }]);
@@ -141,14 +144,33 @@ describe('planned transactions', () => {
       expect(await listPlanned(ctx.uid)).toEqual([]);
       expect(calls).toEqual([[id, 'done', trxId]]);
     } finally {
-      setOnPlannedResolved(async () => {});
+      setOnPlannedResolved(previous);
     }
+  });
+
+  test('mark done on a planned row whose category was deleted creates an uncategorised transaction', async () => {
+    const cat = await prisma.categories.create({ data: { name: 'Gone', type: E, users_user_id: ctx.uid } });
+    const [id] = await ctx.plan([{ type: E, account_to_id: null, category_id: cat.category_id, date_timestamp: NOW }]);
+    await prisma.categories.delete({ where: { category_id: cat.category_id } });
+    const trxId = await markDone(ctx.uid, id, NOW);
+    const row = await prisma.transactions.findUniqueOrThrow({ where: { transaction_id: trxId } });
+    expect(row.categories_category_id).toBeNull();
+  });
+
+  test("createPlanned rejects another user's category", async () => {
+    const other = await UserService.createUser({ username: 'pt2', password: '123', email: 'pt2@x.com' });
+    const cat = await prisma.categories.create({ data: { name: 'Theirs', type: E, users_user_id: other.user_id } });
+    await expect(ctx.plan([{ type: E, account_to_id: null, category_id: cat.category_id }])).rejects.toMatchObject({
+      code: 401,
+    });
   });
 
   test('skip removes the row without creating a transaction', async () => {
     const calls: unknown[][] = [];
+    const previous = getOnPlannedResolved();
     setOnPlannedResolved(async (...args) => {
-      calls.push(args.slice(0, 3));
+      expect(args[0]).toBe(ctx.uid);
+      calls.push(args.slice(1, 4));
     });
     try {
       const [id] = await ctx.plan([{}]);
@@ -157,7 +179,7 @@ describe('planned transactions', () => {
       expect(await prisma.transactions.count()).toBe(0);
       expect(calls).toEqual([[id, 'skipped', null]]);
     } finally {
-      setOnPlannedResolved(async () => {});
+      setOnPlannedResolved(previous);
     }
   });
 
