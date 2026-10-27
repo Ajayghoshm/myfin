@@ -1,14 +1,14 @@
 import { Prisma } from '../../generated/prisma/client.js';
 import { prisma } from '../../config/prisma.js';
 import { MYFIN } from '../../consts.js';
+import { formatYearMonth, salaryRuleFor } from './analyticsRules.js';
 import {
-  type SalaryRule,
-  countsForAnalyticsSql,
-  cutoffOf,
-  effectiveMonthOf,
-  formatYearMonth,
-  salaryRuleFor,
-} from './analyticsRules.js';
+  BASELINE_MONTHS,
+  type Row,
+  computeTypical,
+  fetchRows,
+  ownershipSql,
+} from './typicalMonth.js';
 import {
   type YearMonth,
   guessIsPerson,
@@ -74,106 +74,15 @@ export type CostSplit = { fixed: number; flexible: number; unsorted: number };
 export type PayeeKind = 'person' | 'merchant';
 
 const TREND_MONTHS = 12;
-const BASELINE_MONTHS = 3;
 const TOP_MERCHANTS = 10;
 const MAX_CHANGES = 5;
-/** ₹10,000 in cents. */
-const ONE_OFF_MIN_CENTS = 1_000_000;
-/** Key must appear in at least this many baseline months to not be a one-off. */
-const ONE_OFF_RECURRING_MONTHS = 2;
 /** Label of the uncategorised bucket in biggest changes; its key is 'none' (the list filter value). */
 const UNCATEGORISED_LABEL = 'Uncategorised';
-
-type Row = {
-  id: bigint;
-  type: string;
-  cents: number;
-  date: number;
-  categoryId: string | null;
-  categoryName: string | null;
-  isFixed: boolean;
-  fromId: string | null;
-  fromName: string | null;
-  payeeKey: string;
-  monthIdx: number; // 0..TREND_MONTHS-1, last = selected month
-};
-
-type RawRow = {
-  transaction_id: bigint;
-  type: string;
-  amount: bigint;
-  date_timestamp: bigint;
-  category_id: bigint | null;
-  category_name: string | null;
-  is_fixed: number | boolean | null;
-  from_id: bigint | null;
-  from_name: string | null;
-  payee_key: string | null;
-};
 
 const money = (cents: number) => Math.round(cents) / 100;
 const rate = (incomeCents: number, spendingCents: number) =>
   incomeCents === 0 ? null : (incomeCents - spendingCents) / incomeCents;
 
-const ownershipSql = (userId: bigint) => Prisma.sql`FROM transactions
-  LEFT JOIN accounts acc_from ON acc_from.account_id = transactions.accounts_account_from_id
-  LEFT JOIN accounts acc_to ON acc_to.account_id = transactions.accounts_account_to_id
-  LEFT JOIN categories ON categories.category_id = transactions.categories_category_id
-  WHERE (acc_from.users_user_id = ${userId} OR acc_to.users_user_id = ${userId})`;
-
-/**
- * Counted rows bucketed by effective month. Fetches from the previous month's cut-off so late
- * salaries that belong to the first month are included; rows outside every month are dropped.
- */
-async function fetchRows(
-  userId: bigint,
-  months: YearMonth[],
-  ranges: Array<{ from: number; to: number }>,
-  rule: SalaryRule
-): Promise<Row[]> {
-  const from =
-    rule.salaryCategoryId == null
-      ? ranges[0].from
-      : Math.min(ranges[0].from, cutoffOf(shiftMonth(months[0], -1), rule));
-  const to = ranges[ranges.length - 1].to;
-  const raw = await prisma.$queryRaw<RawRow[]>`
-    SELECT transactions.transaction_id,
-           transactions.type,
-           transactions.amount,
-           transactions.date_timestamp,
-           transactions.categories_category_id AS category_id,
-           categories.name                     AS category_name,
-           categories.is_fixed                 AS is_fixed,
-           transactions.accounts_account_from_id AS from_id,
-           acc_from.name                       AS from_name,
-           ${payeeKeySql}                      AS payee_key
-    ${ownershipSql(userId)}
-      AND ${countsForAnalyticsSql}
-      AND transactions.date_timestamp >= ${from} AND transactions.date_timestamp < ${to}`;
-
-  const rows: Row[] = [];
-  for (const r of raw) {
-    const date = Number(r.date_timestamp);
-    const categoryId = r.category_id == null ? null : r.category_id.toString();
-    const eff = effectiveMonthOf({ type: r.type, categoryId, date }, rule);
-    const monthIdx = months.findIndex((m) => m.year === eff.year && m.month === eff.month);
-    if (monthIdx < 0) continue;
-    rows.push({
-      id: r.transaction_id,
-      type: r.type,
-      cents: Number(r.amount),
-      date,
-      categoryId,
-      categoryName: r.category_name,
-      isFixed: Number(r.is_fixed) === 1,
-      fromId: r.from_id == null ? null : r.from_id.toString(),
-      fromName: r.from_name,
-      payeeKey: r.payee_key ?? '',
-      monthIdx,
-    });
-  }
-  return rows;
-}
 
 /** Person/merchant kind per key: the user's correction, else the all-history guess. */
 async function classifyKeys(
@@ -276,40 +185,22 @@ export async function getMonthInsights(userId: bigint, ym: YearMonth): Promise<M
     savings_rate: rate(incomeC, spendingC),
   };
 
-  // One-offs (baseline only)
-  const monthsByKey = new Map<string, Set<number>>();
-  for (const r of baseline) {
-    if (!r.payeeKey) continue;
-    const seen = monthsByKey.get(r.payeeKey) ?? new Set<number>();
-    seen.add(r.monthIdx);
-    monthsByKey.set(r.payeeKey, seen);
-  }
-  const oneOffRows = baseline.filter(
-    (r) =>
-      isE(r) &&
-      r.cents >= ONE_OFF_MIN_CENTS &&
-      r.payeeKey !== '' &&
-      (monthsByKey.get(r.payeeKey)?.size ?? 0) < ONE_OFF_RECURRING_MONTHS
-  );
-  const oneOffIds = new Set(oneOffRows.map((r) => r.id));
-  const baselineClean = baseline.filter((r) => !oneOffIds.has(r.id));
-
-  // Typical month: average over baseline months that have data
-  const baselineN = new Set(baseline.map((r) => r.monthIdx)).size;
-  let typical: Rates | null = null;
-  if (baselineN > 0) {
-    const tInc = total(baselineClean.filter(isI)) / baselineN;
-    const tSpend = total(baselineClean.filter(isE)) / baselineN;
-    typical = {
-      income: money(tInc),
-      spending: money(tSpend),
-      savings: money(tInc - tSpend),
-      savings_rate: rate(tInc, tSpend),
-    };
-  }
+  const { baselineN, oneOffRows, baselineClean, typical: typ } = computeTypical(rows, baselineIdx);
+  const typical: Rates | null =
+    typ.incomeCents == null || typ.spendingCents == null
+      ? null
+      : {
+          income: money(typ.incomeCents),
+          spending: money(typ.spendingCents),
+          savings: money(typ.incomeCents - typ.spendingCents),
+          savings_rate: rate(typ.incomeCents, typ.spendingCents),
+        };
 
   const cost_split = toSplit(splitCents(current));
-  const typical_cost_split = baselineN > 0 ? toSplit(splitCents(baselineClean), baselineN) : null;
+  const typical_cost_split =
+    typ.fixedCents == null
+      ? null
+      : toSplit({ fixed: typ.fixedCents, flexible: typ.flexibleCents ?? 0, unsorted: typ.unsortedCents ?? 0 });
 
   // Categories (spending)
   const catNames = new Map<string | null, string | null>();
