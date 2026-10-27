@@ -348,6 +348,7 @@ export async function getMonthInsights(userId: bigint, ym: YearMonth): Promise<M
   });
 
   const one_offs = oneOffRows
+    .filter(isE)
     .sort((a, b) => a.date - b.date)
     .map((r) => ({
       transaction_id: r.id.toString(),

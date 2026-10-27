@@ -5,6 +5,7 @@ import TransactionService from '../../src/services/transactionService.js';
 import { prisma } from '../../src/config/prisma.js';
 import { MYFIN } from '../../src/consts.js';
 import { monthRangeIST, type YearMonth } from '../../src/services/insights/insightsPrimitives.js';
+import { updateFinancialProfile } from '../../src/services/financialProfileService.js';
 import { getMonthInsights } from '../../src/services/insights/insightsService.js';
 import { typicalMonth } from '../../src/services/insights/typicalMonth.js';
 
@@ -82,6 +83,8 @@ describe('typicalMonth helper', () => {
     });
     const ins = await getMonthInsights(ctx.uid, NOV);
     expect(ins.typical!.income).toBe(100000);
+    expect(ins.one_offs.map((o) => o.transaction_id)).not.toContain(bonus.transaction_id.toString());
+    expect(ins.one_offs).toEqual([]);
   });
 
   test('fixed / flexible split and per-category monthly arrays', async () => {
@@ -100,7 +103,7 @@ describe('typicalMonth helper', () => {
     expect(t.byCategory.get(groc.category_id.toString())).toEqual({
       kind: 'flexible',
       avgCents: 1_000_000,
-      monthly: [900000, 1000000, 1100000].map((c) => c * 1),
+      monthly: [900000, 1000000, 1100000],
     });
     expect(t.byCategory.get(rent.category_id.toString())!.kind).toBe('fixed');
     expect(t.byCategory.size).toBe(2);
@@ -113,6 +116,22 @@ describe('typicalMonth helper', () => {
     expect(t.baselineMonths).toBe(1);
     expect(t.spendingCents).toBe(400_000);
     expect(t.byCategory.get(groc.category_id.toString())!.monthly).toEqual([400_000]);
+  });
+
+  test('salary on/after the cut-off lands in the next month bucket', async () => {
+    const salary = await ctx.mkCat('Salary', I);
+    await updateFinancialProfile(ctx.uid, {
+      salary_category_id: Number(salary.category_id),
+      salary_cutoff_day: 25,
+    });
+    const JUL: YearMonth = { year: 2026, month: 7 };
+    // Credited on the 26th of Jul/Aug/Sep -> effective Aug/Sep/Oct. Oct 26 -> Nov (outside baseline).
+    for (const ym of [JUL, AUG, SEP, OCT])
+      await ctx.add({ type: I, amount: 100000, ym, day: 25, description: 'Salary', categoryId: salary.category_id });
+    const t = await typicalMonth(ctx.uid, NOV);
+    expect(t.baselineMonths).toBe(3);
+    expect(t.incomeCents).toBe(10_000_000);
+    expect(t.byCategory.get(salary.category_id.toString())!.monthly).toEqual([10_000_000, 10_000_000, 10_000_000]);
   });
 
   test('new user: zero baseline months, null figures', async () => {
