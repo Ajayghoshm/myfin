@@ -237,6 +237,8 @@ export async function forecastToBudget(
     select: { category_id: true },
   });
   const activeIds = new Set(active.map((c) => c.category_id.toString()));
+  // Inactive categories cannot hold a planned amount: report them like breakdown categories.
+  const inactiveIds = [...wanted.keys()].filter((id) => !activeIds.has(id));
 
   return prisma.$transaction(async (tx) => {
     const client = tx as never;
@@ -254,7 +256,7 @@ export async function forecastToBudget(
           planned_value_credit: w.credit ?? 0,
         }));
       const budgetId = await BudgetService.createBudget(userId, month.month, month.year, values, '', client);
-      return { budget_id: budgetId.toString(), skipped_category_ids: [] };
+      return { budget_id: budgetId.toString(), skipped_category_ids: inactiveIds };
     }
     if (!existing) throw APIError.notFound('No budget exists for this month.');
     const alloc = await tx.budgets_has_categories.findMany({
@@ -262,7 +264,7 @@ export async function forecastToBudget(
       include: { _count: { select: { breakdown_items: true } } },
     });
     const byCat = new Map(alloc.map((a) => [a.categories_category_id.toString(), a]));
-    const skipped: string[] = [];
+    const skipped: string[] = [...inactiveIds];
     for (const [id, w] of wanted) {
       if (!activeIds.has(id)) continue;
       const a = byCat.get(id);

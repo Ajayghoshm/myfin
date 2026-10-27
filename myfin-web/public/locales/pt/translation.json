@@ -1035,7 +1035,7 @@
     "hasBreakdown": "tem detalhamento",
     "fillEmpty": "Preencher só vazias",
     "replaceAll": "Substituir tudo",
-    "skipped": "Não alteradas por terem detalhamento: {{names}}"
+    "skipped": "Não alteradas (têm detalhamento ou estão inativas): {{names}}"
   },
   "emergencyFund": {
     "title": "Fundo de emergência",

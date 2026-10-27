@@ -194,6 +194,44 @@ describe('forecast to budget', () => {
     expect(compare.rows.find((r) => r.name === 'Groceries')?.has_breakdown).toBe(true);
   });
 
+  test('income-only line leaves the debit untouched', async () => {
+    const ctx = await setup();
+    const budgetId = await BudgetService.createBudget(ctx.uid, 12, 2026, [], '');
+    await BudgetService.updateBudgetCategoryPlannedValues(ctx.uid, budgetId, ctx.salary.category_id, 555, 0);
+    await forecastToBudget(ctx.uid, DEC, 'replace', NOW);
+    const { by } = await planned(ctx.uid, DEC);
+    expect(by.Salary).toEqual({ debit: 555, credit: 100000 });
+  });
+
+  test('replace and fill_empty without a budget give 404', async () => {
+    const ctx = await setup();
+    await expect(forecastToBudget(ctx.uid, DEC, 'replace', NOW)).rejects.toMatchObject({ code: 404 });
+    await expect(forecastToBudget(ctx.uid, DEC, 'fill_empty', NOW)).rejects.toMatchObject({ code: 404 });
+  });
+
+  test('a missing last-year intermediate month gives no seasonal factor', async () => {
+    const ctx = await setup();
+    // Remove Oct 2025 (one of the 3 months before T-12): the seasonal rule must not apply
+    await prisma.transactions.deleteMany({
+      where: { date_timestamp: { gte: monthRangeIST({ year: 2025, month: 10 }).from, lt: monthRangeIST({ year: 2025, month: 10 }).to } },
+    });
+    const f = await forecast(ctx.uid, DEC, NOW);
+    expect(line(f, 'Groceries')).toMatchObject({ amount: 10000, seasonal_factor: null });
+  });
+
+  test('inactive categories are reported as skipped and not written', async () => {
+    const ctx = await setup();
+    await prisma.categories.update({
+      where: { category_id: ctx.education.category_id },
+      data: { status: MYFIN.CATEGORY_STATUS.INACTIVE },
+    });
+    const res = await forecastToBudget(ctx.uid, DEC, 'create', NOW);
+    expect(res.skipped_category_ids).toEqual([String(ctx.education.category_id)]);
+    const { by } = await planned(ctx.uid, DEC);
+    expect(by.Education).toBeUndefined();
+    expect(by.Rent.debit).toBe(30000);
+  });
+
   test('a new user gets zeros and no lines', async () => {
     const user = await UserService.createUser({ username: 'fresh', password: '123', email: 'fresh@x.com' });
     const f = await forecast(user.user_id, DEC, NOW);

@@ -961,7 +961,7 @@
     "hasBreakdown": "a un détail",
     "fillEmpty": "Remplir seulement les vides",
     "replaceAll": "Tout remplacer",
-    "skipped": "Non modifiées car elles ont un détail : {{names}}"
+    "skipped": "Non modifiées (détail ou catégorie inactive) : {{names}}"
   },
   "emergencyFund": {
     "title": "Fonds d'urgence",

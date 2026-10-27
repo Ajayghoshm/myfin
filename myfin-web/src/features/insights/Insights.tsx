@@ -102,6 +102,11 @@ const Insights = () => {
       <Box height={4} mb={2}>
         {isFetching && <LinearProgress />}
       </Box>
+      <Stack gap={2} mb={2}>
+        <SafeToSpendCard />
+        <ForecastCard />
+        <EmergencyFundCard />
+      </Stack>
       {isError && <Alert severity="error">{t('insights.loadFailed')}</Alert>}
       {isLoading && !data && (
         <Typography color="text.secondary">{t('insights.loading')}</Typography>
@@ -123,15 +128,6 @@ const Insights = () => {
           </Grid>
           <Grid size={12}>
             <FixedFlexibleCard ym={ym} data={data} />
-          </Grid>
-          <Grid size={12}>
-            <SafeToSpendCard />
-          </Grid>
-          <Grid size={12}>
-            <ForecastCard />
-          </Grid>
-          <Grid size={12}>
-            <EmergencyFundCard />
           </Grid>
           <Grid size={{ xs: 12, lg: 7 }}>
             <WhereMoneyWent ym={ym} data={data} />

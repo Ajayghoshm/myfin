@@ -1033,7 +1033,7 @@
     "hasBreakdown": "has a breakdown",
     "fillEmpty": "Fill only empty",
     "replaceAll": "Replace all",
-    "skipped": "Left unchanged because they have a breakdown: {{names}}"
+    "skipped": "Not changed (they have a breakdown or are inactive): {{names}}"
   },
   "emergencyFund": {
     "title": "Emergency fund",
