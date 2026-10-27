@@ -82,7 +82,7 @@ first steps to get started.
 
 # 🔐 Encrypted backups to a synced folder
 
-Set `BACKUP_DIR` to a folder the API can write to. In **Profile > Encrypted backups** you can then back up with a password
+Set `BACKUP_DIR` to a folder the API can write to. Each user's backups go in their own subfolder, `BACKUP_DIR/<username>/` (created on the first backup; usernames may only contain `A-Z a-z 0-9 . _ -` to use this feature), and users never see each other's files. In **Profile > Encrypted backups** you can then back up with a password
 (AES-256-GCM, key derived with scrypt) and restore later; the newest 30 files (`myfin-backup-YYYY-MM-DD-HHmm.myfin`) are kept.
 **A forgotten password means the backup cannot be restored.** The password is never stored.
 

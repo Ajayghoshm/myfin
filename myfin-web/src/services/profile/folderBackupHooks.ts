@@ -25,5 +25,9 @@ export function useRestoreFolderBackup() {
   return useMutation({
     mutationFn: async (args: { file: string; password: string }) =>
       (await folderBackupServices.restore(args.file, args.password)).data,
+    onSuccess: () => {
+      // restored data replaces everything: refetch all cached queries
+      void queryClient.invalidateQueries();
+    },
   });
 }

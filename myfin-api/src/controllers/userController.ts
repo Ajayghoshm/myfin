@@ -24,7 +24,7 @@ const createOne = async (req, res, next) => {
       res.json(`User successfully created`);
     });
   } catch (err) {
-    Logger.addLog(err);
+    Logger.addErrorLog(err);
     next(err || APIError.internalServerError());
   }
 };
@@ -48,7 +48,7 @@ const attemptLogin = async (req: Request, res: Response, next: NextFunction) => 
         throw err;
       });
   } catch (err) {
-    Logger.addLog(err);
+    Logger.addErrorLog(err);
     next(err || APIError.internalServerError());
   }
 };
@@ -58,7 +58,7 @@ const checkSessionValidity = async (req, res, next) => {
     await CommonsController.checkAuthSessionValidity(req);
     res.send('1');
   } catch (err) {
-    Logger.addLog(err);
+    Logger.addErrorLog(err);
     next(err || APIError.internalServerError());
   }
 };
@@ -82,7 +82,7 @@ const changeUserPassword = async (req: Request, res: Response, next: NextFunctio
 
     res.json('User password changed with success.');
   } catch (err) {
-    Logger.addLog(err);
+    Logger.addErrorLog(err);
     next(err || APIError.internalServerError());
   }
 };
@@ -93,7 +93,7 @@ const getUserCategoriesEntitiesTags = async (req: Request, res: Response, next: 
     const data = await UserService.getUserCategoriesEntitiesTags(sessionData.userId);
     res.json(data);
   } catch (err) {
-    Logger.addLog(err);
+    Logger.addErrorLog(err);
     next(err || APIError.internalServerError());
   }
 };
@@ -104,7 +104,7 @@ const autoPopulateDemoData = async (req: Request, res: Response, next: NextFunct
     await UserService.autoPopulateDemoData(sessionData.userId);
     res.json(`Demo data successfully populated.`);
   } catch (err) {
-    Logger.addLog(err);
+    Logger.addErrorLog(err);
     next(err || APIError.internalServerError());
   }
 };
@@ -118,7 +118,7 @@ const sendOtpForRecovery = async (req: Request, res: Response, next: NextFunctio
     await UserService.sendOtpForRecovery(userData.username, req.i18n.t);
     res.json(`Check your email.`);
   } catch (err) {
-    Logger.addLog(err);
+    Logger.addErrorLog(err);
     next(err || APIError.internalServerError());
   }
 };
@@ -138,7 +138,7 @@ const setNewPassword = async (req: Request, res: Response, next: NextFunction) =
     await UserService.setNewPassword(userData.username, userData.otp, userData.new_password1);
     res.json(`Password was successfully updated`);
   } catch (err) {
-    Logger.addLog(err);
+    Logger.addErrorLog(err);
     next(err || APIError.internalServerError());
   }
 };
@@ -158,7 +158,7 @@ const changeCurrency = async (req: Request, res: Response, next: NextFunction) =
     await UserService.changeCurrency(sessionData.userId, userData.currency);
     res.json(`Currency was successfully updated`);
   } catch (err) {
-    Logger.addLog(err);
+    Logger.addErrorLog(err);
     next(err || APIError.internalServerError());
   }
 };
@@ -169,7 +169,7 @@ const backupUser = async (req: Request, res: Response, next: NextFunction) => {
     const backupData = await UserService.backupUser(sessionData.userId);
     res.json(backupData);
   } catch (err) {
-    Logger.addLog(err);
+    Logger.addErrorLog(err);
     next(err || APIError.internalServerError());
   }
 };
@@ -183,7 +183,10 @@ const restoreUserSchema = joi.object({
     .array()
     .items(joi.object().pattern(joi.string(), joi.any()))
     .optional(),
-  budget_category_items: joi.array().items(joi.object().pattern(joi.string(), joi.any())).optional(),
+  budget_category_items: joi
+    .array()
+    .items(joi.object().pattern(joi.string(), joi.any()))
+    .optional(),
   categories: joi.array().items(joi.object().pattern(joi.string(), joi.any())).required(),
   entities: joi.array().items(joi.object().pattern(joi.string(), joi.any())).required(),
   tags: joi.array().items(joi.object().pattern(joi.string(), joi.any())).required(),
@@ -216,18 +219,21 @@ const restoreUser = async (req: Request, res: Response, next: NextFunction) => {
     await UserService.restoreUser(sessionData.userId, data);
     res.json('Restoration was successful!');
   } catch (err) {
-    Logger.addLog(err);
+    Logger.addErrorLog(err);
     next(err || APIError.internalServerError());
   }
 };
 
 const listFolderBackups = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await CommonsController.checkAuthSessionValidity(req);
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
     const status = await FolderBackupService.status();
-    res.json({ ...status, backups: status.available ? await FolderBackupService.list() : [] });
+    res.json({
+      ...status,
+      backups: status.available ? await FolderBackupService.list(sessionData.username) : [],
+    });
   } catch (err) {
-    Logger.addLog(err);
+    Logger.addErrorLog(err);
     next(err || APIError.internalServerError());
   }
 };
@@ -239,9 +245,11 @@ const createFolderBackup = async (req: Request, res: Response, next: NextFunctio
   try {
     const sessionData = await CommonsController.checkAuthSessionValidity(req);
     const data = await folderBackupSchema.validateAsync(req.body);
-    res.json(await FolderBackupService.create(sessionData.userId, data.password));
+    res.json(
+      await FolderBackupService.create(sessionData.userId, sessionData.username, data.password)
+    );
   } catch (err) {
-    Logger.addLog(err);
+    Logger.addErrorLog(err);
     next(err || APIError.internalServerError());
   }
 };
@@ -254,10 +262,15 @@ const restoreFolderBackup = async (req: Request, res: Response, next: NextFuncti
   try {
     const sessionData = await CommonsController.checkAuthSessionValidity(req);
     const data = await restoreFolderBackupSchema.validateAsync(req.body);
-    await FolderBackupService.restore(sessionData.userId, data.file, data.password);
+    await FolderBackupService.restore(
+      sessionData.userId,
+      sessionData.username,
+      data.file,
+      data.password
+    );
     res.json('Restoration was successful!');
   } catch (err) {
-    Logger.addLog(err);
+    Logger.addErrorLog(err);
     next(err || APIError.internalServerError());
   }
 };
