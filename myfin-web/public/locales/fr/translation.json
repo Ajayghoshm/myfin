@@ -1406,6 +1406,7 @@
     "asset": "Investissement",
     "unallocatedShare": "{{amount}} non attribué",
     "amountExceedsUnallocated": "Le montant dépasse ce qu'il reste de cet investissement",
+    "percentageExceedsUnallocated": "Il ne reste que {{max}} % de cet investissement",
     "sipOnTrack": "{{funded}} sur {{amount}} · dans les temps pour le {{date}} avec votre SIP actuel",
     "sipBehind": "{{funded}} sur {{amount}} · en retard pour le {{date}} avec votre SIP actuel",
     "percentageMustBeBetween0And100": "Le pourcentage doit être compris entre 0 et 100",

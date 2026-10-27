@@ -304,7 +304,12 @@ const AddEditGoalDialog = (props: Props) => {
     setAssetsInitialised(true);
     setFundingAssets(
       (props.goal?.assets ?? []).map((link) => ({
-        asset: assetOptions.find((o) => o.id === Number(link.asset_id)) ?? null,
+        // keep a link whose asset is missing from the list instead of dropping it
+        asset: assetOptions.find((o) => o.id === Number(link.asset_id)) ?? {
+          id: Number(link.asset_id),
+          label: `#${link.asset_id}`,
+          value: link.funded,
+        },
         funding_type: link.match_type,
         funding_amount: link.match_value,
       })),
@@ -328,6 +333,13 @@ const AddEditGoalDialog = (props: Props) => {
     if (fa.funding_type === 'relative') {
       if (fa.funding_amount < 0 || fa.funding_amount > 100) {
         return t('goals.percentageMustBeBetween0And100');
+      }
+      const value = fa.asset.value;
+      const left = unallocatedFor(fa.asset.id);
+      if (value > 0 && (value * fa.funding_amount) / 100 > left + 0.005) {
+        return t('goals.percentageExceedsUnallocated', {
+          max: Math.max(0, Math.floor((left / value) * 10000) / 100),
+        });
       }
       return null;
     }
@@ -985,7 +997,13 @@ const AddEditGoalDialog = (props: Props) => {
                           <Grid size={{ xs: 12, md: 4 }}>
                             <Autocomplete
                               id={`asset-${index}`}
-                              options={assetOptions}
+                              options={assetOptions.filter(
+                                (option) =>
+                                  option.id === fa.asset?.id ||
+                                  !fundingAssets.some(
+                                    (other) => other.asset?.id === option.id,
+                                  ),
+                              )}
                               value={fa.asset}
                               onChange={(_event, value) =>
                                 update({ asset: value })

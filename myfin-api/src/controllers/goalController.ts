@@ -29,7 +29,8 @@ const validateFundingAccounts = (
 };
 
 const validateFundingAssets = (
-  fundingAssets: Array<{ asset_id: number; funding_type: string; funding_amount: number }>
+  fundingAssets: Array<{ asset_id: number; funding_type: string; funding_amount: number }>,
+  goalAmount: number
 ) => {
   const ids = fundingAssets.map((fa) => fa.asset_id);
   if (ids.length !== new Set(ids).size) {
@@ -38,6 +39,9 @@ const validateFundingAssets = (
   for (const fa of fundingAssets) {
     if (fa.funding_type === 'relative' && fa.funding_amount > 100) {
       throw APIError.badRequest('Percentage funding amount cannot exceed 100%');
+    }
+    if (fa.funding_type === 'absolute' && fa.funding_amount > goalAmount) {
+      throw APIError.badRequest('Absolute funding amount cannot exceed the goal target amount');
     }
   }
 };
@@ -70,7 +74,7 @@ const createGoal = async (req: Request, res: Response, next: NextFunction) => {
     const sessionData = await CommonsController.checkAuthSessionValidity(req);
     const goal = await createGoalSchema.validateAsync(req.body);
     validateFundingAccounts(goal.funding_accounts, goal.amount);
-    validateFundingAssets(goal.funding_assets);
+    validateFundingAssets(goal.funding_assets, goal.amount);
     await GoalService.createGoal(goal, sessionData.userId);
     res.json('Goal successfully created');
   } catch (err) {
@@ -125,7 +129,7 @@ const updateGoal = async (req: Request, res: Response, next: NextFunction) => {
     }
 
     validateFundingAccounts(goalData.funding_accounts, goalData.amount);
-    validateFundingAssets(goalData.funding_assets ?? []);
+    validateFundingAssets(goalData.funding_assets ?? [], goalData.amount);
 
     await GoalService.updateGoal(
       {

@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, test } from 'vitest';
 import { prisma } from '../../src/config/prisma.js';
+import InvestAssetService from '../../src/services/investAssetService.js';
+import { updateFinancialProfile } from '../../src/services/financialProfileService.js';
 import GoalService, { type CreateGoalType } from '../../src/services/goalService.js';
 import { monthRangeIST, type YearMonth } from '../../src/services/insights/insightsPrimitives.js';
 import UserService from '../../src/services/userService.js';
@@ -135,14 +137,56 @@ describe('goal-linked investments', () => {
   test('on track against the due date and the expected return', async () => {
     const a = await c.asset(c.uid, 'Fund', 10_000_000);
     for (const m of [5, 6, 7, 8, 9, 10]) await c.buy(a.asset_id, { year: 2026, month: m }, 500000);
+    await updateFinancialProfile(c.uid, { expected_return_pct: 10 });
     const due = NOW + 365 * DAY;
     await c.goal([link(a, REL, 60)], { amount: 100000, due_date: due });
     await c.goal([link(a, REL, 40)], { amount: 500000, due_date: due });
     const [ga, gb] = await c.list();
-    expect(ga.on_track).toBe(true);
+    expect(ga.on_track).toBe(true); // 60,000 growing + 3,000 a month beats 1,00,000
     expect(gb.on_track).toBe(false);
     await c.goal([], { due_date: undefined });
     expect((await c.list())[2].on_track).toBeNull();
+  });
+
+  test('at 0% expected return the projection is linear', async () => {
+    const a = await c.asset(c.uid, 'Fund', 10_000_000);
+    for (const m of [5, 6, 7, 8, 9, 10]) await c.buy(a.asset_id, { year: 2026, month: m }, 500000);
+    await updateFinancialProfile(c.uid, { expected_return_pct: 0 });
+    const due = NOW + 365 * DAY;
+    await c.goal([link(a, REL, 60)], { amount: 96000, due_date: due }); // 60,000 + 12 x 3,000
+    await c.goal([link(a, REL, 40)], { amount: 100000, due_date: due }); // 40,000 + 12 x 2,000 = 64,000
+    const [ga, gb] = await c.list();
+    expect(ga.on_track).toBe(true);
+    expect(gb.on_track).toBe(false);
+  });
+
+  test('a past due date compares the current funding', async () => {
+    const a = await c.asset(c.uid, 'Fund', 10_000_000);
+    await c.goal([link(a, REL, 60)], { amount: 50000, due_date: NOW - DAY });
+    await c.goal([link(a, REL, 40)], { amount: 100000, due_date: NOW - DAY });
+    const [ga, gb] = await c.list();
+    expect(ga.on_track).toBe(true);
+    expect(gb.on_track).toBe(false);
+  });
+
+  test('asset funding is capped by the goal amount and the surplus stays unallocated', async () => {
+    const a = await c.asset(c.uid, 'Fund', 10_000_000);
+    await c.goal([link(a, REL, 60)], { amount: 50000 });
+    const summary = await GoalService.getGoalsForUser(c.uid, false, undefined, NOW);
+    const g = summary.goals[0];
+    expect(g.asset_funding).toBe(50000);
+    expect(g.assets[0].funded).toBe(50000);
+    expect(g.currently_funded_amount).toBeLessThanOrEqual(g.amount);
+    // unallocated = value - what goals actually take
+    expect(summary.unallocated_assets).toEqual([{ asset_id: a.asset_id.toString(), value: 100000, amount: 50000 }]);
+  });
+
+  test('deleting a linked asset removes its goal links', async () => {
+    const a = await c.asset(c.uid, 'Fund', 10_000_000);
+    await c.goal([link(a, REL, 60)]);
+    await InvestAssetService.deleteAsset(c.uid, a.asset_id);
+    expect(await prisma.goal_has_asset.count()).toBe(0);
+    expect((await c.list())[0].assets).toEqual([]);
   });
 
   test('another user\'s asset is a 401', async () => {

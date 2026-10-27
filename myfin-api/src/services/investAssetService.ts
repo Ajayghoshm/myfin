@@ -1497,6 +1497,11 @@ class InvestAssetService {
         },
       });
 
+      // unlink from goals
+      await prismaTx.goal_has_asset.deleteMany({
+        where: { invest_assets_asset_id: assetId },
+      });
+
       // delete snapshot references
       await prismaTx.invest_asset_evo_snapshot.deleteMany({
         where: {

@@ -167,6 +167,9 @@ class GoalService {
       },
     });
 
+    // Concurrency: this read-then-write check is not locked. MyFin is single-user per account, and
+    // if two requests ever race, funding is clamped on read (see applyAssetFunding), so an
+    // over-allocation can never inflate a goal.
     for (const asset of assets) {
       const value = values.get(asset.asset_id.toString()) ?? 0;
       const links = [
@@ -499,7 +502,7 @@ class GoalService {
   ) {
     const links = await dbClient.goal_has_asset.findMany({
       where: { goals: { users_user_id: userId } },
-      include: { goals: { select: { priority: true, goal_id: true } } },
+      include: { goals: { select: { priority: true, goal_id: true, amount: true } } },
     });
     const assets = await dbClient.invest_assets.findMany({
       where: { users_user_id: userId },
@@ -553,7 +556,14 @@ class GoalService {
         const configured = isRelative
           ? (value * matchValue) / 100
           : Math.min(value, matchValue);
-        const funded = Math.max(0, Math.min(configured, remaining));
+        // Like account funding: capped by what is left of the asset and of the goal's amount
+        // (after its account funding); the surplus stays unallocated.
+        const goalAmount = ConvertUtils.convertBigIntegerToFloat(link.goals.amount);
+        const goalRemaining = Math.max(
+          0,
+          goalAmount - (goal ? goal.currently_funded_amount : 0)
+        );
+        const funded = Math.max(0, Math.min(configured, remaining, goalRemaining));
         remaining -= funded;
         claimed.set(assetId, (claimed.get(assetId) ?? 0) + funded);
 
@@ -566,13 +576,13 @@ class GoalService {
           funded,
         });
         goal.asset_funding += funded;
+        goal.currently_funded_amount += funded;
         goal.monthly_sip += (monthlyBuys.get(assetId) ?? 0) * share;
       }
     }
 
     for (const goal of goalsWithFunding) {
       goal.assets.sort((a, b) => Number(BigInt(a.asset_id) - BigInt(b.asset_id)));
-      goal.currently_funded_amount += goal.asset_funding;
     }
 
     return assets
