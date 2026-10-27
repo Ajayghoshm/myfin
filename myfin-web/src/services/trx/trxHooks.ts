@@ -289,6 +289,7 @@ export function useBulkUpdateTransactions() {
     void queryClient.invalidateQueries({
       queryKey: [QUERY_KEY_GET_TRANSACTIONS],
     });
+    invalidatePlanningFigures();
     return data.data;
   }
 

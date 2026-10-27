@@ -163,7 +163,7 @@ class AccountService {
         data: { savings_target_account_id: null },
       });
       await tx.accounts.delete({ where: { account_id: accountId } });
-    });
+    }, { timeout: 60_000 });
   }
 
   static async updateAccount(account: UpdateAccountType, userId: bigint) {
