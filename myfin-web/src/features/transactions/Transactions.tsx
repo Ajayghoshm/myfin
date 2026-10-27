@@ -77,6 +77,7 @@ import {
   parseYearMonth,
 } from '../../utils/istMonth.ts';
 import { formatMonthLabel } from '../insights/insightsFormat.ts';
+import { useLinkYearlyCostTransaction } from '../../services/yearlyCosts/yearlyCostHooks.ts';
 
 const ID_REGEX = /^\d+$/;
 const TRX_TYPES: string[] = Object.values(TransactionType);
@@ -113,6 +114,7 @@ const Transactions = () => {
   const loader = useLoading();
   const snackbar = useSnackbar();
   const { t, i18n } = useTranslation();
+  const unlinkYearlyCost = useLinkYearlyCostTransaction();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   // the URL is the single source of truth for drill-down filters
@@ -383,6 +385,13 @@ const Transactions = () => {
                 color="secondary"
                 sx={{ ml: 1 }}
                 label={t('transactions.yearlyCost')}
+                title={t('transactions.unlinkYearlyCost')}
+                onDelete={() =>
+                  unlinkYearlyCost.mutate({
+                    transactionId: params.value.transactionId,
+                    yearlyCostId: null,
+                  })
+                }
               />
             )}
             {params.value.countedIn && (
@@ -655,6 +664,7 @@ const Transactions = () => {
           tags: result.tags,
           isAdjustment: !!result.is_adjustment,
           yearlyCost: result.yearly_cost_id != null,
+          transactionId: String(result.transaction_id),
           countedIn:
             result.effective_month &&
             result.date_timestamp != null &&

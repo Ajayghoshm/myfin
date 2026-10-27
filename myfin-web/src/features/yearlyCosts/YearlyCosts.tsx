@@ -42,6 +42,7 @@ type Draft = {
   amount: string;
   dueMonth: number;
   categoryId: string;
+  linkTransactionId: string | null;
 };
 
 const emptyDraft: Draft = {
@@ -50,6 +51,7 @@ const emptyDraft: Draft = {
   amount: '',
   dueMonth: new Date().getMonth() + 1,
   categoryId: '',
+  linkTransactionId: null,
 };
 
 const useMonthName = () => {
@@ -168,6 +170,9 @@ const YearlyCosts = () => {
           amount,
           due_month: draft.dueMonth,
           category_id: draft.categoryId ? Number(draft.categoryId) : null,
+          ...(draft.id === null && draft.linkTransactionId
+            ? { link_transaction_id: Number(draft.linkTransactionId) }
+            : {}),
         },
       },
       { onSuccess: () => setDraft(null), onError: showError },
@@ -258,6 +263,7 @@ const YearlyCosts = () => {
                             amount: String(s.amount),
                             dueMonth: s.suggested_due_month,
                             categoryId: s.category_id ?? '',
+                            linkTransactionId: s.transaction_id,
                           })
                         }
                       >
@@ -313,6 +319,7 @@ const YearlyCosts = () => {
                           amount: String(c.amount),
                           dueMonth: c.due_month,
                           categoryId: c.category_id ?? '',
+                          linkTransactionId: null,
                         })
                       }
                     >

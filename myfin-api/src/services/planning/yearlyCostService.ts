@@ -35,6 +35,8 @@ export type YearlyCostInput = {
   due_month: number;
   category_id?: number | string | bigint | null;
   active?: boolean;
+  /** Link this expense transaction to the new cost (accepting a suggestion). */
+  link_transaction_id?: number | string | bigint | null;
 };
 
 export type SinkingStatus = {
@@ -48,6 +50,7 @@ export type SinkingStatus = {
 };
 
 export type Suggestion = {
+  transaction_id: string;
   payee_key: string;
   description: string;
   amount: number;
@@ -131,6 +134,22 @@ export async function listYearlyCosts(userId: bigint): Promise<YearlyCost[]> {
   return toDto(userId, rows);
 }
 
+/** The user's own expense transaction; throws 401 / 400 otherwise. */
+async function assertLinkable(userId: bigint, transactionId: bigint) {
+  const trx = await prisma.transactions.findFirst({
+    where: {
+      transaction_id: transactionId,
+      OR: [
+        { accounts_transactions_accounts_account_from_idToaccounts: { users_user_id: userId } },
+        { accounts_transactions_accounts_account_to_idToaccounts: { users_user_id: userId } },
+      ],
+    },
+    select: { type: true },
+  });
+  if (!trx) throw APIError.notAuthorized();
+  if (trx.type !== MYFIN.TRX_TYPES.EXPENSE) throw APIError.badRequest('Only expense transactions can be linked.');
+}
+
 export async function createYearlyCost(
   userId: bigint,
   input: YearlyCostInput,
@@ -139,16 +158,26 @@ export async function createYearlyCost(
   assertDueMonth(input.due_month);
   const categoryId = toBigOrNull(input.category_id);
   await assertCategory(userId, categoryId);
-  const row = await prisma.yearly_costs.create({
-    data: {
-      users_user_id: userId,
-      name: input.name,
-      amount: cents(input.amount),
-      due_month: input.due_month,
-      category_id: categoryId,
-      active: input.active ?? true,
-      created_at: now,
-    },
+  const linkId = toBigOrNull(input.link_transaction_id);
+  if (linkId != null) await assertLinkable(userId, linkId);
+  const row = await prisma.$transaction(async (tx) => {
+    const created = await tx.yearly_costs.create({
+      data: {
+        users_user_id: userId,
+        name: input.name,
+        amount: cents(input.amount),
+        due_month: input.due_month,
+        category_id: categoryId,
+        active: input.active ?? true,
+        created_at: now,
+      },
+    });
+    if (linkId != null)
+      await tx.transactions.update({
+        where: { transaction_id: linkId },
+        data: { yearly_cost_id: created.yearly_cost_id },
+      });
+    return created;
   });
   return (await toDto(userId, [row]))[0];
 }
@@ -182,7 +211,11 @@ async function sinkingAccount(userId: bigint) {
   const profile = await getFinancialProfile(userId);
   if (profile.sinking_fund_account_id == null) return null;
   return prisma.accounts.findFirst({
-    where: { account_id: BigInt(profile.sinking_fund_account_id), users_user_id: userId },
+    where: {
+      account_id: BigInt(profile.sinking_fund_account_id),
+      users_user_id: userId,
+      status: MYFIN.ACCOUNT_STATUS.ACTIVE,
+    },
     select: { account_id: true, name: true, current_balance: true },
   });
 }
@@ -203,7 +236,7 @@ export async function sinkingStatus(userId: bigint, now: number = nowSeconds()):
     orderBy: [{ due_month: 'asc' }, { yearly_cost_id: 'asc' }],
   });
   const account = await sinkingAccount(userId);
-  const monthlyTotal = Math.round(costs.reduce((s, c) => s + Number(c.amount), 0) / 12);
+  const monthlyTotal = await yearlySetasideMonthlyCents(userId);
   const shouldHave = Math.round(
     costs.reduce((s, c) => s + (Number(c.amount) * ((current - c.due_month + 12) % 12)) / 12, 0)
   );
@@ -285,15 +318,17 @@ export async function suggestions(userId: bigint, now: number = nowSeconds()): P
         const date = Number(r.date_timestamp);
         if (date < start || r.yearly_cost_id != null || Number(r.amount) < SUGGESTION_MIN_CENTS) return false;
         const quietFrom = monthRangeIST(shiftMonth(monthOf(date), -QUIET_MONTHS)).from;
+        const quietTo = monthRangeIST(shiftMonth(monthOf(date), QUIET_MONTHS)).to;
         return !list.some((o) => {
           const od = Number(o.date_timestamp);
-          return od >= quietFrom && (od < date || (od === date && o.transaction_id < r.transaction_id));
+          return o.transaction_id !== r.transaction_id && od >= quietFrom && od < quietTo;
         });
       })
       .sort((a, b) => Number(b.date_timestamp) - Number(a.date_timestamp));
     const r = qualifying[0];
     if (!r) continue;
     out.push({
+      transaction_id: r.transaction_id.toString(),
       payee_key: key,
       description: r.description ?? '',
       amount: ConvertUtils.convertBigIntegerToFloat(r.amount),
@@ -318,15 +353,7 @@ export async function linkTransaction(
   transactionId: bigint,
   yearlyCostId: bigint | null
 ): Promise<void> {
-  const trx = await prisma.transactions.findFirst({
-    where: {
-      transaction_id: transactionId,
-      accounts_transactions_accounts_account_from_idToaccounts: { users_user_id: userId },
-    },
-    select: { type: true },
-  });
-  if (!trx) throw APIError.notAuthorized();
-  if (trx.type !== MYFIN.TRX_TYPES.EXPENSE) throw APIError.badRequest('Only expense transactions can be linked.');
+  await assertLinkable(userId, transactionId);
   if (yearlyCostId != null) await ownedCost(userId, yearlyCostId);
   await prisma.transactions.update({
     where: { transaction_id: transactionId },
@@ -339,7 +366,12 @@ export async function candidates(userId: bigint, yearlyCostId: bigint, now: numb
   const start = windowStart(now);
   const rows = await expenseRows(userId, start);
   const linkedKeys = new Set(
-    (await expenseRows(userId, 0)).filter((r) => r.yearly_cost_id === yearlyCostId).map((r) => r.payee_key ?? '')
+    (
+      await prisma.$queryRaw<{ payee_key: string | null }[]>`
+        SELECT DISTINCT ${payeeKeySql} AS payee_key
+        FROM transactions
+        WHERE transactions.yearly_cost_id = ${yearlyCostId}`
+    ).map((r) => r.payee_key ?? '')
   );
   linkedKeys.delete('');
   return rows

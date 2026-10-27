@@ -117,7 +117,8 @@ describe('yearly costs and sinking fund', () => {
     await linkTransaction(ctx.uid, BigInt(big.transaction_id), BigInt(insurance.yearly_cost_id));
     const after = (await typicalMonth(ctx.uid, NOV)).spendingCents;
     expect(before as number).toBeGreaterThan(after as number);
-    expect(after).toBe((10_000 + 50_000) / 2); // Sep now has no data
+    expect(after).toBe((10_000 + 50_000) / 3); // Sep still counts as a month with data
+    expect((await typicalMonth(ctx.uid, NOV)).baselineMonths).toBe(3);
     const linked = await TransactionService.getFilteredTransactionsByForUser(ctx.uid, 0, 50, '', { yearlyCost: 'linked' });
     expect(linked.results.map((t: { transaction_id: bigint }) => String(t.transaction_id))).toEqual([String(big.transaction_id)]);
     expect(String(linked.results[0].yearly_cost_id)).toBe(String(insurance.yearly_cost_id));
@@ -126,7 +127,16 @@ describe('yearly costs and sinking fund', () => {
   });
 
   test('suggestions: one-time payee suggested, dismissable; monthly payee never', async () => {
-    for (let i = 1; i <= 24; i++) await ctx.spend('Paid to RENT CO', 6000, monthsBack(i), 3);
+    await prisma.transactions.createMany({
+      data: Array.from({ length: 24 }, (_, k) => ({
+        type: E,
+        amount: 600_000,
+        description: 'Paid to RENT CO',
+        date_timestamp: at(monthsBack(k + 1), 3),
+        accounts_account_from_id: ctx.bank.account_id,
+        is_essential: false,
+      })),
+    });
     await ctx.spend('Paid to LAPTOP SHOP', 18000, monthsBack(1), 12);
     await ctx.spend('Paid to SMALL SHOP', 1000, monthsBack(1), 12);
     const s = await suggestions(ctx.uid, NOW);
@@ -134,6 +144,70 @@ describe('yearly costs and sinking fund', () => {
     expect(s[0]).toMatchObject({ payee_key: 'LAPTOP SHOP', amount: 18000, suggested_due_month: 10 });
     await dismissSuggestion(ctx.uid, 'LAPTOP SHOP');
     expect(await suggestions(ctx.uid, NOW)).toEqual([]);
+  });
+
+  test('a monthly payee that started 8 months ago is not suggested (quiet window is symmetric)', async () => {
+    for (let i = 1; i <= 8; i++) await ctx.spend('Paid to NEW RENT', 6000, monthsBack(i), 3);
+    expect(await suggestions(ctx.uid, NOW)).toEqual([]);
+  });
+
+  test('accepting a suggestion links its payment: suggestion gone, typical month cleaned', async () => {
+    await ctx.spend('Paid to GROCER', 500, monthsBack(3), 5);
+    await ctx.spend('Paid to LAPTOP SHOP', 8000, monthsBack(2), 12); // below the one-off threshold
+    const [s] = await suggestions(ctx.uid, NOW);
+    expect(s.payee_key).toBe('LAPTOP SHOP');
+    const before = (await typicalMonth(ctx.uid, NOV)).spendingCents as number;
+    const cost = await createYearlyCost(ctx.uid, {
+      name: 'Laptop',
+      amount: s.amount,
+      due_month: s.suggested_due_month,
+      link_transaction_id: s.transaction_id,
+    });
+    expect(cost.linked_count).toBe(1);
+    expect(await suggestions(ctx.uid, NOW)).toEqual([]);
+    expect((await typicalMonth(ctx.uid, NOV)).spendingCents as number).toBeLessThan(before);
+    const income = await prisma.transactions.create({
+      data: { type: 'I', amount: 100, date_timestamp: at(monthsBack(1)), accounts_account_to_id: ctx.bank.account_id, is_essential: false },
+    });
+    await expect(
+      createYearlyCost(ctx.uid, { name: 'x', amount: 1, due_month: 1, link_transaction_id: income.transaction_id })
+    ).rejects.toMatchObject({ code: 400 });
+    expect(await prisma.yearly_costs.count({ where: { users_user_id: ctx.uid } })).toBe(1);
+  });
+
+  test('an inactive sinking account is treated as unset', async () => {
+    await mkCosts();
+    await updateFinancialProfile(ctx.uid, { sinking_fund_account_id: Number(ctx.sinking.account_id) });
+    await prisma.accounts.update({ where: { account_id: ctx.sinking.account_id }, data: { status: MYFIN.ACCOUNT_STATUS.INACTIVE } });
+    const s = await sinkingStatus(ctx.uid, NOW);
+    expect(s.account).toBeNull();
+    expect(s.on_track).toBe(false);
+  });
+
+  test('December to January wrap for upcoming and months since due', async () => {
+    await createYearlyCost(ctx.uid, { name: 'Jan', amount: 12000, due_month: 1 });
+    await createYearlyCost(ctx.uid, { name: 'Feb', amount: 6000, due_month: 2 });
+    await createYearlyCost(ctx.uid, { name: 'Mar', amount: 24000, due_month: 3 });
+    const dec = monthRangeIST({ year: 2026, month: 12 }).from + 19 * DAY;
+    const s = await sinkingStatus(ctx.uid, dec);
+    expect(s.should_have).toBe(11000 + 5000 + 18000);
+    expect(s.upcoming.map((u) => u.name)).toEqual(['Jan', 'Feb']);
+    const jan = monthRangeIST({ year: 2027, month: 1 }).from + 19 * DAY;
+    expect((await sinkingStatus(ctx.uid, jan)).should_have).toBe(5500 + 20000);
+  });
+
+  test('yearly_cost param filters the HTTP list', async () => {
+    const { insurance } = await mkCosts();
+    const t = await ctx.spend('Paid to INSURER', 24000, monthsBack(2), 5);
+    await ctx.spend('Paid to GROCER', 500, monthsBack(1), 5);
+    await linkTransaction(ctx.uid, BigInt(t.transaction_id), BigInt(insurance.yearly_cost_id));
+    const login = await UserService.attemptLogin('yc', '123', false);
+    const headers = { authusername: 'yc', sessionkey: login.sessionkey };
+    const res = await fetch(`${baseUrl}/trxs/filteredByPage/0?yearly_cost=linked`, { headers });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.filtered_count).toBe(1);
+    expect(String(body.results[0].yearly_cost_id)).toBe(String(insurance.yearly_cost_id));
   });
 
   test('linked rows are not suggested; candidates by category or payee', async () => {

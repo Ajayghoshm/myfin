@@ -17,6 +17,8 @@ export type YearlyCostInput = {
   due_month: number;
   category_id: number | null;
   active?: boolean;
+  /** Accepting a suggestion: link this payment to the new cost. */
+  link_transaction_id?: number | null;
 };
 
 export type SinkingStatus = {
@@ -35,6 +37,7 @@ export type SinkingStatus = {
 };
 
 export type YearlyCostSuggestion = {
+  transaction_id: string;
   payee_key: string;
   description: string;
   amount: number;

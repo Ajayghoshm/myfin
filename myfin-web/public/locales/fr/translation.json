@@ -302,6 +302,7 @@
     "filterAccountFallback": "Compte {{id}}",
     "adjustment": "Ajustement",
     "yearlyCost": "Coût annuel",
+    "unlinkYearlyCost": "Délier du coût annuel",
     "countedInMonth": "compté en {{month}}"
   },
   "importTransactions": {

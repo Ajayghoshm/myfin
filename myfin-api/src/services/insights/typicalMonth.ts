@@ -138,7 +138,9 @@ const median = (values: number[]): number => {
  * months. Also returns the one-off rows and the cleaned baseline rows for callers that need them.
  */
 export function computeTypical(rows: Row[], baselineIdx: number[]) {
-  const baseline = rows.filter((r) => baselineIdx.includes(r.monthIdx) && !r.yearlyCost);
+  const baselineAll = rows.filter((r) => baselineIdx.includes(r.monthIdx));
+  // Yearly-cost rows leave the figures, but a month still counts as a month with data.
+  const baseline = baselineAll.filter((r) => !r.yearlyCost);
 
   // Expense one-offs: big payments to a payee seen in fewer than 2 baseline months.
   const monthsByKey = new Map<string, Set<number>>();
@@ -171,7 +173,7 @@ export function computeTypical(rows: Row[], baselineIdx: number[]) {
   const baselineClean = baseline.filter((r) => !oneOffRowIds.has(r.id));
   const oneOffIds = new Set([...oneOffRowIds].map((id) => id.toString()));
 
-  const monthIdxs = [...new Set(baseline.map((r) => r.monthIdx))].sort((a, b) => a - b);
+  const monthIdxs = [...new Set(baselineAll.map((r) => r.monthIdx))].sort((a, b) => a - b);
   const n = monthIdxs.length;
 
   const typical: TypicalMonth = {

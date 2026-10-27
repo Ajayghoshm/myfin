@@ -322,6 +322,7 @@
     "filterAccountFallback": "Account {{id}}",
     "adjustment": "Adjustment",
     "yearlyCost": "Yearly cost",
+    "unlinkYearlyCost": "Unlink from yearly cost",
     "countedInMonth": "counted in {{month}}",
     "bulkEditTitle_one": "Edit 1 transaction",
     "bulkEditConfirmTitle_one": "Update 1 transaction?",

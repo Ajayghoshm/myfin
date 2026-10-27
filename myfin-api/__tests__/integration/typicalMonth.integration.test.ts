@@ -109,6 +109,22 @@ describe('typicalMonth helper', () => {
     expect(t.byCategory.size).toBe(2);
   });
 
+  test('a month holding only yearly-cost rows still counts as a month with data', async () => {
+    const groc = await ctx.mkCat('Groceries', E);
+    await ctx.add({ type: E, amount: 3000, ym: SEP, day: 5, description: 'Paid to BIGBASKET', categoryId: groc.category_id });
+    const big = await ctx.add({ type: E, amount: 12000, ym: OCT, day: 5, description: 'Paid to INSURER', categoryId: groc.category_id });
+    const cost = await prisma.yearly_costs.create({
+      data: { users_user_id: ctx.uid, name: 'Insurance', amount: 1_200_000, due_month: 10, created_at: 0 },
+    });
+    await prisma.transactions.update({
+      where: { transaction_id: BigInt((big as { transaction_id: bigint }).transaction_id) },
+      data: { yearly_cost_id: cost.yearly_cost_id },
+    });
+    const t = await typicalMonth(ctx.uid, NOV);
+    expect(t.baselineMonths).toBe(2);
+    expect(t.spendingCents).toBe(150_000); // 3000 over the two months with data
+  });
+
   test('a single baseline month averages over one month', async () => {
     const groc = await ctx.mkCat('Groceries', E);
     await ctx.add({ type: E, amount: 4000, ym: OCT, day: 5, description: 'Paid to BIGBASKET', categoryId: groc.category_id });

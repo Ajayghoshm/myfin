@@ -13,6 +13,10 @@ const yearlyCostSchema = joi.object({
   active: joi.boolean(),
 });
 
+const createYearlyCostSchema = yearlyCostSchema.keys({
+  link_transaction_id: joi.number().integer().positive().allow(null),
+});
+
 const dismissSchema = joi.object({ payee_key: joi.string().min(1).max(255).required() });
 
 const linkSchema = joi.object({
@@ -42,7 +46,7 @@ const getYearlyCosts = handler(async (userId) => ({
 }));
 
 const createYearlyCost = handler(async (userId, req) =>
-  YearlyCostService.createYearlyCost(userId, await yearlyCostSchema.validateAsync(req.body))
+  YearlyCostService.createYearlyCost(userId, await createYearlyCostSchema.validateAsync(req.body))
 );
 
 const updateYearlyCost = handler(async (userId, req) =>
@@ -86,4 +90,4 @@ export default {
 };
 
 // Exported for tests
-export { yearlyCostSchema, dismissSchema, linkSchema };
+export { yearlyCostSchema, createYearlyCostSchema, dismissSchema, linkSchema };
