@@ -10,6 +10,8 @@ type DbClient = typeof prisma;
 export type RoleOverrides = {
   sinking?: bigint | null;
   savings_target?: bigint | null;
+  /** Account type the account will have after a pending change. */
+  type?: string;
 };
 
 /**
@@ -28,7 +30,7 @@ export async function assertEarmarkAllowed(
     select: { type: true, is_emergency_fund: true },
   });
   if (!account) throw APIError.badRequest('Account does not belong to this user.');
-  if (account.type === MYFIN.ACCOUNT_TYPES.INVESTING)
+  if ((overrides.type ?? account.type) === MYFIN.ACCOUNT_TYPES.INVESTING)
     throw APIError.badRequest('An investment account cannot be earmarked.');
 
   const profile = await dbClient.user_financial_profile.findUnique({

@@ -89,7 +89,7 @@ const AddEditAccountDialog = (props: Props) => {
       : String(props.account.stale_after_days),
   );
   const [isEmergencyFund, setIsEmergencyFund] = useState<boolean>(
-    props.account?.is_emergency_fund === true,
+    Boolean(props.account?.is_emergency_fund),
   );
   const staleDaysNumber = staleDaysValue === '' ? null : Number(staleDaysValue);
   const typeOptions = Object.values(AccountType);

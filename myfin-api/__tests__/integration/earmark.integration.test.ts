@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test } from 'vitest';
 import { prisma } from '../../src/config/prisma.js';
 import { MYFIN } from '../../src/consts.js';
 import AccountService from '../../src/services/accountService.js';
+import { listAccountsWithFreshness } from '../../src/services/accountFreshnessService.js';
 import { emergencyAccountIds } from '../../src/services/earmarkService.js';
 import {
   getFinancialProfile,
@@ -278,5 +279,41 @@ describe('Planning settings and earmarked accounts', () => {
       emergency_topup_percent: 10,
     });
     expect((await prisma.accounts.findMany({ where: { users_user_id: uid } }))[0].is_emergency_fund).toBe(false);
+  });
+
+  test('validates the resulting type: INVAC + tick in one request gives 400; INVAC to CHEAC while ticked is allowed', async () => {
+    const a = await mk(uid, 'A');
+    await expectThrowErrorCode(
+      () => update(a.account_id, uid, { new_is_emergency_fund: true }, 'INVAC', 'A'),
+      400
+    );
+    const b = await mk(uid, 'B', MYFIN.ACCOUNT_TYPES.INVESTING);
+    await prisma.accounts.update({ where: { account_id: b.account_id }, data: { is_emergency_fund: true } });
+    await update(b.account_id, uid, { new_is_emergency_fund: true }, 'CHEAC', 'B');
+    expect((await prisma.accounts.findUnique({ where: { account_id: b.account_id } }))?.type).toBe('CHEAC');
+    await update(b.account_id, uid, {}, 'CHEAC', 'B');
+  });
+
+  test('accounts list returns is_emergency_fund as a real boolean', async () => {
+    await mk(uid, 'E', MYFIN.ACCOUNT_TYPES.CHECKING, { is_emergency_fund: true });
+    await mk(uid, 'P');
+    const list = await listAccountsWithFreshness(uid);
+    expect(Object.fromEntries(list.map((x) => [x.name, x.is_emergency_fund]))).toEqual({ E: true, P: false });
+  });
+
+  test('deleting an earmarked account clears the profile reference', async () => {
+    const s = await mk(uid, 'S');
+    const v = await mk(uid, 'V');
+    await updateFinancialProfile(uid, {
+      sinking_fund_account_id: Number(s.account_id),
+      savings_target_account_id: Number(v.account_id),
+    });
+    await AccountService.deleteAccount(s.account_id);
+    expect(await getFinancialProfile(uid)).toMatchObject({
+      sinking_fund_account_id: null,
+      savings_target_account_id: String(v.account_id),
+    });
+    await AccountService.deleteAccount(v.account_id);
+    expect((await getFinancialProfile(uid)).savings_target_account_id).toBeNull();
   });
 });

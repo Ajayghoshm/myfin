@@ -146,11 +146,26 @@ class AccountService {
       where: { accounts_account_id: accountId },
     });
 
+    const clearSinking = prisma.user_financial_profile.updateMany({
+      where: { sinking_fund_account_id: accountId },
+      data: { sinking_fund_account_id: null },
+    });
+    const clearSavings = prisma.user_financial_profile.updateMany({
+      where: { savings_target_account_id: accountId },
+      data: { savings_target_account_id: null },
+    });
+
     const deleteAccount = Account.delete({
       where: { account_id: accountId },
     });
 
-    await prisma.$transaction([deleteTransactions, deleteBalanceSnapshots, deleteAccount]);
+    await prisma.$transaction([
+      deleteTransactions,
+      deleteBalanceSnapshots,
+      clearSinking,
+      clearSavings,
+      deleteAccount,
+    ]);
   }
 
   static async updateAccount(account: UpdateAccountType, userId: bigint) {
@@ -164,10 +179,8 @@ class AccountService {
       select: { is_emergency_fund: true },
     });
     const emergency = accountObj.new_is_emergency_fund ?? current?.is_emergency_fund ?? false;
-    if (accountObj.new_is_emergency_fund === true) {
-      await assertEarmarkAllowed(userId, accountObj.account_id, 'emergency');
-    } else if (accountObj.new_type === MYFIN.ACCOUNT_TYPES.INVESTING) {
-      // A type change to INVAC must not leave an earmarked role behind
+    // Validate the resulting state (type + flag + roles), not the stored one
+    if (accountObj.new_type === MYFIN.ACCOUNT_TYPES.INVESTING) {
       const profile = await prisma.user_financial_profile.findUnique({
         where: { users_user_id: userId },
         select: { sinking_fund_account_id: true, savings_target_account_id: true },
@@ -180,6 +193,10 @@ class AccountService {
         throw APIError.badRequest(
           'An investment account cannot be earmarked (emergency, sinking fund or savings target).'
         );
+    } else if (accountObj.new_is_emergency_fund === true) {
+      await assertEarmarkAllowed(userId, accountObj.account_id, 'emergency', prisma, {
+        type: accountObj.new_type,
+      });
     }
 
     return Account.update({

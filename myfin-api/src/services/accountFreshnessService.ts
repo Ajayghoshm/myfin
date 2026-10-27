@@ -102,6 +102,8 @@ export async function listAccountsWithFreshness(userId: bigint, nowEpoch?: numbe
     return {
       ...account,
       stale_after_days: account.stale_after_days ?? null,
+      // MySQL booleans arrive as 1/0 from raw queries
+      is_emergency_fund: Boolean(account.is_emergency_fund),
       ...info,
       last_balance_check_at: checkMap.get(key) ?? null,
     };
