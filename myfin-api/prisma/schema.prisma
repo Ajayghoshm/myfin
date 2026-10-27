@@ -242,6 +242,7 @@ model transactions {
   accounts_transactions_accounts_account_from_idToaccounts accounts?              @relation("transactions_accounts_account_from_idToaccounts", fields: [accounts_account_from_id], references: [account_id], onDelete: NoAction, onUpdate: NoAction, map: "transactions_accounts_account_id_fk2")
   entities                                                 entities?              @relation(fields: [entities_entity_id], references: [entity_id], onUpdate: NoAction, map: "transactions_ibfk_1")
   categories                                               categories?            @relation(fields: [categories_category_id], references: [category_id], onUpdate: NoAction, map: "transactions_ibfk_2")
+  salary_plans                                             salary_plans[]
   yearly_costs                                             yearly_costs?          @relation(fields: [yearly_cost_id], references: [yearly_cost_id], onDelete: SetNull, onUpdate: NoAction, map: "transactions_yearly_cost_fk")
 
   @@index([accounts_account_from_id, accounts_account_to_id], map: "fk_transactions_accounts1_idx")
@@ -280,6 +281,7 @@ model users {
   yearly_costs               yearly_costs[]
   yearly_cost_dismissals     yearly_cost_dismissals[]
   planned_transactions       planned_transactions[]
+  salary_plans               salary_plans[]
   currency                   String                       @default("EUR")
 }
 
@@ -445,4 +447,19 @@ model planned_transactions {
   account_to               accounts? @relation("planned_to", fields: [accounts_account_to_id], references: [account_id], onDelete: Cascade)
 
   @@index([users_user_id, date_timestamp], map: "planned_transactions_user_date_idx")
+}
+
+model salary_plans {
+  salary_plan_id         BigInt        @id @default(autoincrement())
+  users_user_id          BigInt
+  month                  Int
+  salary_transaction_id  BigInt?
+  salary_amount          BigInt
+  buckets                Json
+  created_at             BigInt
+  users                  users         @relation(fields: [users_user_id], references: [user_id], onDelete: Cascade)
+  transactions           transactions? @relation(fields: [salary_transaction_id], references: [transaction_id], onDelete: SetNull)
+
+  @@unique([users_user_id, month], map: "salary_plans_user_month_uq")
+  @@index([salary_transaction_id], map: "salary_plans_trx_idx")
 }

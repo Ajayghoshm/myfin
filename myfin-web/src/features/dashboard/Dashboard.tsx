@@ -23,6 +23,7 @@ import { DatePicker } from '@mui/x-date-pickers';
 import NeedsUpdatingCard from './NeedsUpdatingCard.tsx';
 import SafeToSpendCard from '../insights/SafeToSpendCard.tsx';
 import EmergencyFundCard from '../insights/EmergencyFundCard.tsx';
+import SalaryPlanCard from '../salaryPlan/SalaryPlanCard.tsx';
 
 const generateDebtIncomeDistributionChartData = (accounts: Account[]) => {
   return (
@@ -282,6 +283,9 @@ const Dashboard = () => {
       </Grid>
       <Grid size={12} sx={{ '&:empty': { display: 'none' } }}>
         <NeedsUpdatingCard />
+      </Grid>
+      <Grid size={12} sx={{ '&:empty': { display: 'none' } }}>
+        <SalaryPlanCard />
       </Grid>
       <Grid size={12}>
         <SafeToSpendCard />

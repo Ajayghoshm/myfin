@@ -903,6 +903,44 @@
       }
     }
   },
+  "salaryPlan": {
+    "title": "Salary plan",
+    "cardTitle": "Salary day",
+    "cardProposal": "Your salary of {{amount}} has landed. Plan how to split it for {{month}}.",
+    "cardConfirmed": "Your plan for {{month}} is set.",
+    "planThis": "Plan this salary",
+    "viewPlan": "View plan",
+    "dialogTitle": "Plan this salary",
+    "dialogIntro": "Split your salary of {{amount}} into buckets. Transfers become planned transactions you can mark done.",
+    "transferTo": "Transfer to",
+    "noAccount": "No account (not tracked)",
+    "freeNote": "Free to spend is based on this salary: the salary minus the other buckets.",
+    "confirm": "Confirm plan",
+    "confirmFailed": "Could not save the plan. A plan may already exist for this month.",
+    "viewTitle": "Salary plan for {{month}}",
+    "viewSubtitle": "Where this salary goes, and which transfers are done.",
+    "transfersDone": "{{done}} of {{total}} transfers done",
+    "overdueAlert": "Some planned transfers are more than 15 days overdue.",
+    "overdue": "Overdue",
+    "seePlanned": "See planned transfers",
+    "notFound": "There is no salary plan for this month.",
+    "colBucket": "Bucket",
+    "colAmount": "Amount",
+    "colState": "Status",
+    "bucket": {
+      "fixed": "Fixed costs",
+      "yearly": "Yearly set-aside",
+      "emergency": "Emergency top-up",
+      "savings": "Savings",
+      "free": "Free to spend"
+    },
+    "state": {
+      "none": "Not tracked",
+      "planned": "Planned",
+      "done": "Done",
+      "skipped": "Skipped"
+    }
+  },
   "planned": {
     "filterChip": "Planned",
     "chip": "Planned",

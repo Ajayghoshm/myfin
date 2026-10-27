@@ -65,6 +65,15 @@ export interface BackupData {
     bucket: string | null;
     created_at: bigint | number;
   }[];
+  /** Salary-day plans. Absent in older backups. */
+  salary_plans?: {
+    salary_plan_id: bigint;
+    month: number;
+    salary_transaction_id: bigint | null;
+    salary_amount: bigint | number;
+    buckets: unknown;
+    created_at: bigint | number;
+  }[];
   /** Financial profile settings. Absent (or null) in older backups / when never set. */
   financial_profile?: {
     salary_category_id: bigint | null;
@@ -227,6 +236,10 @@ class BackupManager {
         where: { users_user_id: userId },
         orderBy: { planned_id: 'asc' },
       }),
+      salary_plans: await dbClient.salary_plans.findMany({
+        where: { users_user_id: userId },
+        orderBy: { salary_plan_id: 'asc' },
+      }),
       financial_profile: await dbClient.user_financial_profile
         .findUnique({
           where: { users_user_id: userId },
@@ -373,6 +386,22 @@ class BackupManager {
       ) {
         throw APIError.notAcceptable(
           'Planned transaction not recognized in backup',
+          RestoreUserErrorCodes.MalformedBackup
+        );
+      }
+    }
+    const salaryPlans = data.salary_plans ?? [];
+    for (const p of salaryPlans) {
+      if (
+        !Number.isInteger(p?.month) ||
+        p.month < 190001 ||
+        p.month % 100 < 1 ||
+        p.month % 100 > 12 ||
+        !/^\d+$/.test(String(p.salary_amount)) ||
+        !Array.isArray(p.buckets)
+      ) {
+        throw APIError.notAcceptable(
+          'Salary plan not recognized in backup',
           RestoreUserErrorCodes.MalformedBackup
         );
       }
@@ -716,7 +745,16 @@ class BackupManager {
     // endregion
 
     Logger.addLog('BackupManager > Restore | Importing transactions...');
-    await Promise.all([...rulePromises, ...trxPromises, ...assetTrxPromises]);
+    const [, restoredTrx] = await Promise.all([
+      Promise.all(rulePromises),
+      Promise.all(trxPromises),
+      Promise.all(assetTrxPromises),
+    ]);
+    // <old id as text, new id>; text keys because ids may come back as numbers or strings after a JSON round trip
+    const transactionIdMap = new Map<string, bigint>();
+    data.transactions.forEach((trx, i) => {
+      transactionIdMap.set(String(trx.transaction_id), restoredTrx[i].transaction_id);
+    });
     Logger.addLog('BackupManager > Restore | Transactions successfully imported!');
 
     // region Asset Evolution Snapshots
@@ -805,14 +843,30 @@ class BackupManager {
     }
     // endregion
 
-    // region Planned transactions (salary_plan_id is not restored: salary plans are restored separately)
+    // region Salary plans, then planned transactions (which point at plans), then the plans' bucket links
+    const salaryPlanIdMap = new Map<string, bigint>();
+    for (const p of salaryPlans) {
+      const created = await dbClient.salary_plans.create({
+        data: {
+          users_user_id: userId,
+          month: p.month,
+          salary_transaction_id:
+            p.salary_transaction_id != null ? (transactionIdMap.get(String(p.salary_transaction_id)) ?? null) : null,
+          salary_amount: BigInt(p.salary_amount),
+          buckets: [],
+          created_at: BigInt(p.created_at ?? 0),
+        },
+      });
+      salaryPlanIdMap.set(String(p.salary_plan_id), created.salary_plan_id);
+    }
+    const plannedIdMap = new Map<string, bigint>();
     for (const r of plannedRows) {
       const fromId = r.accounts_account_from_id != null ? accountIdMap.get(r.accounts_account_from_id) : null;
       const toId = r.accounts_account_to_id != null ? accountIdMap.get(r.accounts_account_to_id) : null;
       // Drop rows whose accounts are missing from the backup
       if (fromId === undefined || toId === undefined) continue;
       if (fromId == null && toId == null) continue;
-      await dbClient.planned_transactions.create({
+      const created = await dbClient.planned_transactions.create({
         data: {
           users_user_id: userId,
           date_timestamp: BigInt(r.date_timestamp),
@@ -823,10 +877,34 @@ class BackupManager {
           categories_category_id:
             r.categories_category_id != null ? (categoryIdMap.get(r.categories_category_id) ?? null) : null,
           description: r.description,
-          salary_plan_id: null,
+          salary_plan_id:
+            r.salary_plan_id != null ? (salaryPlanIdMap.get(String(r.salary_plan_id)) ?? null) : null,
           bucket: r.bucket ?? null,
           created_at: BigInt(r.created_at ?? 0),
         },
+      });
+      plannedIdMap.set(String(r.planned_id), created.planned_id);
+    }
+    const accountIdByText = new Map<string, bigint>();
+    for (const [oldId, newId] of accountIdMap) accountIdByText.set(String(oldId), newId);
+    for (const p of salaryPlans) {
+      const buckets = (p.buckets as Record<string, unknown>[]).map((b) => {
+        const mapped = (v: unknown, map: Map<string, bigint>) =>
+          v == null ? null : (map.get(String(v))?.toString() ?? null);
+        const plannedId = mapped(b.planned_id, plannedIdMap);
+        const transactionId = mapped(b.transaction_id, transactionIdMap);
+        const state = b.state === 'planned' && plannedId == null ? 'none' : b.state;
+        return {
+          ...b,
+          account_to_id: mapped(b.account_to_id, accountIdByText),
+          planned_id: plannedId,
+          transaction_id: transactionId,
+          state,
+        };
+      });
+      await dbClient.salary_plans.update({
+        where: { salary_plan_id: salaryPlanIdMap.get(String(p.salary_plan_id)) },
+        data: { buckets: buckets as Prisma.InputJsonValue },
       });
     }
     // endregion

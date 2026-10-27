@@ -211,6 +211,7 @@ const restoreUserSchema = joi.object({
     .optional(),
   yearly_costs: joi.array().items(joi.object().pattern(joi.string(), joi.any())).optional(),
   planned_transactions: joi.array().items(joi.object().pattern(joi.string(), joi.any())).optional(),
+  salary_plans: joi.array().items(joi.object().pattern(joi.string(), joi.any())).optional(),
   yearly_cost_dismissals: joi
     .array()
     .items(joi.object().pattern(joi.string(), joi.any()))

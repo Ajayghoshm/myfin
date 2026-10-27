@@ -4,6 +4,7 @@ import {
   QUERY_KEY_GET_MONTH_INSIGHTS,
   QUERY_KEY_GET_SAFE_TO_SPEND,
 } from '../insights/insightsHooks.ts';
+import { QUERY_KEY_GET_SALARY_PLAN } from '../salaryPlan/salaryPlanHooks.ts';
 import { QUERY_KEY_GET_TRANSACTIONS } from '../trx/trxHooks.ts';
 import plannedServices from './plannedServices.ts';
 
@@ -17,6 +18,7 @@ const invalidateAll = () => {
     QUERY_KEY_GET_TRANSACTIONS,
     QUERY_KEY_GET_MONTH_INSIGHTS,
     QUERY_KEY_GET_SAFE_TO_SPEND,
+    QUERY_KEY_GET_SALARY_PLAN,
   ])
     void queryClient.invalidateQueries({ queryKey: [key] });
 };

@@ -905,6 +905,44 @@
       }
     }
   },
+  "salaryPlan": {
+    "title": "Plano do salário",
+    "cardTitle": "Dia de salário",
+    "cardProposal": "O seu salário de {{amount}} chegou. Planeie a divisão para {{month}}.",
+    "cardConfirmed": "O seu plano para {{month}} está definido.",
+    "planThis": "Planear este salário",
+    "viewPlan": "Ver plano",
+    "dialogTitle": "Planear este salário",
+    "dialogIntro": "Divida o seu salário de {{amount}} por categorias. As transferências tornam-se transações planeadas que pode marcar como concluídas.",
+    "transferTo": "Transferir para",
+    "noAccount": "Sem conta (não acompanhado)",
+    "freeNote": "O valor livre baseia-se neste salário: o salário menos as restantes categorias.",
+    "confirm": "Confirmar plano",
+    "confirmFailed": "Não foi possível guardar o plano. Pode já existir um plano para este mês.",
+    "viewTitle": "Plano do salário de {{month}}",
+    "viewSubtitle": "Para onde vai este salário e que transferências estão feitas.",
+    "transfersDone": "{{done}} de {{total}} transferências concluídas",
+    "overdueAlert": "Algumas transferências planeadas estão atrasadas há mais de 15 dias.",
+    "overdue": "Atrasada",
+    "seePlanned": "Ver transferências planeadas",
+    "notFound": "Não existe plano de salário para este mês.",
+    "colBucket": "Categoria",
+    "colAmount": "Valor",
+    "colState": "Estado",
+    "bucket": {
+      "fixed": "Custos fixos",
+      "yearly": "Reserva anual",
+      "emergency": "Reforço do fundo de emergência",
+      "savings": "Poupança",
+      "free": "Livre para gastar"
+    },
+    "state": {
+      "none": "Não acompanhado",
+      "planned": "Planeada",
+      "done": "Concluída",
+      "skipped": "Ignorada"
+    }
+  },
   "planned": {
     "filterChip": "Planeadas",
     "chip": "Planeada",

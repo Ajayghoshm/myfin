@@ -20,6 +20,7 @@ import RecoverPassword from '../features/auth/RecoverPassword.tsx';
 import Setup from '../features/setup/Setup.tsx';
 import Goals from '../features/goals/Goals.tsx';
 import Insights from '../features/insights/Insights.tsx';
+import SalaryPlanView from '../features/salaryPlan/SalaryPlanView.tsx';
 import YearlyCosts from '../features/yearlyCosts/YearlyCosts.tsx';
 
 export const ROUTE_AUTH = '/auth';
@@ -53,6 +54,7 @@ export const ROUTE_STATS_YEAR_BY_YEAR = '/stats/year-by-year';
 export const ROUTE_GOALS = '/goals';
 export const ROUTE_INSIGHTS = '/insights';
 export const ROUTE_YEARLY_COSTS = '/yearly-costs';
+export const ROUTE_SALARY_PLAN = '/salary-plan/:month';
 export const ROUTE_SETUP = '/setup';
 
 const RoutesProvider = () => {
@@ -102,6 +104,7 @@ const RoutesProvider = () => {
           />
           <Route path={ROUTE_INSIGHTS} element={<Insights />} />
           <Route path={ROUTE_YEARLY_COSTS} element={<YearlyCosts />} />
+          <Route path={ROUTE_SALARY_PLAN} element={<SalaryPlanView />} />
           <Route path={ROUTE_STATS} element={<Stats />} />
           <Route
             path={ROUTE_STATS_PATRIMONY_EVO}

@@ -12,6 +12,7 @@ import InvestAssetsController from '../controllers/investAssetsController.js';
 import InvestReportsController from '../controllers/investReportsController.js';
 import InvestTransactionsController from '../controllers/investTransactionsController.js';
 import PlannedTransactionController from '../controllers/plannedTransactionController.js';
+import SalaryPlanController from '../controllers/salaryPlanController.js';
 import RuleController from '../controllers/ruleController.js';
 import SetupController from '../controllers/setupController.js';
 import StatsController from '../controllers/statsController.js';
@@ -122,6 +123,17 @@ export const routeGroups: RouteGroup[] = [
       { method: 'post', path: '/:id/done', handlerName: 'markDone' },
       { method: 'post', path: '/:id/skip', handlerName: 'skipPlanned' },
       { method: 'post', path: '/:id/match', handlerName: 'confirmMatch' },
+    ],
+  },
+  {
+    tag: 'Salary Plan',
+    basePath: '/salary-plan',
+    controller: SalaryPlanController as ControllerModule,
+    controllerSourceBaseUrl: new URL('../controllers/salaryPlanController', import.meta.url).href,
+    routes: [
+      { method: 'get', path: '/current', handlerName: 'getCurrent' },
+      { method: 'post', path: '/', handlerName: 'confirm' },
+      { method: 'get', path: '/:month', handlerName: 'getByMonth' },
     ],
   },
   {

@@ -831,6 +831,44 @@
       }
     }
   },
+  "salaryPlan": {
+    "title": "Plan de salaire",
+    "cardTitle": "Jour de paie",
+    "cardProposal": "Votre salaire de {{amount}} est arrivé. Planifiez sa répartition pour {{month}}.",
+    "cardConfirmed": "Votre plan pour {{month}} est défini.",
+    "planThis": "Planifier ce salaire",
+    "viewPlan": "Voir le plan",
+    "dialogTitle": "Planifier ce salaire",
+    "dialogIntro": "Répartissez votre salaire de {{amount}} en catégories. Les virements deviennent des transactions planifiées que vous pouvez marquer comme faites.",
+    "transferTo": "Virer vers",
+    "noAccount": "Aucun compte (non suivi)",
+    "freeNote": "Le montant libre est basé sur ce salaire : le salaire moins les autres catégories.",
+    "confirm": "Confirmer le plan",
+    "confirmFailed": "Impossible d'enregistrer le plan. Un plan existe peut-être déjà pour ce mois.",
+    "viewTitle": "Plan de salaire de {{month}}",
+    "viewSubtitle": "Où va ce salaire, et quels virements sont faits.",
+    "transfersDone": "{{done}} virements sur {{total}} effectués",
+    "overdueAlert": "Certains virements planifiés ont plus de 15 jours de retard.",
+    "overdue": "En retard",
+    "seePlanned": "Voir les virements planifiés",
+    "notFound": "Il n'y a pas de plan de salaire pour ce mois.",
+    "colBucket": "Catégorie",
+    "colAmount": "Montant",
+    "colState": "Statut",
+    "bucket": {
+      "fixed": "Coûts fixes",
+      "yearly": "Réserve annuelle",
+      "emergency": "Renfort du fonds d'urgence",
+      "savings": "Épargne",
+      "free": "Libre à dépenser"
+    },
+    "state": {
+      "none": "Non suivi",
+      "planned": "Planifié",
+      "done": "Fait",
+      "skipped": "Ignoré"
+    }
+  },
   "planned": {
     "filterChip": "Planifiées",
     "chip": "Planifiée",
