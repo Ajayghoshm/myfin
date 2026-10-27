@@ -103,6 +103,7 @@ export const routeGroups: RouteGroup[] = [
     controllerSourceBaseUrl: new URL('../controllers/insightsController', import.meta.url).href,
     routes: [
       { method: 'get', path: '/month', handlerName: 'getMonthInsights' },
+      { method: 'get', path: '/emergency-fund', handlerName: 'getEmergencyFund' },
       { method: 'put', path: '/payee-classification', handlerName: 'setPayeeClassification' },
     ],
   },

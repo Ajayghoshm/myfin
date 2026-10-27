@@ -22,6 +22,7 @@ import {
   parseYearMonth,
 } from '../../utils/istMonth.ts';
 import BiggestChanges from './BiggestChanges.tsx';
+import EmergencyFundCard from './EmergencyFundCard.tsx';
 import FixedFlexibleCard from './FixedFlexibleCard.tsx';
 import PaymentMix from './PaymentMix.tsx';
 import SummaryCards from './SummaryCards.tsx';
@@ -120,6 +121,9 @@ const Insights = () => {
           </Grid>
           <Grid size={12}>
             <FixedFlexibleCard ym={ym} data={data} />
+          </Grid>
+          <Grid size={12}>
+            <EmergencyFundCard />
           </Grid>
           <Grid size={{ xs: 12, lg: 7 }}>
             <WhereMoneyWent ym={ym} data={data} />

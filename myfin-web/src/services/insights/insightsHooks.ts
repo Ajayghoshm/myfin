@@ -5,6 +5,15 @@ import insightsServices, { PayeeKind } from './insightsServices.ts';
 
 export const QUERY_KEY_GET_MONTH_INSIGHTS = 'QUERY_KEY_GET_MONTH_INSIGHTS';
 
+export const QUERY_KEY_GET_EMERGENCY_FUND = 'QUERY_KEY_GET_EMERGENCY_FUND';
+
+export function useGetEmergencyFund() {
+  return useQuery({
+    queryKey: [QUERY_KEY_GET_EMERGENCY_FUND],
+    queryFn: async () => (await insightsServices.getEmergencyFund()).data,
+  });
+}
+
 /** `ym` is 'YYYY-MM'. */
 export function useGetMonthInsights(ym: string) {
   async function getMonthInsights() {

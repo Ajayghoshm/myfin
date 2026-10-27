@@ -21,6 +21,7 @@ import { useGetDebtAccounts, useGetInvestingAccounts } from '../../services/user
 import { Account } from '../../services/auth/authServices.ts';
 import { DatePicker } from '@mui/x-date-pickers';
 import NeedsUpdatingCard from './NeedsUpdatingCard.tsx';
+import EmergencyFundCard from '../insights/EmergencyFundCard.tsx';
 
 const generateDebtIncomeDistributionChartData = (accounts: Account[]) => {
   return (
@@ -280,6 +281,9 @@ const Dashboard = () => {
       </Grid>
       <Grid size={12} sx={{ '&:empty': { display: 'none' } }}>
         <NeedsUpdatingCard />
+      </Grid>
+      <Grid size={12}>
+        <EmergencyFundCard />
       </Grid>
       <Grid
         size={{

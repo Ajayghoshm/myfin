@@ -826,6 +826,16 @@
       }
     }
   },
+  "emergencyFund": {
+    "title": "Fonds d'urgence",
+    "monthsCovered_one": "{{count}} mois couvert",
+    "monthsCovered_other": "{{count}} mois couverts",
+    "moreNeeded": "Encore {{amount}} pour atteindre {{target}} mois",
+    "targetReached": "Objectif de {{target}} mois atteint",
+    "fundOf": "{{fund}} épargnés · {{fixed}} de charges fixes par mois",
+    "noAccounts": "Aucun compte de fonds d'urgence pour l'instant. Cochez « Fonds d'urgence » dans les paramètres d'un compte pour le suivre ici.",
+    "noFixed": "{{fund}} épargnés, mais aucune charge fixe à comparer pour l'instant. Marquez des catégories comme fixes pour voir combien de mois cela couvre."
+  },
   "insights": {
     "insights": "Analyses",
     "strapLine": "Où est passé votre argent ce mois-ci",

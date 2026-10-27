@@ -900,6 +900,16 @@
       }
     }
   },
+  "emergencyFund": {
+    "title": "Fundo de emergência",
+    "monthsCovered_one": "{{count}} mês coberto",
+    "monthsCovered_other": "{{count}} meses cobertos",
+    "moreNeeded": "Faltam {{amount}} para chegar a {{target}} meses",
+    "targetReached": "Meta de {{target}} meses atingida",
+    "fundOf": "{{fund}} poupados · {{fixed}} de custos fixos por mês",
+    "noAccounts": "Ainda não há contas de fundo de emergência. Marque “Fundo de emergência” nas definições de uma conta para o acompanhar aqui.",
+    "noFixed": "{{fund}} poupados, mas ainda não há custos fixos para comparar. Marque categorias como fixas para ver quantos meses isto cobre."
+  },
   "insights": {
     "insights": "Análises",
     "strapLine": "Para onde foi o seu dinheiro este mês",

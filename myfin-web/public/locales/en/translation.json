@@ -898,6 +898,16 @@
       }
     }
   },
+  "emergencyFund": {
+    "title": "Emergency fund",
+    "monthsCovered_one": "{{count}} month covered",
+    "monthsCovered_other": "{{count}} months covered",
+    "moreNeeded": "{{amount}} more to reach {{target}} months",
+    "targetReached": "Target of {{target}} months reached",
+    "fundOf": "{{fund}} saved · {{fixed}} fixed costs a month",
+    "noAccounts": "No emergency-fund accounts yet. Tick “Emergency fund” in an account’s settings to track it here.",
+    "noFixed": "{{fund}} saved, but there are no fixed costs to compare against yet. Mark categories as fixed to see how many months this covers."
+  },
   "insights": {
     "insights": "Insights",
     "strapLine": "Where your money went this month",

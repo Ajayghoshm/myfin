@@ -66,6 +66,19 @@ export type MonthInsights = {
   }>;
 };
 
+export type EmergencyFund = {
+  fund: number;
+  monthly_fixed: number | null;
+  months_covered: number | null;
+  target_months: number;
+  more_needed: number;
+  status: 'red' | 'amber' | 'green' | 'no_accounts' | 'no_fixed';
+  accounts: Array<{ account_id: string; name: string; balance: number }>;
+};
+
+const getEmergencyFund = () =>
+  axios.get<EmergencyFund>('/insights/emergency-fund');
+
 const getMonthInsights = (year: number, month: number) => {
   return axios.get<MonthInsights>('/insights/month', {
     params: { year, month },
@@ -81,5 +94,6 @@ const setPayeeClassification = (payee_key: string, kind: PayeeKind | null) => {
 
 export default {
   getMonthInsights,
+  getEmergencyFund,
   setPayeeClassification,
 };
