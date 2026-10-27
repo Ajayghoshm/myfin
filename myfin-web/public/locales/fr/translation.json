@@ -924,6 +924,14 @@
     "deleteDescription": "Supprimer « {{name}} » ?",
     "deleteAlert": "Les paiements liés sont conservés et déliés."
   },
+  "savingsRate": {
+    "title": "Taux d'épargne",
+    "headline": "Taux d'épargne : {{rate}}",
+    "target": "(objectif {{target}} {{mark}})",
+    "average": "moyenne sur 12 mois {{average}}",
+    "vsLastMonth": "{{pts}} pts vs mois dernier",
+    "sparkline": "Taux d'épargne sur les 12 derniers mois"
+  },
   "safeToSpend": {
     "title": "Dépensable en sécurité",
     "summary_one": "Dépensable : {{amount}} pour le reste de {{month}} · {{perDay}}/jour pendant {{count}} jour",

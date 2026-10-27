@@ -996,6 +996,14 @@
     "deleteDescription": "Delete \"{{name}}\"?",
     "deleteAlert": "Linked payments are kept and unlinked."
   },
+  "savingsRate": {
+    "title": "Savings rate",
+    "headline": "Savings rate: {{rate}}",
+    "target": "(target {{target}} {{mark}})",
+    "average": "12-month average {{average}}",
+    "vsLastMonth": "{{pts}} pts vs last month",
+    "sparkline": "Savings rate over the last 12 months"
+  },
   "safeToSpend": {
     "title": "Safe to spend",
     "summary_one": "Safe to spend: {{amount}} for the rest of {{month}} · {{perDay}}/day for {{count}} day",

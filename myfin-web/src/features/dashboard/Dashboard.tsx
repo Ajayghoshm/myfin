@@ -21,6 +21,7 @@ import { useGetDebtAccounts, useGetInvestingAccounts } from '../../services/user
 import { Account } from '../../services/auth/authServices.ts';
 import { DatePicker } from '@mui/x-date-pickers';
 import NeedsUpdatingCard from './NeedsUpdatingCard.tsx';
+import SavingsRateCard from '../insights/SavingsRateCard.tsx';
 import SafeToSpendCard from '../insights/SafeToSpendCard.tsx';
 import EmergencyFundCard from '../insights/EmergencyFundCard.tsx';
 import SalaryPlanCard from '../salaryPlan/SalaryPlanCard.tsx';
@@ -245,6 +246,9 @@ const Dashboard = () => {
 
   return (
     <Grid container spacing={2} sx={{ p: theme.spacing(2) }}>
+      <Grid size={12}>
+        <SavingsRateCard />
+      </Grid>
       <Grid
         size={{
           xs: 12,

@@ -998,6 +998,14 @@
     "deleteDescription": "Eliminar \"{{name}}\"?",
     "deleteAlert": "Os pagamentos associados são mantidos e desassociados."
   },
+  "savingsRate": {
+    "title": "Taxa de poupança",
+    "headline": "Taxa de poupança: {{rate}}",
+    "target": "(meta {{target}} {{mark}})",
+    "average": "média de 12 meses {{average}}",
+    "vsLastMonth": "{{pts}} pp vs mês anterior",
+    "sparkline": "Taxa de poupança nos últimos 12 meses"
+  },
   "safeToSpend": {
     "title": "Seguro para gastar",
     "summary_one": "Seguro para gastar: {{amount}} até ao fim de {{month}} · {{perDay}}/dia durante {{count}} dia",
