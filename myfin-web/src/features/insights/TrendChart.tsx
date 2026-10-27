@@ -6,7 +6,9 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { BarCustomLayerProps, ResponsiveBar } from '@nivo/bar';
-import { useMemo } from 'react';
+import ToggleButton from '@mui/material/ToggleButton';
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import EmptyView from '../../components/EmptyView.tsx';
 import { MonthInsights } from '../../services/insights/insightsServices.ts';
@@ -25,7 +27,12 @@ type TrendDatum = {
   label: string;
   income: number;
   spending: number;
+  fixed: number;
+  flexible: number;
+  unsorted: number;
 };
+
+type Mode = 'incomeSpending' | 'fixedFlexible';
 
 const CHART_HEIGHT = 320;
 const MARGIN = { top: 20, right: 50, bottom: 40, left: 70 };
@@ -34,6 +41,8 @@ const TrendChart = ({ ym, data, onSelectMonth }: Props) => {
   const theme = useTheme();
   const { t, i18n } = useTranslation();
   const formatCurrency = useFormatNumberAsCurrency();
+  const [mode, setMode] = useState<Mode>('incomeSpending');
+  const isSplit = mode === 'fixedFlexible';
 
   const chartData: TrendDatum[] = useMemo(
     () =>
@@ -42,6 +51,9 @@ const TrendChart = ({ ym, data, onSelectMonth }: Props) => {
         label: formatMonthLabel(item.year, item.month, i18n.language),
         income: item.income,
         spending: item.spending,
+        fixed: item.fixed,
+        flexible: item.flexible,
+        unsorted: item.unsorted,
       })),
     [data.trend, i18n.language],
   );
@@ -59,7 +71,9 @@ const TrendChart = ({ ym, data, onSelectMonth }: Props) => {
   );
   const rateOf = (key: string) => rateByYm.get(key) ?? null;
 
-  const isEmpty = chartData.every((d) => d.income === 0 && d.spending === 0);
+  const isEmpty = chartData.every(
+    (d) => d.income === 0 && d.spending === 0,
+  );
 
   // Secondary axis domain for the savings rate, always including 0.
   const rateDomain = useMemo(() => {
@@ -76,6 +90,9 @@ const TrendChart = ({ ym, data, onSelectMonth }: Props) => {
   const incomeColor = theme.palette.success.main;
   const spendingColor = theme.palette.error.main;
   const rateColor = theme.palette.primary.main;
+  const fixedColor = theme.palette.info.main;
+  const flexibleColor = theme.palette.warning.main;
+  const unsortedColor = theme.palette.grey[500];
 
   const SavingsRateLayer = ({
     bars,
@@ -171,10 +188,47 @@ const TrendChart = ({ ym, data, onSelectMonth }: Props) => {
       <CardContent>
         <Stack direction="row" justifyContent="space-between" flexWrap="wrap" gap={1}>
           <Typography variant="h6">{t('insights.trend')}</Typography>
-          <Stack direction="row" gap={2} alignItems="center">
-            <LegendItem color={incomeColor} label={t('insights.income')} />
-            <LegendItem color={spendingColor} label={t('insights.spending')} />
-            <LegendItem color={rateColor} label={t('insights.savingsRate')} line />
+          <Stack direction="row" gap={2} alignItems="center" flexWrap="wrap">
+            <ToggleButtonGroup
+              size="small"
+              exclusive
+              value={mode}
+              aria-label={t('insights.trendView')}
+              onChange={(_, next: Mode | null) => next && setMode(next)}
+            >
+              <ToggleButton value="incomeSpending">
+                {t('insights.trendIncomeVsSpending')}
+              </ToggleButton>
+              <ToggleButton value="fixedFlexible">
+                {t('insights.trendFixedVsFlexible')}
+              </ToggleButton>
+            </ToggleButtonGroup>
+            {isSplit ? (
+              <>
+                <LegendItem color={fixedColor} label={t('insights.fixedLabel')} />
+                <LegendItem
+                  color={flexibleColor}
+                  label={t('insights.flexibleLabel')}
+                />
+                <LegendItem
+                  color={unsortedColor}
+                  label={t('insights.unsortedLabel')}
+                />
+              </>
+            ) : (
+              <>
+                <LegendItem color={incomeColor} label={t('insights.income')} />
+                <LegendItem
+                  color={spendingColor}
+                  label={t('insights.spending')}
+                />
+                <LegendItem
+                  color={rateColor}
+                  label={t('insights.savingsRate')}
+                  line
+                />
+              </>
+            )}
           </Stack>
         </Stack>
         <Typography variant="caption" color="text.secondary">
@@ -188,14 +242,27 @@ const TrendChart = ({ ym, data, onSelectMonth }: Props) => {
           <Box height={CHART_HEIGHT}>
             <ResponsiveBar<TrendDatum>
               data={chartData}
-              keys={['income', 'spending']}
+              keys={
+                isSplit
+                  ? ['fixed', 'flexible', 'unsorted']
+                  : ['income', 'spending']
+              }
               indexBy="ym"
-              groupMode="grouped"
+              groupMode={isSplit ? 'stacked' : 'grouped'}
               margin={MARGIN}
               padding={0.25}
               innerPadding={2}
               colors={(bar) => {
-                const base = bar.id === 'income' ? incomeColor : spendingColor;
+                const base =
+                  bar.id === 'income'
+                    ? incomeColor
+                    : bar.id === 'fixed'
+                      ? fixedColor
+                      : bar.id === 'flexible'
+                        ? flexibleColor
+                        : bar.id === 'unsorted'
+                          ? unsortedColor
+                          : spendingColor;
                 return bar.indexValue === ym ? base : `${base}99`;
               }}
               enableLabel={false}
@@ -226,19 +293,39 @@ const TrendChart = ({ ym, data, onSelectMonth }: Props) => {
                 >
                   <strong>{bar.data.label}</strong>
                   <br />
-                  {t('insights.income')}: {formatCurrency.invoke(bar.data.income)}
-                  <br />
-                  {t('insights.spending')}:{' '}
-                  {formatCurrency.invoke(bar.data.spending)}
-                  <br />
-                  {t('insights.savingsRate')}:{' '}
-                  {(() => {
-                    const rate = rateOf(bar.data.ym);
-                    return rate === null ? '—' : formatPercent(rate);
-                  })()}
+                  {isSplit ? (
+                    <>
+                      {t('insights.fixedLabel')}:{' '}
+                      {formatCurrency.invoke(bar.data.fixed)}
+                      <br />
+                      {t('insights.flexibleLabel')}:{' '}
+                      {formatCurrency.invoke(bar.data.flexible)}
+                      <br />
+                      {t('insights.unsortedLabel')}:{' '}
+                      {formatCurrency.invoke(bar.data.unsorted)}
+                    </>
+                  ) : (
+                    <>
+                      {t('insights.income')}:{' '}
+                      {formatCurrency.invoke(bar.data.income)}
+                      <br />
+                      {t('insights.spending')}:{' '}
+                      {formatCurrency.invoke(bar.data.spending)}
+                      <br />
+                      {t('insights.savingsRate')}:{' '}
+                      {(() => {
+                        const rate = rateOf(bar.data.ym);
+                        return rate === null ? '—' : formatPercent(rate);
+                      })()}
+                    </>
+                  )}
                 </Paper>
               )}
-              layers={['grid', 'axes', 'bars', SavingsRateLayer, 'markers']}
+              layers={
+                isSplit
+                  ? ['grid', 'axes', 'bars', 'markers']
+                  : ['grid', 'axes', 'bars', SavingsRateLayer, 'markers']
+              }
               theme={theme.nivo}
             />
           </Box>

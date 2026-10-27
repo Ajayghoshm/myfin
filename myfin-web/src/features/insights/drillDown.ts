@@ -4,6 +4,7 @@ export type TransactionsLinkParams = {
   category?: string; // category id | 'none'
   payee?: string; // payee key, exactly as received from the API
   account?: string; // account id
+  cost?: 'fixed' | 'flexible'; // fixed / flexible expense split
 };
 
 /** API limit for payee keys in filters and classifications (joi max 255). */
@@ -22,5 +23,6 @@ export function buildTransactionsLink(params: TransactionsLinkParams): string {
   if (params.category) search.set('category', params.category);
   if (params.payee) search.set('payee', params.payee);
   if (params.account) search.set('account', params.account);
+  if (params.cost) search.set('cost', params.cost);
   return `/transactions?${search.toString()}`;
 }

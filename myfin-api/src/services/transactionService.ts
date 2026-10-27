@@ -110,6 +110,8 @@ const getAllTagsForTransaction = async (
     return tagsData;
   }, dbClient);
 
+export type CostKind = 'fixed' | 'flexible' | 'unsorted';
+
 /** Structured filters shared by the list, its count, bulk updates and the insights drill-down. */
 export type TransactionFilter = {
   query?: string;
@@ -129,6 +131,8 @@ export type TransactionFilter = {
   salaryRule?: SalaryRule;
   /** Leave out balance adjustments (`is_adjustment`). */
   excludeAdjustments?: boolean;
+  /** Expense split by the category's `is_fixed` flag; 'unsorted' = expenses without a category. */
+  costKind?: CostKind;
 };
 
 export type TransactionListOptions = Omit<TransactionFilter, 'query'> & {
@@ -161,6 +165,16 @@ export function structuredFilterSql(filter: TransactionFilter): Prisma.Sql {
     parts.push(effectiveMonthSql(filter.effectiveMonth, filter.salaryRule ?? NO_SALARY_RULE));
   }
   if (filter.excludeAdjustments) parts.push(Prisma.sql`transactions.is_adjustment = false`);
+  if (filter.costKind === 'unsorted') {
+    parts.push(
+      Prisma.sql`transactions.type = 'E' AND transactions.categories_category_id IS NULL`
+    );
+  } else if (filter.costKind != null) {
+    const fixed = filter.costKind === 'fixed' ? 1 : 0;
+    parts.push(
+      Prisma.sql`transactions.type = 'E' AND transactions.categories_category_id IN (SELECT category_id FROM categories WHERE is_fixed = ${fixed})`
+    );
+  }
   if (parts.length === 0) return Prisma.empty;
   return Prisma.sql`AND ${Prisma.join(parts, ' AND ')}`;
 }
@@ -212,6 +226,7 @@ const getFilteredTransactionsByForUser = async (
     effectiveMonth: options.effectiveMonth,
     salaryRule: options.salaryRule,
     excludeAdjustments: options.excludeAdjustments,
+    costKind: options.costKind,
   };
   // ORDER BY can't be parameterised, so only whitelisted fragments are interpolated
   const sortDir = Prisma.raw(options.sortDir === 'asc' ? 'ASC' : 'DESC');

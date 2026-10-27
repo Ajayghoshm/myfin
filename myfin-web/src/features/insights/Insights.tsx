@@ -22,6 +22,7 @@ import {
   parseYearMonth,
 } from '../../utils/istMonth.ts';
 import BiggestChanges from './BiggestChanges.tsx';
+import FixedFlexibleCard from './FixedFlexibleCard.tsx';
 import PaymentMix from './PaymentMix.tsx';
 import SummaryCards from './SummaryCards.tsx';
 import TrendChart from './TrendChart.tsx';
@@ -116,6 +117,9 @@ const Insights = () => {
                 {t('insights.oneOffsExcluded', { count: data.one_offs.length })}
               </Typography>
             )}
+          </Grid>
+          <Grid size={12}>
+            <FixedFlexibleCard ym={ym} data={data} />
           </Grid>
           <Grid size={{ xs: 12, lg: 7 }}>
             <WhereMoneyWent ym={ym} data={data} />

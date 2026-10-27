@@ -17,6 +17,7 @@ interface Category {
   status?: string;
   type?: string;
   exclude_from_budgets?: number;
+  is_fixed?: boolean;
   users_user_id?: bigint;
 }
 
@@ -52,6 +53,7 @@ class CategoryService {
         icon_key: normalizeCategoryIconKey(category.icon_key),
         status: category.status,
         exclude_from_budgets: category.exclude_from_budgets,
+        is_fixed: category.is_fixed ?? false,
         type: category.type,
         users_user_id: category.users_user_id,
       },

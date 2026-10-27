@@ -48,11 +48,17 @@ export type MonthInsights = {
     change_pct: number | null;
   }>;
   payment_mix: Array<{ account_id: string; name: string; amount: number }>;
+  /** Spending (E rows) split by the category's fixed flag; uncategorised is 'unsorted'. */
+  cost_split: CostSplit;
+  typical_cost_split: CostSplit | null;
   trend: Array<{
     year: number;
     month: number;
     income: number;
     spending: number;
+    fixed: number;
+    flexible: number;
+    unsorted: number;
     savings_rate: number | null;
   }>;
   one_offs: Array<{
@@ -62,6 +68,8 @@ export type MonthInsights = {
     date_timestamp: number;
   }>;
 };
+
+export type CostSplit = { fixed: number; flexible: number; unsorted: number };
 
 export type PayeeKind = 'person' | 'merchant';
 
@@ -83,6 +91,7 @@ type Row = {
   date: number;
   categoryId: string | null;
   categoryName: string | null;
+  isFixed: boolean;
   fromId: string | null;
   fromName: string | null;
   payeeKey: string;
@@ -96,6 +105,7 @@ type RawRow = {
   date_timestamp: bigint;
   category_id: bigint | null;
   category_name: string | null;
+  is_fixed: number | boolean | null;
   from_id: bigint | null;
   from_name: string | null;
   payee_key: string | null;
@@ -133,6 +143,7 @@ async function fetchRows(
            transactions.date_timestamp,
            transactions.categories_category_id AS category_id,
            categories.name                     AS category_name,
+           categories.is_fixed                 AS is_fixed,
            transactions.accounts_account_from_id AS from_id,
            acc_from.name                       AS from_name,
            ${payeeKeySql}                      AS payee_key
@@ -154,6 +165,7 @@ async function fetchRows(
       date,
       categoryId,
       categoryName: r.category_name,
+      isFixed: Number(r.is_fixed) === 1,
       fromId: r.from_id == null ? null : r.from_id.toString(),
       fromName: r.from_name,
       payeeKey: r.payee_key ?? '',
@@ -219,6 +231,24 @@ const sumBy = <K>(rows: Row[], keyOf: (r: Row) => K) => {
   return out;
 };
 
+const splitCents = (rows: Row[]) => {
+  let fixed = 0;
+  let flexible = 0;
+  let unsorted = 0;
+  for (const r of rows) {
+    if (r.type !== MYFIN.TRX_TYPES.EXPENSE) continue;
+    if (r.categoryId == null) unsorted += r.cents;
+    else if (r.isFixed) fixed += r.cents;
+    else flexible += r.cents;
+  }
+  return { fixed, flexible, unsorted };
+};
+const toSplit = (c: { fixed: number; flexible: number; unsorted: number }, n = 1): CostSplit => ({
+  fixed: money(c.fixed / n),
+  flexible: money(c.flexible / n),
+  unsorted: money(c.unsorted / n),
+});
+
 const isE = (r: Row) => r.type === MYFIN.TRX_TYPES.EXPENSE;
 const isI = (r: Row) => r.type === MYFIN.TRX_TYPES.INCOME;
 const total = (rows: Row[]) => rows.reduce((s, r) => s + r.cents, 0);
@@ -277,6 +307,9 @@ export async function getMonthInsights(userId: bigint, ym: YearMonth): Promise<M
       savings_rate: rate(tInc, tSpend),
     };
   }
+
+  const cost_split = toSplit(splitCents(current));
+  const typical_cost_split = baselineN > 0 ? toSplit(splitCents(baselineClean), baselineN) : null;
 
   // Categories (spending)
   const catNames = new Map<string | null, string | null>();
@@ -418,6 +451,7 @@ export async function getMonthInsights(userId: bigint, ym: YearMonth): Promise<M
       month: m.month,
       income: money(inc),
       spending: money(sp),
+      ...toSplit(splitCents(monthRows)),
       savings_rate: rate(inc, sp),
     };
   });
@@ -442,6 +476,8 @@ export async function getMonthInsights(userId: bigint, ym: YearMonth): Promise<M
     people,
     biggest_changes,
     payment_mix,
+    cost_split,
+    typical_cost_split,
     trend,
     one_offs,
   };

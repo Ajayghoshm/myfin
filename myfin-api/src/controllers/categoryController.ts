@@ -25,6 +25,7 @@ const createCategorySchema = joi.object({
   icon_key: joi.string().trim().valid(...CATEGORY_ICON_KEYS).default(DEFAULT_CATEGORY_ICON_KEY),
   status: joi.string().valid(MYFIN.CATEGORY_STATUS.ACTIVE, MYFIN.CATEGORY_STATUS.INACTIVE),
   exclude_from_budgets: joi.boolean().truthy(1, '1').falsy(0, '0').required(),
+  is_fixed: joi.boolean().truthy(1, '1').falsy(0, '0').optional(),
 });
 
 // eslint-disable-next-line consistent-return
@@ -56,6 +57,7 @@ const updateCategorySchema = joi.object({
   new_icon_key: joi.string().trim().valid(...CATEGORY_ICON_KEYS).optional(),
   new_status: joi.string().valid(MYFIN.CATEGORY_STATUS.ACTIVE, MYFIN.CATEGORY_STATUS.INACTIVE),
   new_exclude_from_budgets: joi.boolean().truthy(1, '1').falsy(0, '0').required(),
+  new_is_fixed: joi.boolean().truthy(1, '1').falsy(0, '0').optional(),
 });
 
 // eslint-disable-next-line consistent-return
@@ -70,6 +72,7 @@ const updateCategory = async (req: Request, res: Response, next: NextFunction) =
       ...(input.new_icon_key !== undefined ? { icon_key: input.new_icon_key } : {}),
       status: input.new_status,
       exclude_from_budgets: +input.new_exclude_from_budgets,
+      ...(input.new_is_fixed !== undefined ? { is_fixed: input.new_is_fixed } : {}),
     });
 
     return res.json('Category successfully updated!');

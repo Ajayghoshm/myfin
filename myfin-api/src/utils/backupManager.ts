@@ -357,6 +357,7 @@ class BackupManager {
           icon_key: category.icon_key,
           status: category.status,
           exclude_from_budgets: category.exclude_from_budgets,
+          is_fixed: category.is_fixed ?? false,
         },
         dbClient
       );

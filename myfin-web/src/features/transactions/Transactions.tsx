@@ -88,6 +88,7 @@ function readUrlFilters(searchParams: URLSearchParams) {
   const category = searchParams.get('category');
   const payee = searchParams.get('payee');
   const account = searchParams.get('account');
+  const cost = searchParams.get('cost');
   return {
     month: isYearMonth(month) ? month : null,
     type: type && TRX_TYPES.includes(type) ? (type as TransactionType) : null,
@@ -97,10 +98,14 @@ function readUrlFilters(searchParams: URLSearchParams) {
         : null,
     payee: payee ? payee : null,
     account: account && ID_REGEX.test(account) ? account : null,
+    cost: (cost === 'fixed' || cost === 'flexible' ? cost : null) as
+      | 'fixed'
+      | 'flexible'
+      | null,
   };
 }
 
-type UrlFilterParam = 'month' | 'type' | 'category' | 'payee' | 'account';
+type UrlFilterParam = 'month' | 'type' | 'category' | 'payee' | 'account' | 'cost';
 
 const Transactions = () => {
   const theme = useTheme();
@@ -145,12 +150,14 @@ const Transactions = () => {
       categoryId: urlFilters.category ?? undefined,
       payeeKey: urlFilters.payee ?? undefined,
       accountId: urlFilters.account ?? undefined,
+      costKind: urlFilters.cost ?? undefined,
     };
   }, [
     urlFilters.month,
     urlFilters.category,
     urlFilters.payee,
     urlFilters.account,
+    urlFilters.cost,
   ]);
   const listOptions: TransactionListOptions = useMemo(() => {
     const sort = sortModel[0];
@@ -514,6 +521,7 @@ const Transactions = () => {
                 category_id: structuredFilter.categoryId,
                 payee_key: structuredFilter.payeeKey,
                 account_id: structuredFilter.accountId,
+                cost_kind: structuredFilter.costKind,
               },
             }
           : { transaction_ids: selectedIdsOnPage }),
@@ -568,6 +576,16 @@ const Transactions = () => {
               (cat) => String(cat.category_id) === categoryId,
             )?.name ??
             t('transactions.filterCategoryFallback', { id: categoryId })),
+    });
+  }
+  if (urlFilters.cost) {
+    filterChips.push({
+      param: 'cost',
+      label: t(
+        urlFilters.cost === 'fixed'
+          ? 'transactions.filterFixed'
+          : 'transactions.filterFlexible',
+      ),
     });
   }
   if (urlFilters.payee) {

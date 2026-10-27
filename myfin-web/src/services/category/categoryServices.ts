@@ -12,6 +12,7 @@ export type Category = {
   icon_key: string;
   description?: string;
   exclude_from_budgets: 0 | 1;
+  is_fixed?: boolean;
   name: string;
   status: CategoryStatus;
   type: string;
@@ -29,6 +30,7 @@ export type AddCategoryRequest = {
   color_gradient: string;
   status: CategoryStatus;
   exclude_from_budgets: boolean;
+  is_fixed?: boolean;
 };
 
 const addCategory = (request: AddCategoryRequest) => {
@@ -43,6 +45,7 @@ export type EditCategoryRequest = {
   new_color_gradient: string;
   new_status: CategoryStatus;
   new_exclude_from_budgets: boolean;
+  new_is_fixed: boolean;
 };
 
 const editCategory = (request: EditCategoryRequest) => {

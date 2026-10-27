@@ -19,6 +19,7 @@ import {
   Checkbox,
   ListItemIcon,
   MenuItem,
+  Switch,
   ToggleButton,
   ToggleButtonGroup,
   Tooltip,
@@ -65,6 +66,9 @@ const AddEditCategoryDialog = (props: Props) => {
 
   const [excludeFromBudgetsValue, setExcludeFromBudgetsValue] = useState(
     props.category?.exclude_from_budgets == 1,
+  );
+  const [isFixedValue, setIsFixedValue] = useState(
+    props.category?.is_fixed === true,
   );
   const colorOptions = Object.values(ColorGradient);
   const [colorValue, setColorValue] = useState<string>(
@@ -287,6 +291,7 @@ const AddEditCategoryDialog = (props: Props) => {
                 new_icon_key: iconValue,
                 new_description: descriptionValue,
                 new_exclude_from_budgets: excludeFromBudgetsValue,
+                new_is_fixed: isFixedValue,
               });
             } else {
               // Create
@@ -297,6 +302,7 @@ const AddEditCategoryDialog = (props: Props) => {
                 icon_key: iconValue,
                 description: descriptionValue,
                 exclude_from_budgets: excludeFromBudgetsValue,
+                is_fixed: isFixedValue,
               });
             }
           },
@@ -335,6 +341,20 @@ const AddEditCategoryDialog = (props: Props) => {
                 label={t('common.excludeFromBudgets')}
                 name="exclude_from_budgets"
                 onChange={(_e, checked) => setExcludeFromBudgetsValue(checked)}
+              />
+            </Tooltip>
+            {/* Fixed cost */}
+            <Tooltip title={t('categories.fixedCostTooltip')} placement="right">
+              <FormControlLabel
+                sx={{ width: 'fit-content' }}
+                control={
+                  <Switch
+                    checked={isFixedValue}
+                    onChange={(_e, checked) => setIsFixedValue(checked)}
+                  />
+                }
+                label={t('categories.fixedCost')}
+                name="is_fixed"
               />
             </Tooltip>
           </Stack>

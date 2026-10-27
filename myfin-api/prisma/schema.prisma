@@ -106,6 +106,7 @@ model categories {
   icon_key               String                   @default("category") @db.VarChar(45)
   status                 String                   @default("Ativa") @db.VarChar(45)
   exclude_from_budgets   Int                      @default(0) @db.TinyInt
+  is_fixed               Boolean                  @default(false)
   budgets_has_categories budgets_has_categories[]
   users                  users                    @relation(fields: [users_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction, map: "categories_users_user_id_fk")
   transactions           transactions[]

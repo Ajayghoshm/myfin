@@ -7,6 +7,8 @@ export type InsightsRates = {
   savings_rate: number | null;
 };
 
+export type CostSplit = { fixed: number; flexible: number; unsorted: number };
+
 export type PayeeKind = 'person' | 'merchant';
 
 export type MonthInsights = {
@@ -44,11 +46,16 @@ export type MonthInsights = {
     change_pct: number | null;
   }>;
   payment_mix: Array<{ account_id: string; name: string; amount: number }>;
+  cost_split: CostSplit;
+  typical_cost_split: CostSplit | null;
   trend: Array<{
     year: number;
     month: number;
     income: number;
     spending: number;
+    fixed: number;
+    flexible: number;
+    unsorted: number;
     savings_rate: number | null;
   }>;
   one_offs: Array<{

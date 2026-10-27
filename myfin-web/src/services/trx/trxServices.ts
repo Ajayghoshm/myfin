@@ -60,6 +60,7 @@ export type TransactionListOptions = {
   accountId?: string;
   /** 'YYYY-MM' effective month (see Insights drill-down) */
   effectiveMonth?: string;
+  costKind?: 'fixed' | 'flexible' | 'unsorted';
 };
 
 const getTransactions = (
@@ -81,6 +82,7 @@ const getTransactions = (
       payee_key: options.payeeKey,
       account_id: options.accountId,
       effective_month: options.effectiveMonth,
+      cost_kind: options.costKind,
     },
   });
 };
@@ -283,6 +285,7 @@ export type BulkUpdateTransactionsRequest = {
     payee_key?: string;
     account_id?: string;
     effective_month?: string;
+    cost_kind?: 'fixed' | 'flexible' | 'unsorted';
   };
   category_id?: bigint | null;
   entity_id?: bigint | null;

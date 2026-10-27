@@ -109,6 +109,7 @@ const Categories = () => {
         name: category.name,
         description: category.description,
         status: category.status,
+        isFixed: category.is_fixed === true,
         actions: category,
       })),
     [filteredCategories],
@@ -147,6 +148,17 @@ const Categories = () => {
       editable: false,
       sortable: false,
       renderCell: (params) => <p>{params.value}</p>,
+    },
+    {
+      field: 'isFixed',
+      headerName: t('categories.fixedCost'),
+      minWidth: 110,
+      editable: false,
+      sortable: false,
+      renderCell: (params) =>
+        params.value ? (
+          <Chip label={t('categories.fixed')} variant="outlined" color="info" />
+        ) : null,
     },
     {
       field: 'status',
