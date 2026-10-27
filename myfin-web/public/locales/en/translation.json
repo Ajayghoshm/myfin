@@ -1014,6 +1014,27 @@
     "perDay": "Per day for {{count}} days",
     "close": "Close"
   },
+  "forecast": {
+    "title": "Forecast",
+    "month": "Month",
+    "noHistory": "Not enough history yet to forecast this month.",
+    "includesYearly": "Includes {{amount}} yearly costs",
+    "seasonal": "seasonal ×{{factor}}",
+    "total": "Forecast total",
+    "unsorted": "Not yet sorted",
+    "income": "Expected income",
+    "rangeHelp": "Total is the sum of the lines above; the range reflects how much each category usually varies. Not-yet-sorted spending is not included.",
+    "createBudget": "Create {{month}} budget from this forecast",
+    "compareTitle": "{{month}} budget already exists",
+    "compareHelp": "Replace all overwrites planned amounts for the categories below. Fill only empty keeps any amount you already set. Categories with a breakdown are never changed.",
+    "category": "Category",
+    "current": "Current",
+    "forecast": "Forecast",
+    "hasBreakdown": "has a breakdown",
+    "fillEmpty": "Fill only empty",
+    "replaceAll": "Replace all",
+    "skipped": "Left unchanged because they have a breakdown: {{names}}"
+  },
   "emergencyFund": {
     "title": "Emergency fund",
     "monthsCovered_one": "{{count}} month covered",

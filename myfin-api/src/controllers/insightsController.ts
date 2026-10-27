@@ -2,6 +2,12 @@ import type { NextFunction, Request, Response } from 'express';
 import joi from 'joi';
 import APIError from '../errorHandling/apiError.js';
 import { emergencyFund } from '../services/planning/emergencyFundService.js';
+import {
+  budgetCompare,
+  forecast,
+  forecastToBudget,
+  parseForecastMonth,
+} from '../services/planning/forecastService.js';
 import { safeToSpend } from '../services/planning/safeToSpendService.js';
 import InsightsService from '../services/insights/insightsService.js';
 import Logger from '../utils/Logger.js';
@@ -49,6 +55,45 @@ const getSafeToSpend = async (req: Request, res: Response, next: NextFunction) =
   }
 };
 
+const forecastQuerySchema = joi.object({ month: joi.string().pattern(/^\d{4}-(0[1-9]|1[0-2])$/).required() }).unknown(true);
+const forecastBudgetSchema = joi.object({
+  month: joi.string().pattern(/^\d{4}-(0[1-9]|1[0-2])$/).required(),
+  mode: joi.string().valid('create', 'replace', 'fill_empty').required(),
+});
+
+const getForecast = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    const input = await forecastQuerySchema.validateAsync(req.query);
+    res.json(await forecast(sessionData.userId, parseForecastMonth(input.month)));
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
+const getForecastBudgetCompare = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    const input = await forecastQuerySchema.validateAsync(req.query);
+    res.json(await budgetCompare(sessionData.userId, parseForecastMonth(input.month)));
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
+const createBudgetFromForecast = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    const input = await forecastBudgetSchema.validateAsync(req.body);
+    res.json(await forecastToBudget(sessionData.userId, parseForecastMonth(input.month), input.mode));
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
 const payeeClassificationSchema = joi.object({
   payee_key: joi.string().min(1).max(255).required(),
   kind: joi.string().valid('person', 'merchant').allow(null).required(),
@@ -70,8 +115,11 @@ export default {
   getMonthInsights,
   getEmergencyFund,
   getSafeToSpend,
+  getForecast,
+  getForecastBudgetCompare,
+  createBudgetFromForecast,
   setPayeeClassification,
 };
 
 // Exported for tests
-export { monthInsightsSchema, payeeClassificationSchema };
+export { forecastBudgetSchema, forecastQuerySchema, monthInsightsSchema, payeeClassificationSchema };

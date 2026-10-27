@@ -99,6 +99,52 @@ export type SafeToSpend = {
   has_fixed_categories: boolean;
 };
 
+export type Forecast = {
+  month: string;
+  income: number;
+  total: number;
+  low: number;
+  high: number;
+  unsorted: number;
+  categories: Array<{
+    category_id: string | null;
+    name: string;
+    kind: 'fixed' | 'flexible' | 'income';
+    amount: number;
+    yearly_costs: number;
+    seasonal_factor: number | null;
+  }>;
+};
+
+export type ForecastBudgetMode = 'create' | 'replace' | 'fill_empty';
+
+export type ForecastBudgetCompare = {
+  budget_id: string | null;
+  rows: Array<{
+    category_id: string;
+    name: string;
+    current_debit: number;
+    current_credit: number;
+    forecast_debit: number;
+    forecast_credit: number;
+    has_breakdown: boolean;
+  }>;
+};
+
+const getForecast = (month: string) =>
+  axios.get<Forecast>('/insights/forecast', { params: { month } });
+
+const getForecastBudgetCompare = (month: string) =>
+  axios.get<ForecastBudgetCompare>('/insights/forecast/budget-compare', {
+    params: { month },
+  });
+
+const createBudgetFromForecast = (month: string, mode: ForecastBudgetMode) =>
+  axios.post<{ budget_id: string; skipped_category_ids: string[] }>(
+    '/insights/forecast/budget',
+    { month, mode },
+  );
+
 const getSafeToSpend = () => axios.get<SafeToSpend>('/insights/safe-to-spend');
 
 const getEmergencyFund = () =>
@@ -121,5 +167,8 @@ export default {
   getMonthInsights,
   getEmergencyFund,
   getSafeToSpend,
+  getForecast,
+  getForecastBudgetCompare,
+  createBudgetFromForecast,
   setPayeeClassification,
 };

@@ -1016,6 +1016,27 @@
     "perDay": "Por dia durante {{count}} dias",
     "close": "Fechar"
   },
+  "forecast": {
+    "title": "Previsão",
+    "month": "Mês",
+    "noHistory": "Ainda não há histórico suficiente para prever este mês.",
+    "includesYearly": "Inclui {{amount}} de custos anuais",
+    "seasonal": "sazonal ×{{factor}}",
+    "total": "Total previsto",
+    "unsorted": "Ainda não classificado",
+    "income": "Receita esperada",
+    "rangeHelp": "O total é a soma das linhas acima; o intervalo reflete quanto cada categoria costuma variar. Gastos ainda não classificados não estão incluídos.",
+    "createBudget": "Criar orçamento de {{month}} a partir desta previsão",
+    "compareTitle": "O orçamento de {{month}} já existe",
+    "compareHelp": "Substituir tudo sobrescreve os valores planejados das categorias abaixo. Preencher só vazias mantém os valores que você já definiu. Categorias com detalhamento nunca são alteradas.",
+    "category": "Categoria",
+    "current": "Atual",
+    "forecast": "Previsão",
+    "hasBreakdown": "tem detalhamento",
+    "fillEmpty": "Preencher só vazias",
+    "replaceAll": "Substituir tudo",
+    "skipped": "Não alteradas por terem detalhamento: {{names}}"
+  },
   "emergencyFund": {
     "title": "Fundo de emergência",
     "monthsCovered_one": "{{count}} mês coberto",
