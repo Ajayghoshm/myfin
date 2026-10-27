@@ -92,6 +92,7 @@ export function useGetTransactions(
       options.costKind,
       options.yearlyCost,
       options.amountLt,
+      options.adjustment,
     ],
     queryFn: getTransactions,
     placeholderData: keepPreviousData,
