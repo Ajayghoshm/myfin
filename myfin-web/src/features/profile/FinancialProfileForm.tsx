@@ -34,6 +34,7 @@ const FinancialProfileForm = () => {
   const [sinkingAccountId, setSinkingAccountId] = useState<string | null>(null);
   const [emergencyMonths, setEmergencyMonths] = useState('6');
   const [topupPercent, setTopupPercent] = useState('10');
+  const [smallSpendCutoff, setSmallSpendCutoff] = useState('200');
 
   useEffect(() => {
     if (!profileRequest.data) return;
@@ -47,6 +48,7 @@ const FinancialProfileForm = () => {
       String(profileRequest.data.emergency_fund_target_months),
     );
     setTopupPercent(String(profileRequest.data.emergency_topup_percent));
+    setSmallSpendCutoff(String(profileRequest.data.small_spend_cutoff));
   }, [profileRequest.data]);
 
   const options = (categoriesRequest.data ?? []).map((cat) => ({
@@ -78,6 +80,13 @@ const FinancialProfileForm = () => {
   const isTopupValid =
     Number.isInteger(topupNumber) && topupNumber >= 0 && topupNumber <= 100;
 
+  const smallSpendNumber = Number(smallSpendCutoff);
+  const isSmallSpendValid =
+    smallSpendCutoff !== '' &&
+    Number.isFinite(smallSpendNumber) &&
+    smallSpendNumber > 0 &&
+    smallSpendNumber <= 100000;
+
   const day = Number(cutoffDay);
   const isDayValid = Number.isInteger(day) && day >= 1 && day <= 28;
 
@@ -94,6 +103,7 @@ const FinancialProfileForm = () => {
           sinkingAccountId === null ? null : Number(sinkingAccountId),
         emergency_fund_target_months: monthsNumber,
         emergency_topup_percent: topupNumber,
+        small_spend_cutoff: smallSpendNumber,
       },
       {
         onSuccess: () =>
@@ -247,6 +257,19 @@ const FinancialProfileForm = () => {
           slotProps={{ htmlInput: { min: 0, max: 100 } }}
         />
       </Grid>
+      <Grid size={12}>
+        <TextField
+          id="small-spend-cutoff"
+          fullWidth
+          type="number"
+          label={t('profile.smallSpendCutoff')}
+          helperText={t('profile.smallSpendCutoffHelper')}
+          value={smallSpendCutoff}
+          error={!isSmallSpendValid}
+          onChange={(e) => setSmallSpendCutoff(e.target.value)}
+          slotProps={{ htmlInput: { min: 0.01, max: 100000, step: 0.01 } }}
+        />
+      </Grid>
       <Grid offset="auto">
         <Button
           variant="contained"
@@ -256,6 +279,7 @@ const FinancialProfileForm = () => {
             !isTargetValid ||
             !isMonthsValid ||
             !isTopupValid ||
+            !isSmallSpendValid ||
             updateRequest.isPending
           }
         >

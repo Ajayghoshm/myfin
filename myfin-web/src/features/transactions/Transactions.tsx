@@ -47,6 +47,7 @@ import {
   Stars,
 } from '@mui/icons-material';
 import { formatNumberAsCurrency } from '../../utils/textUtils.ts';
+import { useFormatNumberAsCurrency } from '../../utils/textHooks.ts';
 import { useTranslation } from 'react-i18next';
 import {
   convertUnixTimestampToDateString,
@@ -92,6 +93,7 @@ function readUrlFilters(searchParams: URLSearchParams) {
   const account = searchParams.get('account');
   const cost = searchParams.get('cost');
   const yearlyCost = searchParams.get('yearly_cost');
+  const below = searchParams.get('below');
   return {
     planned: searchParams.get('planned') === '1',
     month: isYearMonth(month) ? month : null,
@@ -109,6 +111,7 @@ function readUrlFilters(searchParams: URLSearchParams) {
     yearlyCost: (yearlyCost === 'linked' || yearlyCost === 'unlinked'
       ? yearlyCost
       : null) as 'linked' | 'unlinked' | null,
+    below: below && /^[1-9]\d{0,14}$/.test(below) ? Number(below) : null,
   };
 }
 
@@ -120,10 +123,12 @@ type UrlFilterParam =
   | 'account'
   | 'cost'
   | 'yearly_cost'
+  | 'below'
   | 'planned';
 
 const Transactions = () => {
   const theme = useTheme();
+  const formatCurrency = useFormatNumberAsCurrency();
   const { userAccounts } = useUserData();
   const loader = useLoading();
   const snackbar = useSnackbar();
@@ -168,6 +173,7 @@ const Transactions = () => {
       accountId: urlFilters.account ?? undefined,
       costKind: urlFilters.cost ?? undefined,
       yearlyCost: urlFilters.yearlyCost ?? undefined,
+      amountLt: urlFilters.below ?? undefined,
     };
   }, [
     urlFilters.month,
@@ -176,6 +182,7 @@ const Transactions = () => {
     urlFilters.account,
     urlFilters.cost,
     urlFilters.yearlyCost,
+    urlFilters.below,
   ]);
   const listOptions: TransactionListOptions = useMemo(() => {
     const sort = sortModel[0];
@@ -575,6 +582,7 @@ const Transactions = () => {
                 account_id: structuredFilter.accountId,
                 cost_kind: structuredFilter.costKind,
                 yearly_cost: structuredFilter.yearlyCost,
+                amount_lt: structuredFilter.amountLt,
               },
             }
           : { transaction_ids: selectedIdsOnPage }),
@@ -649,6 +657,14 @@ const Transactions = () => {
           ? 'transactions.filterYearlyUnlinked'
           : 'transactions.filterYearlyLinked',
       ),
+    });
+  }
+  if (urlFilters.below) {
+    filterChips.push({
+      param: 'below',
+      label: t('transactions.filterBelow', {
+        amount: formatCurrency.invoke(urlFilters.below / 100),
+      }),
     });
   }
   if (urlFilters.payee) {

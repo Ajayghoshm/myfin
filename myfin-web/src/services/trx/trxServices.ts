@@ -67,6 +67,8 @@ export type TransactionListOptions = {
   costKind?: 'fixed' | 'flexible' | 'unsorted';
   /** linked to a yearly cost or not */
   yearlyCost?: 'linked' | 'unlinked';
+  /** amounts strictly below this, in cents */
+  amountLt?: number;
 };
 
 const getTransactions = (
@@ -90,6 +92,7 @@ const getTransactions = (
       effective_month: options.effectiveMonth,
       cost_kind: options.costKind,
       yearly_cost: options.yearlyCost,
+      amount_lt: options.amountLt,
     },
   });
 };
@@ -300,6 +303,7 @@ export type BulkUpdateTransactionsRequest = {
     effective_month?: string;
     cost_kind?: 'fixed' | 'flexible' | 'unsorted';
     yearly_cost?: 'linked' | 'unlinked';
+    amount_lt?: number;
   };
   category_id?: bigint | null;
   entity_id?: bigint | null;

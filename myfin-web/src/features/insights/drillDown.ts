@@ -6,6 +6,7 @@ export type TransactionsLinkParams = {
   account?: string; // account id
   cost?: 'fixed' | 'flexible'; // fixed / flexible expense split
   yearly_cost?: 'linked' | 'unlinked'; // linked to a yearly cost or not
+  below?: number; // amounts strictly below this, in cents
 };
 
 /** API limit for payee keys in filters and classifications (joi max 255). */
@@ -26,5 +27,6 @@ export function buildTransactionsLink(params: TransactionsLinkParams): string {
   if (params.account) search.set('account', params.account);
   if (params.cost) search.set('cost', params.cost);
   if (params.yearly_cost) search.set('yearly_cost', params.yearly_cost);
+  if (params.below !== undefined) search.set('below', String(params.below));
   return `/transactions?${search.toString()}`;
 }

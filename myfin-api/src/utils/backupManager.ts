@@ -85,6 +85,7 @@ export interface BackupData {
     sinking_fund_account_id?: bigint | null;
     emergency_fund_target_months?: number;
     emergency_topup_percent?: number;
+    small_spend_cutoff?: bigint | number;
   } | null;
 }
 
@@ -253,6 +254,7 @@ class BackupManager {
             sinking_fund_account_id: true,
             emergency_fund_target_months: true,
             emergency_topup_percent: true,
+            small_spend_cutoff: true,
           },
         })
         .then((row) => row ?? null),
@@ -947,6 +949,7 @@ class BackupManager {
               : null,
           emergency_fund_target_months: profile.emergency_fund_target_months ?? 6,
           emergency_topup_percent: profile.emergency_topup_percent ?? 10,
+          small_spend_cutoff: BigInt(profile.small_spend_cutoff ?? 20000),
           updated_at: BigInt(profile.updated_at),
         },
       });

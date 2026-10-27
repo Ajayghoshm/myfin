@@ -26,6 +26,17 @@ export function useGetSafeToSpend() {
   });
 }
 
+export const QUERY_KEY_GET_SMALL_SPENDS = 'QUERY_KEY_GET_SMALL_SPENDS';
+
+/** `ym` is 'YYYY-MM'. */
+export function useGetSmallSpends(ym: string) {
+  return useQuery({
+    queryKey: [QUERY_KEY_GET_SMALL_SPENDS, ym],
+    queryFn: async () => (await insightsServices.getSmallSpends(ym)).data,
+    placeholderData: keepPreviousData,
+  });
+}
+
 /** `ym` is 'YYYY-MM'. */
 export function useGetMonthInsights(ym: string) {
   async function getMonthInsights() {

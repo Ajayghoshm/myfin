@@ -389,6 +389,7 @@ model user_financial_profile {
   sinking_fund_account_id      BigInt?
   emergency_fund_target_months Int     @default(6)
   emergency_topup_percent      Int     @default(10)
+  small_spend_cutoff           BigInt  @default(20000)
   updated_at         BigInt
   users              users   @relation(fields: [users_user_id], references: [user_id], onDelete: Cascade)
 }

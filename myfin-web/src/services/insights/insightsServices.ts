@@ -152,6 +152,27 @@ const createBudgetFromForecast = (month: string, mode: ForecastBudgetMode) =>
     { month, mode },
   );
 
+export type SmallSpends = {
+  month: string;
+  /** Currency. */
+  cutoff: number;
+  count: number;
+  total: number;
+  typical_total: number | null;
+  typical_count: number | null;
+  places: Array<{
+    payee_key: string;
+    name: string;
+    count: number;
+    total: number;
+    average: number;
+  }>;
+  trend: Array<{ year: number; month: number; count: number; total: number }>;
+};
+
+const getSmallSpends = (month: string) =>
+  axios.get<SmallSpends>('/insights/small-spends', { params: { month } });
+
 const getSafeToSpend = () => axios.get<SafeToSpend>('/insights/safe-to-spend');
 
 const getEmergencyFund = () =>
@@ -174,6 +195,7 @@ export default {
   getMonthInsights,
   getEmergencyFund,
   getSafeToSpend,
+  getSmallSpends,
   getForecast,
   getForecastBudgetCompare,
   createBudgetFromForecast,

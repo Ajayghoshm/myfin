@@ -16,6 +16,8 @@ export type FinancialProfile = {
   sinking_fund_account_id: string | null;
   emergency_fund_target_months: number;
   emergency_topup_percent: number;
+  /** Currency: payments below this count as small spends. */
+  small_spend_cutoff: number;
 };
 
 export type FinancialProfilePatch = {
@@ -27,6 +29,7 @@ export type FinancialProfilePatch = {
   sinking_fund_account_id?: number | string | bigint | null;
   emergency_fund_target_months?: number;
   emergency_topup_percent?: number;
+  small_spend_cutoff?: number;
 };
 
 type ProfileRow = {
@@ -38,12 +41,15 @@ type ProfileRow = {
   sinking_fund_account_id: bigint | null;
   emergency_fund_target_months: number;
   emergency_topup_percent: number;
+  small_spend_cutoff: bigint;
 };
 
 const SAVINGS_MODES: string[] = ['amount', 'percent'];
 const DEFAULT_CUTOFF_DAY = 25;
 const DEFAULT_EMERGENCY_MONTHS = 6;
 const DEFAULT_TOPUP_PERCENT = 10;
+const DEFAULT_SMALL_SPEND_CENTS = 20000n;
+const MAX_SMALL_SPEND = 100_000;
 
 const idOrNull = (v: bigint | null | undefined) => (v != null ? String(v) : null);
 
@@ -59,6 +65,7 @@ const toProfile = (row: ProfileRow | null): FinancialProfile => {
     sinking_fund_account_id: idOrNull(row?.sinking_fund_account_id),
     emergency_fund_target_months: row?.emergency_fund_target_months ?? DEFAULT_EMERGENCY_MONTHS,
     emergency_topup_percent: row?.emergency_topup_percent ?? DEFAULT_TOPUP_PERCENT,
+    small_spend_cutoff: ConvertUtils.convertBigIntegerToFloat(row?.small_spend_cutoff ?? DEFAULT_SMALL_SPEND_CENTS),
   };
 };
 
@@ -111,6 +118,13 @@ export async function updateFinancialProfile(
     if (!Number.isInteger(p) || p < 0 || p > 100)
       throw APIError.badRequest('emergency_topup_percent must be an integer between 0 and 100.');
     data.emergency_topup_percent = p;
+  }
+
+  if (patch.small_spend_cutoff !== undefined) {
+    const c = patch.small_spend_cutoff;
+    if (typeof c !== 'number' || !Number.isFinite(c) || c <= 0 || c > MAX_SMALL_SPEND)
+      throw APIError.badRequest('small_spend_cutoff must be greater than 0 and at most 100000.');
+    data.small_spend_cutoff = BigInt(ConvertUtils.convertFloatToBigInteger(c));
   }
 
   // Savings target: the value is read under the resulting mode

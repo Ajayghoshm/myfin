@@ -8,6 +8,7 @@ import {
   forecastToBudget,
   parseForecastMonth,
 } from '../services/planning/forecastService.js';
+import { smallSpends } from '../services/insights/smallSpendService.js';
 import { safeToSpend } from '../services/planning/safeToSpendService.js';
 import InsightsService from '../services/insights/insightsService.js';
 import Logger from '../utils/Logger.js';
@@ -39,6 +40,17 @@ const getEmergencyFund = async (req: Request, res: Response, next: NextFunction)
   try {
     const sessionData = await CommonsController.checkAuthSessionValidity(req);
     res.json(await emergencyFund(sessionData.userId));
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
+const getSmallSpends = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    const input = await forecastQuerySchema.validateAsync(req.query);
+    res.json(await smallSpends(sessionData.userId, parseForecastMonth(input.month)));
   } catch (err) {
     Logger.addLog(err);
     next(err || APIError.internalServerError());
@@ -115,6 +127,7 @@ export default {
   getMonthInsights,
   getEmergencyFund,
   getSafeToSpend,
+  getSmallSpends,
   getForecast,
   getForecastBudgetCompare,
   createBudgetFromForecast,

@@ -12,6 +12,8 @@ export type FinancialProfile = {
   sinking_fund_account_id: string | null;
   emergency_fund_target_months: number;
   emergency_topup_percent: number;
+  /** Currency: payments below this are small spends. */
+  small_spend_cutoff: number;
 };
 
 export type FinancialProfilePatch = {
@@ -23,6 +25,7 @@ export type FinancialProfilePatch = {
   sinking_fund_account_id?: number | null;
   emergency_fund_target_months?: number;
   emergency_topup_percent?: number;
+  small_spend_cutoff?: number;
 };
 
 const getFinancialProfile = () => {

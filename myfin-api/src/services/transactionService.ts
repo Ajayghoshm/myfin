@@ -135,6 +135,8 @@ export type TransactionFilter = {
   costKind?: CostKind;
   /** Only rows linked / not linked to a yearly cost. */
   yearlyCost?: 'linked' | 'unlinked';
+  /** Cents: only rows with an amount strictly below this. */
+  amountLt?: number;
 };
 
 export type TransactionListOptions = Omit<TransactionFilter, 'query'> & {
@@ -179,6 +181,7 @@ export function structuredFilterSql(filter: TransactionFilter): Prisma.Sql {
   }
   if (filter.yearlyCost === 'linked') parts.push(Prisma.sql`transactions.yearly_cost_id IS NOT NULL`);
   else if (filter.yearlyCost === 'unlinked') parts.push(Prisma.sql`transactions.yearly_cost_id IS NULL`);
+  if (filter.amountLt != null) parts.push(Prisma.sql`transactions.amount < ${filter.amountLt}`);
   if (parts.length === 0) return Prisma.empty;
   return Prisma.sql`AND ${Prisma.join(parts, ' AND ')}`;
 }
@@ -232,6 +235,7 @@ const getFilteredTransactionsByForUser = async (
     excludeAdjustments: options.excludeAdjustments,
     costKind: options.costKind,
     yearlyCost: options.yearlyCost,
+    amountLt: options.amountLt,
   };
   // ORDER BY can't be parameterised, so only whitelisted fragments are interpolated
   const sortDir = Prisma.raw(options.sortDir === 'asc' ? 'ASC' : 'DESC');

@@ -26,6 +26,7 @@ import EmergencyFundCard from './EmergencyFundCard.tsx';
 import SafeToSpendCard from './SafeToSpendCard.tsx';
 import ForecastCard from './ForecastCard.tsx';
 import FixedFlexibleCard from './FixedFlexibleCard.tsx';
+import SmallSpendsCard from './SmallSpendsCard.tsx';
 import PaymentMix from './PaymentMix.tsx';
 import SummaryCards from './SummaryCards.tsx';
 import TrendChart from './TrendChart.tsx';
@@ -128,6 +129,9 @@ const Insights = () => {
           </Grid>
           <Grid size={12}>
             <FixedFlexibleCard ym={ym} data={data} />
+          </Grid>
+          <Grid size={12}>
+            <SmallSpendsCard ym={ym} />
           </Grid>
           <Grid size={{ xs: 12, lg: 7 }}>
             <WhereMoneyWent ym={ym} data={data} />

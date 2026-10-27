@@ -80,6 +80,7 @@ export function useGetTransactions(
       options.accountId,
       options.costKind,
       options.yearlyCost,
+      options.amountLt,
     ],
     queryFn: getTransactions,
     placeholderData: keepPreviousData,

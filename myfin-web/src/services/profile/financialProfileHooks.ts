@@ -3,6 +3,7 @@ import { queryClient } from '../../data/react-query.ts';
 import {
   QUERY_KEY_GET_MONTH_INSIGHTS,
   QUERY_KEY_GET_SAFE_TO_SPEND,
+  QUERY_KEY_GET_SMALL_SPENDS,
 } from '../insights/insightsHooks.ts';
 import { QUERY_KEY_GET_TRANSACTIONS } from '../trx/trxHooks.ts';
 import financialProfileServices, {
@@ -39,6 +40,9 @@ export function useUpdateFinancialProfile() {
       });
       void queryClient.invalidateQueries({
         queryKey: [QUERY_KEY_GET_MONTH_INSIGHTS],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: [QUERY_KEY_GET_SMALL_SPENDS],
       });
       void queryClient.invalidateQueries({
         queryKey: [QUERY_KEY_GET_SAFE_TO_SPEND],
