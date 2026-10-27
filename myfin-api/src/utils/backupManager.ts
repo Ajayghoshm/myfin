@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import { prisma } from '../config/prisma.js';
 import { MYFIN } from '../consts.js';
 import { RestoreUserErrorCodes } from '../controllers/userController.js';
+import { validateLegacyData } from '../services/legacyValidation.js';
 import APIError from '../errorHandling/apiError.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import AccountService from '../services/accountService.js';
@@ -456,6 +457,17 @@ class BackupManager {
         );
       }
     }
+    for (const e of data.legacy_entries ?? []) {
+      try {
+        if (!['account', 'policy', 'contact', 'instruction'].includes(e?.kind)) throw new Error('kind');
+        await validateLegacyData(e.kind as 'account', e.data);
+      } catch {
+        throw APIError.notAcceptable(
+          'Legacy file entry not recognized in backup',
+          RestoreUserErrorCodes.MalformedBackup
+        );
+      }
+    }
     const plannedRows = data.planned_transactions ?? [];
     for (const r of plannedRows) {
       if (
@@ -793,12 +805,14 @@ class BackupManager {
 
     // region Legacy file entries
     for (const e of data.legacy_entries ?? []) {
+      const mappedAccount = e.account_id != null ? (accountIdMap.get(e.account_id) ?? null) : null;
+      if (e.kind === 'account' && mappedAccount == null) continue;
       await dbClient.legacy_entries.create({
         data: {
           users_user_id: userId,
           kind: e.kind,
-          // Keyed by the raw backup value; an entry whose account is gone keeps its data
-          account_id: e.account_id != null ? (accountIdMap.get(e.account_id) ?? null) : null,
+          // Keyed by the raw backup value; account entries without a restored account are dropped
+          account_id: mappedAccount,
           data: (e.data ?? {}) as Prisma.InputJsonValue,
           sort_order: e.sort_order ?? 0,
           created_at: BigInt(e.created_at ?? 0),

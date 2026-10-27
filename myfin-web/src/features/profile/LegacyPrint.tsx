@@ -3,7 +3,6 @@ import Button from '@mui/material/Button';
 import GlobalStyles from '@mui/material/GlobalStyles';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
-import dayjs from 'dayjs';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { ROUTE_PROFILE } from '../../providers/RoutesProvider.tsx';
@@ -41,11 +40,13 @@ const printStyles = {
 };
 
 const LegacyPrint = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const formatCurrency = useFormatNumberAsCurrency();
   const { data } = useGetLegacy();
-  const generatedOn = dayjs().format('DD/MM/YYYY');
+  const generatedOn = new Intl.DateTimeFormat(i18n.language, {
+    dateStyle: 'long',
+  }).format(new Date());
 
   const fieldLines = (entry: LegacyEntry) =>
     LEGACY_FIELDS[entry.kind]

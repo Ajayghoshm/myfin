@@ -105,6 +105,7 @@ export async function policySuggestions(
     SELECT ${payeeKeySql} AS payee_key, transactions.amount AS amount, transactions.date_timestamp AS date_timestamp
     ${ownershipSql(userId)}
       AND transactions.type = 'E'
+      AND ${payeeKeySql} REGEXP 'INSURANCE|LIFE|HEALTH|POLICY|ASSURANCE|\\bLIC\\b'
       AND ${countsForAnalyticsSql}
       AND transactions.date_timestamp >= ${from}
     ORDER BY transactions.date_timestamp DESC, transactions.transaction_id DESC`;

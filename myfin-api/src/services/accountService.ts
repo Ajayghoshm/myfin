@@ -181,6 +181,7 @@ class AccountService {
         where: { savings_target_account_id: accountId },
         data: { savings_target_account_id: null },
       });
+      await tx.legacy_entries.deleteMany({ where: { account_id: accountId, kind: 'account' } });
       await tx.accounts.delete({ where: { account_id: accountId } });
     }, { timeout: 60_000 });
   }
