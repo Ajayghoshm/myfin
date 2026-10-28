@@ -137,6 +137,8 @@ describe('milestones', () => {
       ctx.uid
     );
     const debt = await createPeopleDebt(ctx.uid, { kind: 'lent', name: 'Rahul', amount: 5000, date: at(SEP, 3) });
+    // Something fires on the first evaluation, so the next one is not a first-ever evaluation
+    await record(ctx.uid, 202609, 'health', { passed: 5, total: 5 });
     await evaluateMilestones(ctx.uid, NOW);
     expect(await rows(ctx.uid, 'goal_funded')).toEqual([]);
     expect(await rows(ctx.uid, 'debt_cleared')).toEqual([]);
@@ -156,6 +158,33 @@ describe('milestones', () => {
       achieved_at: at(OCT, 20),
       data: { debt_id: debt.debt_id, name: 'Rahul', kind: 'lent' },
     });
+  });
+
+  test('first evaluation: goals and payment-less debts go to the timeline; a debt paid 5 days ago gets a banner', async () => {
+    const savings = await ctx.account('Savings');
+    await ctx.trx(I, 30000, at(SEP, 2), savings.account_id);
+    for (const name of ['A', 'B', 'C'])
+      await GoalService.createGoal(
+        {
+          name,
+          priority: 1,
+          amount: 10000,
+          funding_accounts: [{ account_id: Number(savings.account_id), funding_type: 'absolute', funding_amount: 10000 }],
+        },
+        ctx.uid
+      );
+    const noPayments = await createPeopleDebt(ctx.uid, { kind: 'lent', name: 'Old', amount: 1000, date: at(SEP, 1) });
+    await prisma.debts.update({ where: { debt_id: BigInt(noPayments.debt_id) }, data: { status: 'settled' } });
+    const recent = await createPeopleDebt(ctx.uid, { kind: 'borrowed', name: 'Amit', amount: 2000, date: at(SEP, 1) });
+    await addRepayment(ctx.uid, BigInt(recent.debt_id), { amount: 2000, date: NOW - 5 * DAY });
+
+    const shown = await evaluateMilestones(ctx.uid, NOW);
+    expect(shown.map((m) => [m.kind, m.key])).toEqual([['debt_cleared', recent.debt_id]]);
+    expect((await rows(ctx.uid, 'goal_funded')).map((r) => r.dismissed)).toEqual([true, true, true]);
+    expect(await rows(ctx.uid, 'debt_cleared')).toEqual([
+      { kind: 'debt_cleared', key: noPayments.debt_id, dismissed: true },
+      { kind: 'debt_cleared', key: recent.debt_id, dismissed: false },
+    ]);
   });
 
   test('a frozen health month with every check passing inserts health_all_pass', async () => {

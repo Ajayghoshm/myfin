@@ -37,6 +37,11 @@ type Candidate = {
   achieved_at: number;
   /** Orders candidates of one kind: the highest is "the latest / highest" on a first evaluation. */
   rank: number;
+  /**
+   * False when achieved_at is only the evaluation time (no real achievement date). A first-ever
+   * evaluation never shows a goal_funded / debt_cleared banner for those (ruling E6).
+   */
+  dateKnown?: boolean;
   data: Record<string, unknown>;
 };
 
@@ -119,6 +124,7 @@ async function goalCandidates(userId: bigint, now: number): Promise<Candidate[]>
       key: String(g.goal_id),
       achieved_at: now,
       rank: now,
+      dateKnown: false,
       data: { goal_id: String(g.goal_id), name: g.name, amount: g.amount },
     }));
 }
@@ -144,6 +150,7 @@ async function debtCandidates(userId: bigint, now: number): Promise<Candidate[]>
       key: d.debt_id.toString(),
       achieved_at: achieved,
       rank: achieved,
+      dateKnown: paid != null,
       data: { debt_id: d.debt_id.toString(), name: d.counterparty_name, kind: d.kind, amount: Number(d.principal) / 100 },
     };
   });
@@ -267,15 +274,16 @@ async function candidates(userId: bigint, now: number): Promise<Candidate[]> {
 
 /**
  * First-ever evaluation: only the highest net-worth threshold, the latest of each other kind, and
- * every goal_funded / debt_cleared from the last 30 days get a banner; the rest go silently to the
- * timeline (dismissed).
+ * every goal_funded / debt_cleared with a known achievement date in the last 30 days get a banner;
+ * the rest (including goals, whose funding date is never known, and payment-less debts) go silently
+ * to the timeline (dismissed). Later evaluations insert everything undismissed.
  */
 function firstEvaluationShown(list: Candidate[], now: number): Set<Candidate> {
   const shown = new Set<Candidate>();
   const top = new Map<string, Candidate>();
   for (const c of list) {
     if (c.kind === 'goal_funded' || c.kind === 'debt_cleared') {
-      if (c.achieved_at >= now - RECENT_SECONDS) shown.add(c);
+      if (c.dateKnown === true && c.achieved_at >= now - RECENT_SECONDS) shown.add(c);
       continue;
     }
     const cur = top.get(c.kind);

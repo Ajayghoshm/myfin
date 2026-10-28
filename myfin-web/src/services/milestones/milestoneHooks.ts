@@ -6,15 +6,14 @@ export const QUERY_KEY_EVALUATE_MILESTONES = 'QUERY_KEY_EVALUATE_MILESTONES';
 export const QUERY_KEY_GET_MILESTONES = 'QUERY_KEY_GET_MILESTONES';
 
 /**
- * Evaluates milestones once per mount (the Dashboard banner): never refetched in the background,
- * since each call may insert rows.
+ * Evaluates milestones for the Dashboard banner: at most once per mount, and a remount within 5
+ * minutes reuses the result. Never refetched in the background or retried.
  */
 export function useEvaluateMilestones() {
   return useQuery({
     queryKey: [QUERY_KEY_EVALUATE_MILESTONES],
     queryFn: async () => (await milestoneServices.evaluateMilestones()).data,
-    staleTime: 0,
-    gcTime: 0,
+    staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     retry: false,

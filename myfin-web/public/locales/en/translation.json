@@ -1806,7 +1806,7 @@
       "emergency_target_one": "Your emergency fund reached your target of {{count}} month",
       "emergency_target_other": "Your emergency fund reached your target of {{count}} months",
       "goal_funded": "Goal fully funded: {{name}}",
-      "best_savings_month": "Best savings month yet: {{month}} ({{pct}} %)",
+      "best_savings_month": "Best savings month in the last 12 months: {{month}} ({{pct}} %)",
       "savings_streak": "3 months in a row on your savings target ({{from}} – {{month}})",
       "health_all_pass": "Every health check passed in {{month}}",
       "review_streak": "Month-end review completed 3 months in a row ({{from}} – {{month}})",

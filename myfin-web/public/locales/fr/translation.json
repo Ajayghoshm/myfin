@@ -1734,7 +1734,7 @@
       "emergency_target_one": "Votre fonds d’urgence a atteint votre objectif de {{count}} mois",
       "emergency_target_other": "Votre fonds d’urgence a atteint votre objectif de {{count}} mois",
       "goal_funded": "Objectif entièrement financé : {{name}}",
-      "best_savings_month": "Meilleur mois d’épargne : {{month}} ({{pct}} %)",
+      "best_savings_month": "Meilleur mois d’épargne des 12 derniers mois : {{month}} ({{pct}} %)",
       "savings_streak": "3 mois d’affilée à votre objectif d’épargne ({{from}} – {{month}})",
       "health_all_pass": "Tous les contrôles de santé réussis en {{month}}",
       "review_streak": "Revue de fin de mois terminée 3 mois d’affilée ({{from}} – {{month}})",

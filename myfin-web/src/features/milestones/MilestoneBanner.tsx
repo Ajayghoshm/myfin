@@ -21,6 +21,7 @@ const MilestoneBanner = () => {
   const { t } = useTranslation();
   const snackbar = useSnackbar();
   const label = useMilestoneLabel();
+  // A failed evaluate stays silent: no data, no banner
   const { data } = useEvaluateMilestones();
   const dismiss = useDismissMilestone();
 

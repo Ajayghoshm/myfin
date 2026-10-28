@@ -1808,7 +1808,7 @@
       "emergency_target_one": "O seu fundo de emergência atingiu o objetivo de {{count}} mês",
       "emergency_target_other": "O seu fundo de emergência atingiu o objetivo de {{count}} meses",
       "goal_funded": "Objetivo totalmente financiado: {{name}}",
-      "best_savings_month": "Melhor mês de poupança até agora: {{month}} ({{pct}} %)",
+      "best_savings_month": "Melhor mês de poupança dos últimos 12 meses: {{month}} ({{pct}} %)",
       "savings_streak": "3 meses seguidos dentro do objetivo de poupança ({{from}} – {{month}})",
       "health_all_pass": "Todos os controlos de saúde aprovados em {{month}}",
       "review_streak": "Revisão de fim de mês concluída 3 meses seguidos ({{from}} – {{month}})",
