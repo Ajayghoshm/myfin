@@ -236,11 +236,19 @@ export type HealthCheckKey =
   | 'debt_emis'
   | 'data';
 
+export type HealthTextParams = Record<string, string | number>;
+
 export type HealthCheck = {
   key: HealthCheckKey;
   status: HealthCheckStatus;
+  /** English figure; `value_key` + `value_params` localise it. */
   value: string | null;
+  value_key: string | null;
+  value_params: HealthTextParams;
+  /** English hint; `hint_key` + `hint_params` localise it. */
   hint: string;
+  hint_key: string;
+  hint_params: HealthTextParams;
   link: string;
 };
 

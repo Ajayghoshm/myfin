@@ -8,7 +8,11 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { useTranslation } from 'react-i18next';
 import { Link as RouterLink } from 'react-router-dom';
-import type { HealthCheck } from '../../services/insights/insightsServices.ts';
+import type {
+  HealthCheck,
+  HealthTextParams,
+} from '../../services/insights/insightsServices.ts';
+import { useFormatNumberAsCurrency } from '../../utils/textHooks.ts';
 
 const StatusIcon = ({ status }: { status: HealthCheck['status'] }) => {
   const { t } = useTranslation();
@@ -23,6 +27,22 @@ const StatusIcon = ({ status }: { status: HealthCheck['status'] }) => {
 /** One check: status icon, name and figure, the hint, and a link to fix or set it up. */
 const HealthCheckRow = ({ check }: { check: HealthCheck }) => {
   const { t } = useTranslation();
+  const formatCurrency = useFormatNumberAsCurrency();
+  // `amount` params are currency; everything else is shown as given.
+  const params = (p: HealthTextParams) =>
+    typeof p.amount === 'number'
+      ? { ...p, amount: formatCurrency.invoke(p.amount) }
+      : p;
+  const value = check.value_key
+    ? t(`health.values.${check.value_key}`, {
+        ...params(check.value_params),
+        defaultValue: check.value ?? '',
+      })
+    : check.value;
+  const hint = t(`health.hints.${check.hint_key}`, {
+    ...params(check.hint_params),
+    defaultValue: check.hint,
+  });
   const linkText =
     check.status === 'not_set_up' ? t('health.setUp') : t('health.fix');
   return (
@@ -31,14 +51,14 @@ const HealthCheckRow = ({ check }: { check: HealthCheck }) => {
       <Stack flex={1} minWidth={0}>
         <Typography variant="body1">
           {t(`health.checks.${check.key}`)}
-          {check.value ? (
+          {value ? (
             <Typography component="span" color="text.secondary">
-              {` · ${check.value}`}
+              {` · ${value}`}
             </Typography>
           ) : null}
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          {check.hint}
+          {hint}
         </Typography>
       </Stack>
       {check.status !== 'pass' ? (

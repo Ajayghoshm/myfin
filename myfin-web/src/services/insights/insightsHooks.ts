@@ -20,11 +20,12 @@ export function useGetEmergencyFund() {
 export const QUERY_KEY_GET_HEALTH = 'QUERY_KEY_GET_HEALTH';
 
 /** `ym` is 'YYYY-MM'; omitted = the current month. */
-export function useGetHealth(ym?: string) {
+export function useGetHealth(ym?: string, enabled = true) {
   return useQuery({
     queryKey: [QUERY_KEY_GET_HEALTH, ym ?? 'current'],
     queryFn: async () => (await insightsServices.getHealth(ym)).data,
     placeholderData: keepPreviousData,
+    enabled,
   });
 }
 

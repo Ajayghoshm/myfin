@@ -5,6 +5,7 @@ import app from '../../src/app.js';
 import { prisma } from '../../src/config/prisma.js';
 import { MYFIN } from '../../src/consts.js';
 import AccountService from '../../src/services/accountService.js';
+import { createLoan } from '../../src/services/debts/loanService.js';
 import { updateFinancialProfile } from '../../src/services/financialProfileService.js';
 import { monthRangeIST, type YearMonth } from '../../src/services/insights/insightsPrimitives.js';
 import {
@@ -88,9 +89,11 @@ async function scenario(ctx: Awaited<ReturnType<typeof setup>>) {
     data: { name: 'Old wallet', type: MYFIN.ACCOUNT_TYPES.OTHER, description: '', status: MYFIN.ACCOUNT_STATUS.ACTIVE, exclude_from_budgets: false, current_balance: 0, users_user_id: uid },
   });
   // One open loan with a 45,000 EMI
-  const loan = await prisma.debts.create({
-    data: { users_user_id: uid, kind: 'loan', counterparty_name: 'Home loan', principal: 500_000_000n, emi: 4_500_000n, emi_day: 5, start_date: BigInt(at(JUL, 1)), status: 'open', created_at: BigInt(at(JUL, 1)) },
-  });
+  const loan = await createLoan(
+    uid,
+    { lender: 'Home loan', principal: 5_000_000, rate: 8, tenure_months: 240, emi: 45000, emi_day: 5, account_id: bank.account_id, start_date: at(JUL, 1) },
+    NOW
+  );
   return { bank, card, loan, add };
 }
 
@@ -126,7 +129,21 @@ describe('financial health score', () => {
       expect(c.status).toBe('not_set_up');
       expect(c.link).toMatch(/^\//);
       expect(c.hint.length).toBeGreaterThan(0);
+      expect(c.hint_key.length).toBeGreaterThan(0);
     }
+    expect(h.checks.find((c) => c.key === 'savings_rate')?.hint_key).toBe('savings_no_target');
+  });
+
+  test('a brand-new user: history and an ancient month store nothing', async () => {
+    const hist = await healthHistory(ctx.uid, NOW);
+    expect(hist).toHaveLength(12);
+    expect(hist.every((h) => h.total === 0 && !h.frozen)).toBe(true);
+    expect(await prisma.monthly_records.count()).toBe(0);
+    await scenario(ctx);
+    const old = await healthForMonth(ctx.uid, { year: 1990, month: 1 }, NOW);
+    expect(old).toMatchObject({ month: '1990-01', total: 0, passed: 0, frozen: false });
+    expect(old.checks.every((c) => c.status === 'not_set_up' && c.hint_key === 'no_data')).toBe(true);
+    expect(await prisma.monthly_records.count()).toBe(0);
   });
 
   test('October scenario: 3 of 6 passed', async () => {
@@ -149,6 +166,12 @@ describe('financial health score', () => {
     expect(check('fixed_costs').value).toBe('40 % of income');
     expect(check('debt_emis').value).toBe('45 % of income');
     expect(check('debt_emis').hint).toContain('40 %');
+    expect(check('debt_emis').hint_key).toBe('debt_share');
+    expect(check('debt_emis').hint_params).toEqual({ pct: 45, max: 40 });
+    expect(check('data').hint_key).toBe('data_stale');
+    expect(check('data').hint_params).toEqual({ count: 1 });
+    expect(check('data').value_key).toBe('stale');
+    expect(check('savings_rate').hint_params).toEqual({ rate: 25, target: 20 });
     expect(check('fixed_costs').hint).toContain('50 %');
     expect(check('debt_emis').link).toBe('/debts');
     expect(check('credit_cards').link).toBe('/accounts/balance-check');
@@ -160,8 +183,8 @@ describe('financial health score', () => {
     // Another card owing 5,000 at the end of September, never paid
     const card2 = await ctx.mk('Card 2', MYFIN.ACCOUNT_TYPES.CREDIT);
     await add({ type: E, amount: 5000, ym: SEP, day: 12, description: 'Shop', from: card2.account_id, to: null });
-    // Window still running on Oct 20
-    expect(byKey(await healthScore(ctx.uid, OCT, NOW)).credit_cards).toBe('pass');
+    // Card 2's window is still running on Oct 20 -> not set up (card 1 is cleared)
+    expect(byKey(await healthScore(ctx.uid, OCT, NOW)).credit_cards).toBe('not_set_up');
     // After 35 days, card 2 fails
     const later = monthRangeIST(OCT).from + 36 * DAY;
     expect(byKey(await healthScore(ctx.uid, OCT, later)).credit_cards).toBe('fail');
@@ -194,7 +217,7 @@ describe('financial health score', () => {
     expect(byKey(oct1).debt_emis).toBe('fail');
 
     // Change the data: the loan is closed, the savings target goes up
-    await prisma.debts.update({ where: { debt_id: loan.debt_id }, data: { status: 'settled' } });
+    await prisma.debts.update({ where: { debt_id: BigInt(loan.debt_id) }, data: { status: 'settled' } });
     await updateFinancialProfile(ctx.uid, { savings_target_value: 50 });
 
     const sep2 = await healthForMonth(ctx.uid, SEP, NOW);
@@ -225,9 +248,56 @@ describe('financial health score', () => {
     expect(hist[0].month).toBe('2025-11');
     expect(hist[11].month).toBe('2026-10');
     expect(hist[11].frozen).toBe(false);
-    expect(hist.slice(0, 11).every((h) => h.frozen)).toBe(true);
+    // Data starts in July: Nov-Jun are empty and unstored; Jul-Sep are frozen
+    expect(hist.slice(0, 8).every((h) => !h.frozen && h.total === 0)).toBe(true);
+    expect(hist.slice(8, 11).every((h) => h.frozen)).toBe(true);
     expect(hist[11].passed).toBe(3);
-    expect(await prisma.monthly_records.count({ where: { users_user_id: ctx.uid } })).toBe(11);
+    expect(await prisma.monthly_records.count({ where: { users_user_id: ctx.uid } })).toBe(3);
+    // A second read takes the frozen months from the store
+    expect(await healthHistory(ctx.uid, NOW)).toEqual(hist);
+  });
+
+  test('a past month freezes only from day 11 of the next month; checks up to day 10 count', async () => {
+    const { bank, card } = await scenario(ctx);
+    await prisma.accounts.deleteMany({ where: { users_user_id: ctx.uid, name: 'Old wallet' } });
+    const early = await healthForMonth(ctx.uid, SEP, at(OCT, 5));
+    expect(early.frozen).toBe(false);
+    expect(early.checks.find((c) => c.key === 'data')).toMatchObject({ status: 'pass', hint_key: 'data_ok_pending' });
+    expect(await prisma.monthly_records.count({ where: { users_user_id: ctx.uid } })).toBe(0);
+    for (const acc of [bank, card])
+      await prisma.balance_checks.create({
+        data: { accounts_account_id: acc.account_id, checked_at: BigInt(at(OCT, 8)), real_balance: 0n, myfin_balance: 0n, result: 'matched' },
+      });
+    const day11 = monthRangeIST(OCT).from + 10 * DAY;
+    expect((await healthForMonth(ctx.uid, SEP, day11 - 1)).frozen).toBe(false);
+    const frozen = await healthForMonth(ctx.uid, SEP, day11);
+    expect(frozen.frozen).toBe(true);
+    expect(frozen.checks.find((c) => c.key === 'data')).toMatchObject({ status: 'pass', hint_key: 'data_ok' });
+    const row = await prisma.monthly_records.findFirstOrThrow({ where: { users_user_id: ctx.uid } });
+    expect(Number(row.frozen_at)).toBe(day11);
+  });
+
+  test('missing balance checks fail once day 10 of the next month has passed', async () => {
+    await scenario(ctx);
+    await prisma.accounts.deleteMany({ where: { users_user_id: ctx.uid, name: 'Old wallet' } });
+    const sep = await healthForMonth(ctx.uid, SEP, monthRangeIST(OCT).from + 10 * DAY);
+    expect(sep.frozen).toBe(true);
+    expect(sep.checks.find((c) => c.key === 'data')).toMatchObject({
+      status: 'fail',
+      hint_key: 'data_unchecked',
+      hint_params: { count: 2, day: 10 },
+      value_key: 'unchecked',
+    });
+  });
+
+  test('amount-mode savings target: amount / income', async () => {
+    await scenario(ctx);
+    await updateFinancialProfile(ctx.uid, { savings_target_mode: 'amount', savings_target_value: 25000 });
+    let s = (await healthScore(ctx.uid, OCT, NOW)).checks.find((c) => c.key === 'savings_rate')!;
+    expect(s).toMatchObject({ status: 'pass', hint_params: { rate: 25, target: 25 } });
+    await updateFinancialProfile(ctx.uid, { savings_target_value: 30000 });
+    s = (await healthScore(ctx.uid, OCT, NOW)).checks.find((c) => c.key === 'savings_rate')!;
+    expect(s).toMatchObject({ status: 'fail', hint_params: { rate: 25, target: 30 } });
   });
 
   test('backup round trip keeps monthly records; bad rows are rejected (406); wipe clears them', async () => {
@@ -237,6 +307,7 @@ describe('financial health score', () => {
     });
     const baseUrl = `http://127.0.0.1:${(server!.address() as AddressInfo).port}`;
     try {
+      await scenario(ctx);
       await healthForMonth(ctx.uid, SEP, NOW);
       const before = await prisma.monthly_records.findMany({ where: { users_user_id: ctx.uid } });
       const backup = await (await fetch(`${baseUrl}/user/backup`, { headers: ctx.headers })).json();
@@ -265,10 +336,20 @@ describe('financial health score', () => {
       const hist = await (await fetch(`${baseUrl}/insights/health/history`, { headers: ctx.headers })).json();
       expect(hist).toHaveLength(12);
 
+      // Another user reads only their own (empty) month and stores nothing
+      const other = await setup('intruder');
+      const theirs = await (await fetch(`${baseUrl}/insights/health?month=2026-09`, { headers: other.headers })).json();
+      expect(theirs).toMatchObject({ total: 0, passed: 0, frozen: false });
+      expect(await prisma.monthly_records.count({ where: { users_user_id: other.uid } })).toBe(0);
+      const rows = await prisma.monthly_records.count();
+      expect((await fetch(`${baseUrl}/insights/health?month=1990-01`, { headers: ctx.headers })).status).toBe(200);
+      expect(await prisma.monthly_records.count()).toBe(rows);
+      expect(await prisma.monthly_records.count({ where: { month: 199001 } })).toBe(0);
+
       await UserService.deleteAllUserData(ctx.uid);
       expect(await prisma.monthly_records.count({ where: { users_user_id: ctx.uid } })).toBe(0);
     } finally {
       await new Promise<void>((resolve) => server!.close(() => resolve()));
     }
-  });
+  }, 60_000);
 });

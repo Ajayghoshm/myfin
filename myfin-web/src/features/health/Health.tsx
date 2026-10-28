@@ -134,8 +134,10 @@ const Health = () => {
   const monthParam = searchParams.get('month');
   const ym = isYearMonth(monthParam) ? monthParam : currentYearMonth();
 
-  const health = useGetHealth(ym);
   const history = useGetHealthHistory();
+  // The history already holds the last 12 months: only fetch an older month on its own.
+  const fromHistory = history.data?.find((h) => h.month === ym);
+  const single = useGetHealth(ym, history.isSuccess && fromHistory == null);
 
   const selectMonth = (next: string) => setSearchParams({ month: next });
 
@@ -144,7 +146,9 @@ const Health = () => {
     selectMonth(formatYearMonth(value.year(), value.month() + 1));
   };
 
-  const data = health.data;
+  const data =
+    fromHistory ?? (single.data?.month === ym ? single.data : undefined);
+  const isError = history.isError || single.isError;
   const notSetUp = data?.checks.filter((c) => c.status === 'not_set_up') ?? [];
   const counted = data?.checks.filter((c) => c.status !== 'not_set_up') ?? [];
 
@@ -171,11 +175,11 @@ const Health = () => {
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, md: 6 }}>
           <DataCard>
-            {health.isLoading ? (
+            {data == null && !isError ? (
               <Typography color="text.secondary">
                 {t('health.loading')}
               </Typography>
-            ) : health.isError || !data ? (
+            ) : data == null ? (
               <Typography color="error">
                 {t('common.somethingWentWrongTryAgain')}
               </Typography>
