@@ -301,6 +301,7 @@ model users {
   monthly_records            monthly_records[]
   events                     events[]
   event_suggestion_dismissals event_suggestion_dismissals[]
+  milestones                 milestones[]
   currency                   String                       @default("EUR")
 }
 
@@ -647,4 +648,18 @@ model event_suggestion_dismissals {
   users         users  @relation(fields: [users_user_id], references: [user_id], onDelete: Cascade)
 
   @@id([users_user_id, key])
+}
+
+/// Milestones (#21): each (user, kind, key) fires once; dismissed hides its Dashboard banner.
+model milestones {
+  milestone_id  BigInt  @id @default(autoincrement())
+  users_user_id BigInt
+  kind          String  @db.VarChar(24)
+  key           String  @db.VarChar(64)
+  achieved_at   BigInt
+  dismissed     Boolean @default(false)
+  data          Json?
+  users         users   @relation(fields: [users_user_id], references: [user_id], onDelete: Cascade)
+
+  @@unique([users_user_id, kind, key])
 }

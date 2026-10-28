@@ -28,6 +28,7 @@ import SalaryPlanCard from '../salaryPlan/SalaryPlanCard.tsx';
 import HealthScoreCard from '../health/HealthScoreCard.tsx';
 import MonthReviewCard from '../review/MonthReviewCard.tsx';
 import UpcomingCard from '../events/UpcomingCard.tsx';
+import MilestoneBanner from '../milestones/MilestoneBanner.tsx';
 
 const generateDebtIncomeDistributionChartData = (accounts: Account[]) => {
   return (
@@ -249,6 +250,9 @@ const Dashboard = () => {
 
   return (
     <Grid container spacing={2} sx={{ p: theme.spacing(2) }}>
+      <Grid size={12} sx={{ '&:empty': { display: 'none' } }}>
+        <MilestoneBanner />
+      </Grid>
       <Grid size={12}>
         <SavingsRateCard />
       </Grid>

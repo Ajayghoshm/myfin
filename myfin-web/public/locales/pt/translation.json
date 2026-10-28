@@ -80,6 +80,7 @@
     "health": "Saúde",
     "review": "Revisão do mês",
     "events": "Eventos",
+    "milestones": "Marcos",
     "tags": "Tags",
     "meta": "Meta"
   },
@@ -1793,5 +1794,27 @@
     "link": "Ligar",
     "linked": "Ligado ao evento",
     "alreadyLinked": "Esta transação já está ligada a um evento, ou a data não é uma ocorrência."
+  },
+  "milestones": {
+    "title": "Marcos",
+    "subtitle": "Conquistas que merecem ser celebradas, das mais recentes para as mais antigas",
+    "empty": "Ainda não há marcos. Aparecem aqui à medida que os atingir.",
+    "bannerTitle": "Marco atingido",
+    "dismiss": "Dispensar",
+    "seeAll": "Ver todos os marcos",
+    "label": {
+      "net_worth": "O seu património líquido ultrapassou {{amount}}",
+      "emergency_3m": "O seu fundo de emergência já cobre 3 meses de custos fixos",
+      "emergency_target_one": "O seu fundo de emergência atingiu o objetivo de {{count}} mês",
+      "emergency_target_other": "O seu fundo de emergência atingiu o objetivo de {{count}} meses",
+      "goal_funded": "Objetivo totalmente financiado: {{name}}",
+      "best_savings_month": "Melhor mês de poupança até agora: {{month}} ({{pct}} %)",
+      "savings_streak": "3 meses seguidos dentro do objetivo de poupança ({{from}} – {{month}})",
+      "health_all_pass": "Todos os controlos de saúde aprovados em {{month}}",
+      "review_streak": "Revisão de fim de mês concluída 3 meses seguidos ({{from}} – {{month}})",
+      "debt_cleared_lent": "{{name}} pagou-lhe tudo",
+      "debt_cleared_borrowed": "Pagou tudo a {{name}}",
+      "debt_cleared_loan": "Empréstimo liquidado: {{name}}"
+    }
   }
 }

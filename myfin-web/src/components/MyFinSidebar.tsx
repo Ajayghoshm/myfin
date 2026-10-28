@@ -13,6 +13,7 @@ import {
   FavoriteBorderOutlined,
   FactCheckOutlined,
   CelebrationOutlined,
+  EmojiEventsOutlined,
   HandshakeOutlined,
   BeachAccessOutlined,
   InsertChartOutlined,
@@ -35,6 +36,7 @@ import {
   ROUTE_HEALTH,
   ROUTE_REVIEW,
   ROUTE_EVENTS,
+  ROUTE_MILESTONES,
   ROUTE_INSIGHTS,
   ROUTE_YEARLY_COSTS,
   ROUTE_DEBTS,
@@ -202,6 +204,13 @@ const MyFinSidebar = () => {
           >
             {' '}
             {t('sidebar.events')}
+          </MenuItem>
+          <MenuItem
+            icon={<EmojiEventsOutlined />}
+            component={<NavLink to={ROUTE_MILESTONES} />}
+          >
+            {' '}
+            {t('sidebar.milestones')}
           </MenuItem>
           <MenuItem
             icon={<EventRepeatOutlined />}

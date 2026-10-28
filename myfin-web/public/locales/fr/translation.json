@@ -79,6 +79,7 @@
     "health": "Santé",
     "review": "Bilan du mois",
     "events": "Événements",
+    "milestones": "Étapes franchies",
     "tags": "Étiquettes",
     "meta": "Méta"
   },
@@ -1719,5 +1720,27 @@
     "link": "Lier",
     "linked": "Lié à l’événement",
     "alreadyLinked": "Cette transaction est déjà liée à un événement, ou la date n’est pas une occurrence."
+  },
+  "milestones": {
+    "title": "Étapes franchies",
+    "subtitle": "Les réussites à célébrer, des plus récentes aux plus anciennes",
+    "empty": "Aucune étape pour l’instant. Elles apparaîtront ici dès que vous les atteindrez.",
+    "bannerTitle": "Étape franchie",
+    "dismiss": "Masquer",
+    "seeAll": "Voir toutes les étapes",
+    "label": {
+      "net_worth": "Votre patrimoine net a dépassé {{amount}}",
+      "emergency_3m": "Votre fonds d’urgence couvre maintenant 3 mois de dépenses fixes",
+      "emergency_target_one": "Votre fonds d’urgence a atteint votre objectif de {{count}} mois",
+      "emergency_target_other": "Votre fonds d’urgence a atteint votre objectif de {{count}} mois",
+      "goal_funded": "Objectif entièrement financé : {{name}}",
+      "best_savings_month": "Meilleur mois d’épargne : {{month}} ({{pct}} %)",
+      "savings_streak": "3 mois d’affilée à votre objectif d’épargne ({{from}} – {{month}})",
+      "health_all_pass": "Tous les contrôles de santé réussis en {{month}}",
+      "review_streak": "Revue de fin de mois terminée 3 mois d’affilée ({{from}} – {{month}})",
+      "debt_cleared_lent": "{{name}} vous a entièrement remboursé",
+      "debt_cleared_borrowed": "Vous avez entièrement remboursé {{name}}",
+      "debt_cleared_loan": "Prêt soldé : {{name}}"
+    }
   }
 }

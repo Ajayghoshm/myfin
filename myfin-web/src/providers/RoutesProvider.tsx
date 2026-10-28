@@ -28,6 +28,7 @@ import Retirement from '../features/retirement/Retirement.tsx';
 import Health from '../features/health/Health.tsx';
 import Review from '../features/review/Review.tsx';
 import Events from '../features/events/Events.tsx';
+import Milestones from '../features/milestones/Milestones.tsx';
 
 export const ROUTE_AUTH = '/auth';
 export const ROUTE_RECOVER_PASSWORD = '/recover-password';
@@ -66,6 +67,7 @@ export const ROUTE_RETIREMENT = '/retirement';
 export const ROUTE_HEALTH = '/health';
 export const ROUTE_REVIEW = '/review';
 export const ROUTE_EVENTS = '/events';
+export const ROUTE_MILESTONES = '/milestones';
 export const ROUTE_SALARY_PLAN = '/salary-plan/:month';
 export const ROUTE_SETUP = '/setup';
 
@@ -119,6 +121,7 @@ const RoutesProvider = () => {
           <Route path={ROUTE_HEALTH} element={<Health />} />
           <Route path={ROUTE_REVIEW} element={<Review />} />
           <Route path={ROUTE_EVENTS} element={<Events />} />
+          <Route path={ROUTE_MILESTONES} element={<Milestones />} />
           <Route path={ROUTE_YEARLY_COSTS} element={<YearlyCosts />} />
           <Route path={ROUTE_DEBTS} element={<Debts />} />
           <Route path={ROUTE_RETIREMENT} element={<Retirement />} />

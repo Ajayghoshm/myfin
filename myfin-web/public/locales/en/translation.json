@@ -80,6 +80,7 @@
     "health": "Health",
     "review": "Month review",
     "events": "Events",
+    "milestones": "Milestones",
     "tags": "Tags",
     "meta": "Meta"
   },
@@ -1791,5 +1792,27 @@
     "link": "Link",
     "linked": "Linked to the event",
     "alreadyLinked": "This transaction is already linked to an event, or the date is not an occurrence."
+  },
+  "milestones": {
+    "title": "Milestones",
+    "subtitle": "Achievements worth celebrating, newest first",
+    "empty": "No milestones yet. They appear here as you reach them.",
+    "bannerTitle": "Milestone reached",
+    "dismiss": "Dismiss",
+    "seeAll": "See all milestones",
+    "label": {
+      "net_worth": "Your net worth crossed {{amount}}",
+      "emergency_3m": "Your emergency fund now covers 3 months of fixed costs",
+      "emergency_target_one": "Your emergency fund reached your target of {{count}} month",
+      "emergency_target_other": "Your emergency fund reached your target of {{count}} months",
+      "goal_funded": "Goal fully funded: {{name}}",
+      "best_savings_month": "Best savings month yet: {{month}} ({{pct}} %)",
+      "savings_streak": "3 months in a row on your savings target ({{from}} – {{month}})",
+      "health_all_pass": "Every health check passed in {{month}}",
+      "review_streak": "Month-end review completed 3 months in a row ({{from}} – {{month}})",
+      "debt_cleared_lent": "{{name}} paid you back in full",
+      "debt_cleared_borrowed": "You repaid {{name}} in full",
+      "debt_cleared_loan": "Loan cleared: {{name}}"
+    }
   }
 }

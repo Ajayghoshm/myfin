@@ -6,6 +6,7 @@ import { RestoreUserErrorCodes } from '../controllers/userController.js';
 import { validateLegacyData } from '../services/legacyValidation.js';
 import { dayStartIST } from '../services/insights/insightsPrimitives.js';
 import { EVENT_KINDS, EVENT_REPEATS } from '../services/routines/eventDates.js';
+import { MILESTONE_KINDS } from '../services/routines/milestoneKinds.js';
 import { MAX_RETIREMENT_AGE } from '../services/financialProfileService.js';
 import { ageOn } from '../services/wealth/retirementMath.js';
 import APIError from '../errorHandling/apiError.js';
@@ -127,6 +128,15 @@ export interface BackupData {
   event_suggestion_dismissals?: { key: string }[];
   /** Transaction tags (ruling E4). Absent in older backups, which then restore without tag links. */
   transaction_has_tags?: { transaction_id: bigint; tag_id: bigint }[];
+  /** Milestones (#21). goal_funded / debt_cleared keys (and data ids) are goal / debt ids. Absent in older backups. */
+  milestones?: {
+    milestone_id: bigint;
+    kind: string;
+    key: string;
+    achieved_at: bigint | number | string;
+    dismissed: boolean;
+    data: unknown;
+  }[];
   /** Debts (lent, borrowed, loans). Absent in older backups. */
   debts?: {
     debt_id: bigint;
@@ -423,6 +433,11 @@ class BackupManager {
           orderBy: [{ tags_tag_id: 'asc' }, { transactions_transaction_id: 'asc' }],
         })
       ).map((l) => ({ transaction_id: l.transactions_transaction_id, tag_id: l.tags_tag_id })),
+      milestones: await dbClient.milestones.findMany({
+        where: { users_user_id: userId },
+        select: { milestone_id: true, kind: true, key: true, achieved_at: true, dismissed: true, data: true },
+        orderBy: { milestone_id: 'asc' },
+      }),
       financial_profile: await dbClient.user_financial_profile
         .findUnique({
           where: { users_user_id: userId },
@@ -772,6 +787,26 @@ class BackupManager {
     const eventDismissals = data.event_suggestion_dismissals ?? [];
     for (const d of eventDismissals) {
       if (!isKey(d?.key)) throw badEvent('Event suggestion dismissal');
+    }
+    const milestones = data.milestones ?? [];
+    const milestoneKeys = new Set<string>();
+    for (const m of milestones) {
+      const unique = `${m?.kind}:${m?.key}`;
+      if (
+        !(MILESTONE_KINDS as readonly string[]).includes(m?.kind) ||
+        typeof m.key !== 'string' ||
+        m.key.length === 0 ||
+        m.key.length > 64 ||
+        !/^\d+$/.test(String(m.achieved_at)) ||
+        typeof m.dismissed !== 'boolean' ||
+        (m.data != null && typeof m.data !== 'object') ||
+        milestoneKeys.has(unique) ||
+        (m.kind === 'goal_funded' && !goalIdsInBackup.has(m.key)) ||
+        (m.kind === 'debt_cleared' && !debtIdsInBackup.has(m.key))
+      ) {
+        throw APIError.notAcceptable('Milestone not recognized in backup', RestoreUserErrorCodes.MalformedBackup);
+      }
+      milestoneKeys.add(unique);
     }
 
     // Delete all previous records
@@ -1451,6 +1486,36 @@ class BackupManager {
           skipDuplicates: true,
         });
       }
+    }
+    // endregion
+
+    // region Milestones (goal and debt ids remapped in the key and in data)
+    if (milestones.length > 0) {
+      const goalIdByText = new Map<string, bigint>();
+      for (const [oldId, newId] of goalIdMap) goalIdByText.set(String(oldId), newId);
+      const restored = milestones.flatMap((m) => {
+        const map = m.kind === 'goal_funded' ? goalIdByText : m.kind === 'debt_cleared' ? debtIdMap : null;
+        let key = m.key;
+        let json = (m.data ?? null) as Record<string, unknown> | null;
+        if (map) {
+          const newId = map.get(m.key);
+          if (newId == null) return [];
+          key = newId.toString();
+          const idField = m.kind === 'goal_funded' ? 'goal_id' : 'debt_id';
+          json = { ...(json ?? {}), [idField]: key };
+        }
+        return [
+          {
+            users_user_id: userId,
+            kind: m.kind,
+            key,
+            achieved_at: BigInt(m.achieved_at),
+            dismissed: m.dismissed,
+            ...(json != null ? { data: json as Prisma.InputJsonValue } : {}),
+          },
+        ];
+      });
+      await dbClient.milestones.createMany({ data: restored, skipDuplicates: true });
     }
     // endregion
 

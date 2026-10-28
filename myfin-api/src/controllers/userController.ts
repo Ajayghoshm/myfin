@@ -225,6 +225,7 @@ const restoreUserSchema = joi.object({
   event_occurrence_transactions: joi.array().items(joi.object().pattern(joi.string(), joi.any())).optional(),
   event_suggestion_dismissals: joi.array().items(joi.object().pattern(joi.string(), joi.any())).optional(),
   transaction_has_tags: joi.array().items(joi.object().pattern(joi.string(), joi.any())).optional(),
+  milestones: joi.array().items(joi.object().pattern(joi.string(), joi.any())).optional(),
   debt_payments: joi.array().items(joi.object().pattern(joi.string(), joi.any())).optional(),
   financial_profile: joi.object().pattern(joi.string(), joi.any()).allow(null).optional(),
 });

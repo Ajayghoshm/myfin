@@ -7,6 +7,7 @@ import CategoryController from '../controllers/categoryController.js';
 import DebtController from '../controllers/debtController.js';
 import LegacyController from '../controllers/legacyController.js';
 import LoanController from '../controllers/loanController.js';
+import MilestoneController from '../controllers/milestoneController.js';
 import EntityController from '../controllers/entityController.js';
 import EventController from '../controllers/eventController.js';
 import RetirementController from '../controllers/retirementController.js';
@@ -147,6 +148,17 @@ export const routeGroups: RouteGroup[] = [
       },
       { method: 'put', path: '/:id', handlerName: 'updateEvent' },
       { method: 'delete', path: '/:id', handlerName: 'deleteEvent' },
+    ],
+  },
+  {
+    tag: 'Milestones',
+    basePath: '/milestones',
+    controller: MilestoneController as ControllerModule,
+    controllerSourceBaseUrl: new URL('../controllers/milestoneController', import.meta.url).href,
+    routes: [
+      { method: 'get', path: '/', handlerName: 'getMilestones' },
+      { method: 'post', path: '/evaluate', handlerName: 'evaluateMilestones' },
+      { method: 'post', path: '/:id/dismiss', handlerName: 'dismissMilestone' },
     ],
   },
   {
