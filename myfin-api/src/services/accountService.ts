@@ -210,7 +210,7 @@ class AccountService {
         profile?.savings_target_account_id === accountObj.account_id
       )
         throw APIError.badRequest(
-          'An investment, credit card or loan account cannot be earmarked (emergency, sinking fund or savings target).'
+          'An investment, credit card or loan account cannot be earmarked (emergency, sinking fund, savings target or retirement). Remove the earmark first.'
         );
     } else if (accountObj.new_is_emergency_fund === true) {
       await assertEarmarkAllowed(userId, accountObj.account_id, 'emergency', prisma, {

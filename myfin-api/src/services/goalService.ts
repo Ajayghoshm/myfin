@@ -4,7 +4,7 @@ import APIError from '../errorHandling/apiError.js';
 import ConvertUtils from '../utils/convertUtils.js';
 import { getFinancialProfile } from './financialProfileService.js';
 import { monthRangeIST, type YearMonth } from './insights/insightsPrimitives.js';
-import { investValuesAt } from './wealth/netWorthService.js';
+import { investValuesByAssetAt } from './wealth/netWorthService.js';
 
 const IST_OFFSET_SECONDS = 19_800;
 const SIP_WINDOW_MONTHS = 6;
@@ -104,15 +104,16 @@ const wholeMonthsBetween = (now: number, due: number): number => {
   return months;
 };
 
-/** Latest market value (currency) per asset. */
+/** Latest market value (currency) per asset, in one query. */
 async function assetValues(userId: bigint, assetIds: bigint[], now: number): Promise<Map<string, number>> {
-  const entries = await Promise.all(
-    [...new Set(assetIds)].map(async (id) => {
-      const [cents] = await investValuesAt(userId, [now + 1], [id]);
-      return [id.toString(), ConvertUtils.convertBigIntegerToFloat(BigInt(Math.round(cents)))] as const;
-    })
+  const ids = [...new Set(assetIds)];
+  const byAsset = await investValuesByAssetAt(userId, [now + 1], ids);
+  return new Map(
+    ids.map((id) => [
+      id.toString(),
+      ConvertUtils.convertBigIntegerToFloat(BigInt(Math.round(byAsset.get(id.toString())?.[0] ?? 0))),
+    ])
   );
-  return new Map(entries);
 }
 
 class GoalService {
@@ -166,33 +167,47 @@ class GoalService {
         ...(excludeGoalId === null ? {} : { goals_goal_id: { not: excludeGoalId } }),
       },
     });
+    // This goal's links as stored, so a save that keeps them (rename, archive...) is not blocked
+    // when the asset's value has dropped since they were set.
+    const own =
+      excludeGoalId === null
+        ? []
+        : await dbClient.goal_has_asset.findMany({
+            where: { invest_assets_asset_id: { in: assetIds }, goals_goal_id: excludeGoalId },
+          });
+    const sumOf = (links: Array<{ type: string; value: number }>, type: string) =>
+      links.filter((l) => l.type === type).reduce((total, l) => total + l.value, 0);
 
     // Concurrency: this read-then-write check is not locked. MyFin is single-user per account, and
     // if two requests ever race, funding is clamped on read (see applyAssetFunding), so an
     // over-allocation can never inflate a goal.
     for (const asset of assets) {
       const value = values.get(asset.asset_id.toString()) ?? 0;
+      const mine = fundingAssets
+        .filter((fa) => BigInt(fa.asset_id) === asset.asset_id)
+        .map((fa) => ({ type: fa.funding_type as string, value: fa.funding_amount }));
+      const stored = own
+        .filter((o) => o.invest_assets_asset_id === asset.asset_id)
+        .map((o) => ({ type: o.match_type, value: Number(o.match_value) }));
       const links = [
         ...others
           .filter((o) => o.invest_assets_asset_id === asset.asset_id)
           .map((o) => ({ type: o.match_type, value: Number(o.match_value) })),
-        ...fundingAssets
-          .filter((fa) => BigInt(fa.asset_id) === asset.asset_id)
-          .map((fa) => ({ type: fa.funding_type as string, value: fa.funding_amount })),
+        ...mine,
       ];
-      const relative = links
-        .filter((l) => l.type === MYFIN.GOALS.MATCH_TYPE.RELATIVE)
-        .reduce((total, l) => total + l.value, 0);
-      const absolute = links
-        .filter((l) => l.type === MYFIN.GOALS.MATCH_TYPE.ABSOLUTE)
-        .reduce((total, l) => total + l.value, 0);
+      const relative = sumOf(links, MYFIN.GOALS.MATCH_TYPE.RELATIVE);
+      const absolute = sumOf(links, MYFIN.GOALS.MATCH_TYPE.ABSOLUTE);
+      // The value limit applies only when this save adds a link or raises a configured amount.
+      const grows = [MYFIN.GOALS.MATCH_TYPE.RELATIVE, MYFIN.GOALS.MATCH_TYPE.ABSOLUTE].some(
+        (type) => sumOf(mine, type) > sumOf(stored, type) + 1e-9
+      );
 
       if (relative > 100 + 1e-9) {
         throw APIError.badRequest(
           `Asset "${asset.name}" is over-allocated: the percentage shares across goals would add up to ${relative}%, above 100%`
         );
       }
-      if ((relative * value) / 100 + absolute > value + EPSILON) {
+      if (grows && (relative * value) / 100 + absolute > value + EPSILON) {
         throw APIError.badRequest(
           `Asset "${asset.name}" is over-allocated: the goals' shares would add up to more than its current value of ${value.toFixed(2)}`
         );

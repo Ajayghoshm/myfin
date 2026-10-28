@@ -4,6 +4,8 @@ import { prisma } from '../config/prisma.js';
 import { MYFIN } from '../consts.js';
 import { RestoreUserErrorCodes } from '../controllers/userController.js';
 import { validateLegacyData } from '../services/legacyValidation.js';
+import { MAX_RETIREMENT_AGE } from '../services/financialProfileService.js';
+import { ageOn } from '../services/wealth/retirementMath.js';
 import APIError from '../errorHandling/apiError.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import AccountService from '../services/accountService.js';
@@ -143,6 +145,45 @@ export interface BackupData {
     family_support_years?: number;
   } | null;
 }
+
+/** A backup number: a JSON number or numeric string; undefined when absent (null/undefined), NaN when malformed. */
+function backupNumber(v: unknown): number | undefined {
+  if (v === null || v === undefined) return undefined;
+  if (typeof v === 'number') return v;
+  if (typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v.trim())) return Number(v);
+  if (typeof v === 'object' && typeof (v as { toString(): string }).toString === 'function') {
+    const text = String(v);
+    if (/^-?\d+(\.\d+)?$/.test(text)) return Number(text);
+  }
+  return Number.NaN;
+}
+
+/** Absent, or a finite number in [min, max] (integer when `integer`). */
+const inRange = (v: unknown, min: number, max: number, integer = false) => {
+  const n = backupNumber(v);
+  return n === undefined || (Number.isFinite(n) && n >= min && n <= max && (!integer || Number.isInteger(n)));
+};
+
+/** Absent, or whole non-negative cents (number or string). */
+const isCents = (v: unknown) => v === null || v === undefined || /^\d+$/.test(String(v));
+
+/** Retirement and planning fields of a backed-up financial profile, with the profile API's ranges. */
+function validProfileExtras(p: NonNullable<BackupData['financial_profile']>): boolean {
+  return (
+    inRange(p.expected_return_pct, 0, 30) &&
+    inRange(p.inflation_pct, 0, 20) &&
+    inRange(p.swr_pct, 1, 10) &&
+    inRange(p.retirement_age, 1, MAX_RETIREMENT_AGE, true) &&
+    inRange(p.family_support_years, 0, 60, true) &&
+    (p.date_of_birth == null || (typeof p.date_of_birth === 'string' && ageOn(p.date_of_birth, nowSeconds()) !== null)) &&
+    (p.retirement_spending_basis == null || p.retirement_spending_basis === 'all' || p.retirement_spending_basis === 'fixed') &&
+    isCents(p.family_support_monthly) &&
+    isCents(p.savings_target_value) &&
+    isCents(p.small_spend_cutoff)
+  );
+}
+
+const nowSeconds = () => Math.floor(Date.now() / 1000);
 
 class BackupManager {
   static async createBackup(userId: bigint, dbClient = prisma): Promise<BackupData> {
@@ -425,18 +466,35 @@ class BackupManager {
       }
     }
 
-    // Validate financial profile before wiping anything
+    // Validate financial profile before wiping anything (same ranges as the profile API)
     const profile = data.financial_profile ?? null;
     if (
       profile !== null &&
       (!Number.isInteger(profile.salary_cutoff_day) ||
         profile.salary_cutoff_day < 1 ||
-        profile.salary_cutoff_day > 28)
+        profile.salary_cutoff_day > 28 ||
+        !validProfileExtras(profile))
     ) {
       throw APIError.notAcceptable(
         'Financial profile not recognized in backup',
         RestoreUserErrorCodes.MalformedBackup
       );
+    }
+
+    // Validate goal asset links before wiping anything
+    const goalIdsInBackup = new Set((data.goals ?? []).map((g) => String(g.goal_id)));
+    const assetIdsInBackup = new Set((data.invest_assets ?? []).map((a) => String(a.asset_id)));
+    for (const link of data.goal_has_assets ?? []) {
+      const value = backupNumber(link?.match_value);
+      if (
+        !goalIdsInBackup.has(String(link?.goals_goal_id)) ||
+        !assetIdsInBackup.has(String(link?.invest_assets_asset_id)) ||
+        (link.match_type !== MYFIN.GOALS.MATCH_TYPE.RELATIVE && link.match_type !== MYFIN.GOALS.MATCH_TYPE.ABSOLUTE) ||
+        value === undefined ||
+        !(value >= 0)
+      ) {
+        throw APIError.notAcceptable('Goal asset link not recognized in backup', RestoreUserErrorCodes.MalformedBackup);
+      }
     }
 
     // Validate yearly costs and dismissals before wiping anything

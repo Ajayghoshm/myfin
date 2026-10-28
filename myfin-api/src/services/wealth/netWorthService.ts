@@ -1,7 +1,7 @@
 import { Prisma } from '../../generated/prisma/client.js';
 import { prisma } from '../../config/prisma.js';
 import { MYFIN } from '../../consts.js';
-import { peopleTotals } from '../debts/debtService.js';
+import { peopleTotalsAt } from '../debts/debtService.js';
 import { countsForAnalyticsSql, formatYearMonth, writeOffRowSql } from '../insights/analyticsRules.js';
 import { IST_OFFSET_SECONDS, type YearMonth, monthRangeIST, shiftMonth } from '../insights/insightsPrimitives.js';
 import { ownershipSql } from '../insights/typicalMonth.js';
@@ -80,7 +80,7 @@ const bucketSql = (column: Prisma.Sql, boundaries: number[]) =>
  * Balance (cents) of each account at each boundary, from its transactions dated < boundary, with the
  * arithmetic of balance recalculation: an expense, or a transfer out, subtracts; anything else adds.
  */
-async function balancesAt(accountIds: bigint[], boundaries: number[]): Promise<Map<string, number[]>> {
+export async function balancesAt(accountIds: bigint[], boundaries: number[]): Promise<Map<string, number[]>> {
   const out = new Map<string, number[]>(accountIds.map((id) => [id.toString(), boundaries.map(() => 0)]));
   if (accountIds.length === 0) return out;
   const last = boundaries[boundaries.length - 1];
@@ -109,9 +109,14 @@ async function balancesAt(accountIds: bigint[], boundaries: number[]): Promise<M
   return out;
 }
 
-/** Σ invest asset values (cents) at each boundary; `assetIds` limits it to those assets. */
-export async function investValuesAt(userId: bigint, boundaries: number[], assetIds?: bigint[]): Promise<number[]> {
-  if (assetIds && assetIds.length === 0) return boundaries.map(() => 0);
+/** Invest asset values (cents) per asset at each boundary; `assetIds` limits it to those assets. */
+export async function investValuesByAssetAt(
+  userId: bigint,
+  boundaries: number[],
+  assetIds?: bigint[]
+): Promise<Map<string, number[]>> {
+  const out = new Map<string, number[]>();
+  if (assetIds && assetIds.length === 0) return out;
   const only = assetIds ? Prisma.sql`AND a.asset_id IN (${Prisma.join(assetIds)})` : Prisma.empty;
   const maxIdx = Math.max(...boundaries.map(monthIdxBefore));
   const snaps = await prisma.$queryRaw<Array<{ asset_id: bigint; year: number; month: number; current_value: bigint }>>`
@@ -126,17 +131,29 @@ export async function investValuesAt(userId: bigint, boundaries: number[], asset
     list.push({ idx: Number(s.year) * 12 + Number(s.month) - 1, cents: Number(s.current_value) });
     byAsset.set(s.asset_id.toString(), list);
   }
-  return boundaries.map((b) => {
-    const idx = monthIdxBefore(b);
+  for (const [id, list] of byAsset) {
+    out.set(
+      id,
+      boundaries.map((b) => {
+        const idx = monthIdxBefore(b);
+        let value = 0;
+        for (const s of list) {
+          if (s.idx > idx) break;
+          value = s.cents;
+        }
+        return value;
+      })
+    );
+  }
+  return out;
+}
+
+/** Σ invest asset values (cents) at each boundary; `assetIds` limits it to those assets. */
+export async function investValuesAt(userId: bigint, boundaries: number[], assetIds?: bigint[]): Promise<number[]> {
+  const byAsset = await investValuesByAssetAt(userId, boundaries, assetIds);
+  return boundaries.map((_, k) => {
     let total = 0;
-    for (const list of byAsset.values()) {
-      let value = 0;
-      for (const s of list) {
-        if (s.idx > idx) break;
-        value = s.cents;
-      }
-      total += value;
-    }
+    for (const series of byAsset.values()) total += series[k];
     return total;
   });
 }
@@ -158,7 +175,7 @@ async function totalsAt(userId: bigint, accounts: AccountRow[], boundaries: numb
       boundaries
     ),
     investValuesAt(userId, boundaries),
-    Promise.all(boundaries.map((b) => peopleTotals(userId, b))),
+    peopleTotalsAt(userId, boundaries),
   ]);
   const totals = boundaries.map((_, k) => {
     let sum = invest[k] + people[k].owedToYouCents - people[k].youOweCents;

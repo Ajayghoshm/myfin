@@ -105,7 +105,8 @@ export async function policySuggestions(
     SELECT ${payeeKeySql} AS payee_key, transactions.amount AS amount, transactions.date_timestamp AS date_timestamp
     ${ownershipSql(userId)}
       AND transactions.type = 'E'
-      AND ${payeeKeySql} REGEXP 'INSURANCE|LIFE|HEALTH|POLICY|ASSURANCE|\\bLIC\\b'
+      -- coarse prefilter only: a word-boundary escape would turn into a backspace inside the MySQL string literal, so INSURER_WORDS enforces the boundary in JS
+      AND ${payeeKeySql} REGEXP 'INSURANCE|LIFE|HEALTH|POLICY|ASSURANCE|LIC'
       AND ${countsForAnalyticsSql}
       AND transactions.date_timestamp >= ${from}
     ORDER BY transactions.date_timestamp DESC, transactions.transaction_id DESC`;

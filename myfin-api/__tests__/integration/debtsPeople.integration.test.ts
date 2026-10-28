@@ -13,6 +13,7 @@ import {
   deleteRepayment,
   listDebts,
   peopleTotals,
+  peopleTotalsAt,
   repaymentSuggestions,
 } from '../../src/services/debts/debtService.js';
 import { getMonthInsights } from '../../src/services/insights/insightsService.js';
@@ -162,6 +163,15 @@ describe('debts: people (lent / borrowed)', () => {
     expect(debts[0]).toMatchObject({ kind: 'borrowed', counterparty_key: 'AMIT KUMAR', outstanding: 10000 });
     expect(await peopleTotals(ctx.uid, NOW)).toEqual({ owedToYouCents: 0, youOweCents: 1_000_000 });
     expect(await peopleTotals(ctx.uid, at(OCT, 2))).toEqual({ owedToYouCents: 0, youOweCents: 0 });
+    // Batched per boundary (net worth trend): a repayment on 10 Oct counts from the next boundary on
+    const debt = (await listDebts(ctx.uid, NOW)).debts[0];
+    await addRepayment(ctx.uid, BigInt(debt.debt_id), { amount: 4000, date: at(OCT, 10) });
+    expect(await peopleTotalsAt(ctx.uid, [at(OCT, 2), at(OCT, 5), at(OCT, 11), NOW])).toEqual([
+      { owedToYouCents: 0, youOweCents: 0 },
+      { owedToYouCents: 0, youOweCents: 1_000_000 },
+      { owedToYouCents: 0, youOweCents: 600_000 },
+      { owedToYouCents: 0, youOweCents: 600_000 },
+    ]);
   });
 
   test('a past due date makes an unsettled entry overdue', async () => {
@@ -435,6 +445,29 @@ describe('debts: people (lent / borrowed)', () => {
     expect((await currentSalaryPlan(ctx.uid, NOW)).state).not.toBe('none');
     await createPeopleDebt(ctx.uid, { kind: 'borrowed', name: 'Amit', transaction_id: Number(row.transaction_id) });
     expect((await currentSalaryPlan(ctx.uid, NOW)).state).toBe('none');
+  });
+
+  test("deleting a lend/borrow origin transaction gives 400 (ruling D7); deleting the entry first works", async () => {
+    const paid = await ctx.add(E, 'PAID TO RAHUL', 5000, 5);
+    const debt = await createPeopleDebt(ctx.uid, { kind: 'lent', name: 'Rahul', transaction_id: Number(paid) });
+    await expectThrowErrorCode(() => TransactionService.deleteTransaction(ctx.uid, Number(paid)), 400);
+    expect(await prisma.transactions.count({ where: { transaction_id: paid } })).toBe(1);
+    await deleteDebt(ctx.uid, BigInt(debt.debt_id));
+    await TransactionService.deleteTransaction(ctx.uid, Number(paid));
+    expect(await prisma.transactions.count({ where: { transaction_id: paid } })).toBe(0);
+  });
+
+  test("a salary plan's salary transaction cannot become a debt or repayment", async () => {
+    const salary = await ctx.add(I, 'SALARY ACME', 40000, 1);
+    await prisma.salary_plans.create({
+      data: { users_user_id: ctx.uid, month: 202610, salary_transaction_id: salary, salary_amount: 4000000n, buckets: [], created_at: 1n },
+    });
+    await expectThrowErrorCode(
+      () => createPeopleDebt(ctx.uid, { kind: 'borrowed', name: 'Acme', transaction_id: Number(salary) }),
+      400
+    );
+    const lent = await createPeopleDebt(ctx.uid, { kind: 'lent', name: 'Acme', amount: 1000, date: at(OCT, 1) });
+    await expectThrowErrorCode(() => addRepayment(ctx.uid, BigInt(lent.debt_id), { transaction_id: Number(salary) }), 400);
   });
 
   test('restore refuses an unknown debt_role with 406', async () => {

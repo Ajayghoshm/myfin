@@ -6,7 +6,7 @@ import ConvertUtils from '../../utils/convertUtils.js';
 import AccountService from '../accountService.js';
 import { ownershipSql } from '../insights/typicalMonth.js';
 import TransactionService from '../transactionService.js';
-import { nameKey, refreshDebtStatus } from './debtService.js';
+import { assertNotSalaryPlanSalary, nameKey, refreshDebtStatus } from './debtService.js';
 import {
   type AccountRecalcs,
   addRecalc,
@@ -35,6 +35,8 @@ const DAY = 86_400;
 export const MISSED_AFTER_DAYS = 5;
 /** A debit matches an EMI when within this many cents of it (±₹1). */
 export const MATCH_TOLERANCE_CENTS = 100;
+/** A debit matched to an installment must be dated within this many days of it. */
+const MATCH_WINDOW_DAYS = 45;
 /** Suggestions look this many days either side of an installment date. */
 const SUGGESTION_WINDOW_DAYS = 10;
 const INTEREST_CATEGORY_NAME = 'Loan interest';
@@ -145,23 +147,22 @@ function installment(debt: DebtRow, n: number) {
   return row;
 }
 
-async function interestCategory(userId: bigint, tx: Tx) {
-  const found = await tx.categories.findFirst({
-    where: { users_user_id: userId, name: INTEREST_CATEGORY_NAME, type: MYFIN.TRX_TYPES.EXPENSE },
-  });
+/**
+ * Finds or creates the user's "Loan interest" category. Runs outside the match transaction, in its
+ * own autocommit statements: under REPEATABLE READ a re-find inside the transaction would not see a
+ * row a concurrent request committed after the snapshot, so a P2002 there could not recover.
+ */
+export async function interestCategory(userId: bigint) {
+  const where = { users_user_id: userId, name: INTEREST_CATEGORY_NAME, type: MYFIN.TRX_TYPES.EXPENSE };
+  const found = await prisma.categories.findFirst({ where });
   if (found) return found.category_id;
   try {
-    const created = await tx.categories.create({
-      data: { users_user_id: userId, name: INTEREST_CATEGORY_NAME, type: MYFIN.TRX_TYPES.EXPENSE },
-    });
+    const created = await prisma.categories.create({ data: where });
     return created.category_id;
   } catch (err) {
     // Another request created it first (unique user/type/name): use that one
     if ((err as { code?: string })?.code !== 'P2002') throw err;
-    const again = await tx.categories.findFirstOrThrow({
-      where: { users_user_id: userId, name: INTEREST_CATEGORY_NAME, type: MYFIN.TRX_TYPES.EXPENSE },
-    });
-    return again.category_id;
+    return (await prisma.categories.findFirstOrThrow({ where })).category_id;
   }
 }
 
@@ -351,18 +352,30 @@ export async function createLoan(userId: bigint, input: LoanInput, now: number =
   return getLoan(userId, debtId, now);
 }
 
-/** Account names are unique per user: "<lender>", else "<lender> loan", "<lender> loan 2", … */
+/** accounts.name is VARCHAR(255). */
+const ACCOUNT_NAME_MAX = 255;
+const LONGEST_SUFFIX = ' loan 999'.length;
+
+/**
+ * Account names are unique per user: "<lender>", else "<lender> loan", "<lender> loan 2", …
+ * A long lender is shortened so that every candidate fits the account name column.
+ */
 async function freeAccountName(userId: bigint, lender: string, tx: Tx) {
+  const base =
+    lender.length + LONGEST_SUFFIX > ACCOUNT_NAME_MAX
+      ? lender.slice(0, ACCOUNT_NAME_MAX - LONGEST_SUFFIX).trimEnd()
+      : lender;
   const taken = new Set(
     (
       await tx.accounts.findMany({
-        where: { users_user_id: userId, name: { startsWith: lender } },
+        where: { users_user_id: userId, name: { startsWith: base } },
         select: { name: true },
       })
     ).map((a) => a.name.toLowerCase())
   );
-  const candidates = [lender, `${lender} loan`];
-  for (let i = 2; i < 1000; i++) candidates.push(`${lender} loan ${i}`);
+  const candidates = lender.length <= ACCOUNT_NAME_MAX ? [lender] : [];
+  candidates.push(`${base} loan`);
+  for (let i = 2; i < 1000; i++) candidates.push(`${base} loan ${i}`);
   const name = candidates.find((c) => !taken.has(c.toLowerCase()));
   if (!name) throw APIError.badRequest('Pick a different lender name.');
   return name;
@@ -376,6 +389,7 @@ async function linkDisbursementInTx(userId: bigint, debtId: bigint, transactionI
   if (rows.length === 0) throw APIError.notAuthorized();
   if (rows[0].type !== MYFIN.TRX_TYPES.INCOME || Number(rows[0].is_adjustment) === 1)
     throw APIError.badRequest('Only an income can be the loan disbursement.');
+  await assertNotSalaryPlanSalary(transactionId, tx);
   const { count } = await tx.transactions.updateMany({
     where: { transaction_id: transactionId, debt_id: null, yearly_cost_id: null },
     data: { debt_id: debtId, debt_role: 'disbursement' },
@@ -438,7 +452,7 @@ export async function installmentCandidates(userId: bigint, debtId: bigint, n: n
   const debt = await ownedLoan(userId, debtId);
   const row = installment(debt, n);
   const at = dateEpoch(row.date);
-  const window = 45 * DAY;
+  const window = MATCH_WINDOW_DAYS * DAY;
   const rows = await prisma.$queryRaw<
     Array<{ transaction_id: bigint; description: string | null; amount: bigint; date_timestamp: bigint }>
   >`SELECT transactions.transaction_id, transactions.description, transactions.amount, transactions.date_timestamp
@@ -475,6 +489,8 @@ export async function matchInstallment(
   now: number = nowSeconds()
 ): Promise<Loan> {
   const trxId = BigInt(transactionId);
+  await ownedLoan(userId, debtId);
+  const categoryId = await interestCategory(userId);
   await prisma.$transaction(
     async (tx) => {
       const debt = await lockLoan(userId, debtId, tx);
@@ -496,10 +512,14 @@ export async function matchInstallment(
       const original = Number(trx.amount);
       if (Math.abs(original - row.emi) > MATCH_TOLERANCE_CENTS)
         throw APIError.badRequest('The amount must be within ₹1 of the EMI.');
+      // Same window as installmentCandidates
+      const due = dateEpoch(row.date);
+      const paidOn = Number(trx.date_timestamp);
+      if (paidOn < due - MATCH_WINDOW_DAYS * DAY || paidOn > due + (MATCH_WINDOW_DAYS + 1) * DAY)
+        throw APIError.badRequest(`The debit must be within ${MATCH_WINDOW_DAYS} days of the installment date.`);
 
       const principalPart = Math.min(row.principal, original);
       const interestPart = original - principalPart;
-      const categoryId = await interestCategory(userId, tx);
       // Conditional: fails if another request linked this row first
       const { count } = await tx.transactions.updateMany({
         where: { transaction_id: trxId, debt_id: null, yearly_cost_id: null },
@@ -775,6 +795,8 @@ export async function deleteLoan(userId: bigint, debtId: bigint): Promise<void> 
           );
         await tx.balances_snapshot.deleteMany({ where: { accounts_account_id: loanAccountId } });
         await tx.balance_checks.deleteMany({ where: { accounts_account_id: loanAccountId } });
+        // As when an account is deleted: its legacy-file entry goes with it
+        await tx.legacy_entries.deleteMany({ where: { account_id: loanAccountId, kind: 'account' } });
         await tx.accounts.delete({ where: { account_id: loanAccountId } });
       }
       await recalcAccounts(userId, recalcs, tx, loanAccountId != null ? [loanAccountId] : []);

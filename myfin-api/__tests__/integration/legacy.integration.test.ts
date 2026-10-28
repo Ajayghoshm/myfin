@@ -134,6 +134,20 @@ describe('legacy file', () => {
     expect((await get()).suggestions).toEqual([]);
   });
 
+  test('suggests LIC as a whole word (word boundary works in SQL)', async () => {
+    for (const description of ['Paid to LIC PREMIUM', 'Paid to RELIC STORE']) {
+      await TransactionService.createTransaction(ctx.uid, {
+        account_from_id: ctx.bank.account_id,
+        amount: 900,
+        type: E,
+        description,
+        date_timestamp: NOW - 86400,
+        is_essential: false,
+      } as never);
+    }
+    expect((await get()).suggestions).toEqual([{ payee_key: 'LIC PREMIUM', last_amount: 900, last_date: expect.any(Number) }]);
+  });
+
   test('includes live loans and people debts', async () => {
     await createLoan(ctx.uid, {
       lender: 'HDFC',

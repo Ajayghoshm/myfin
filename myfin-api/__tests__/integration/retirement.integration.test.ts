@@ -3,6 +3,7 @@ import { prisma } from '../../src/config/prisma.js';
 import { MYFIN } from '../../src/consts.js';
 import { monthRangeIST, type YearMonth } from '../../src/services/insights/insightsPrimitives.js';
 import { getFinancialProfile, updateFinancialProfile } from '../../src/services/financialProfileService.js';
+import AccountService from '../../src/services/accountService.js';
 import TransactionService from '../../src/services/transactionService.js';
 import UserService from '../../src/services/userService.js';
 import { getRetirement, saveWhatIf } from '../../src/services/wealth/retirementService.js';
@@ -70,7 +71,20 @@ async function setup() {
     });
     return a;
   };
-  return { uid, mkAcc, addSpending, asset };
+  /** An income (positive) or expense (negative) on `account`, dated `date`. */
+  const move = (account: { account_id: bigint }, amount: number, date: number) =>
+    TransactionService.createTransaction(uid, {
+      account_from_id: amount < 0 ? account.account_id : null,
+      account_to_id: amount < 0 ? null : account.account_id,
+      amount: Math.abs(amount),
+      date_timestamp: date,
+      description: 'Move',
+      entity_id: null,
+      is_essential: false,
+      tags: [],
+      type: amount < 0 ? E : MYFIN.TRX_TYPES.INCOME,
+    } as never);
+  return { uid, mkAcc, addSpending, asset, move };
 }
 
 describe('retirement calculator', () => {
@@ -108,7 +122,8 @@ describe('retirement calculator', () => {
     await expectThrowErrorCode(() => updateFinancialProfile(ctx.uid, { date_of_birth: '1996-02-31' }), 400);
     await expectThrowErrorCode(() => updateFinancialProfile(ctx.uid, { retirement_age: 81 }), 400);
     await expectThrowErrorCode(() => updateFinancialProfile(ctx.uid, { inflation_pct: 25 }), 400);
-    await updateFinancialProfile(ctx.uid, { date_of_birth: '1966-01-01' });
+    await expectThrowErrorCode(() => updateFinancialProfile(ctx.uid, { date_of_birth: '1966-01-01' }), 400); // age 60 = retirement age 60
+    await updateFinancialProfile(ctx.uid, { date_of_birth: '1966-01-01', retirement_age: 70 });
     await expectThrowErrorCode(() => updateFinancialProfile(ctx.uid, { retirement_age: 50 }), 400);
   });
 
@@ -134,25 +149,126 @@ describe('retirement calculator', () => {
     await expectThrowErrorCode(() => saveWhatIf(ctx.uid, { retirementAge: 29 }, NOW), 400);
   });
 
-  test('corpus counts ticked accounts (negatives as 0) and assets at value, never INVAC balances', async () => {
+  test('corpus counts active ticked accounts at their balance as of now (negatives as 0) and assets at value, never INVAC balances', async () => {
     await ctx.addSpending();
-    const a = await ctx.mkAcc('Savings', 50000, MYFIN.ACCOUNT_TYPES.SAVINGS);
-    const neg = await ctx.mkAcc('Overdrawn', -3000);
+    const past = monthRangeIST(OCT).from + 10 * DAY;
+    const a = await ctx.mkAcc('Savings', 0, MYFIN.ACCOUNT_TYPES.SAVINGS);
+    await ctx.move(a, 50000, past);
+    await ctx.move(a, 70000, NOW + 5 * DAY); // future-dated: not yet in the corpus
+    const neg = await ctx.mkAcc('Overdrawn', 0);
+    await ctx.move(neg, -3000, past);
+    const closed = await ctx.mkAcc('Closed', 0);
+    await ctx.move(closed, 40000, past);
     await ctx.mkAcc('Unticked', 99999);
     const inv = await ctx.mkAcc('Broker', 777777, MYFIN.ACCOUNT_TYPES.INVESTING, { is_retirement: true });
     const asset = await ctx.asset('Fund', 2_500_000);
     await ctx.asset('Other', 9_900_000);
     await updateFinancialProfile(ctx.uid, {
       date_of_birth: '1996-06-15',
-      retirement_account_ids: [Number(a.account_id), Number(neg.account_id)],
+      retirement_account_ids: [Number(a.account_id), Number(neg.account_id), Number(closed.account_id)],
       retirement_asset_ids: [Number(asset.asset_id)],
     });
+    await prisma.accounts.update({ where: { account_id: closed.account_id }, data: { status: MYFIN.ACCOUNT_STATUS.INACTIVE } });
     const r = await getRetirement(ctx.uid, { now: NOW });
     expect(r.inputs?.current_corpus).toBe(50000 + 25000);
     expect(inv.is_retirement).toBe(true);
     const p = await getFinancialProfile(ctx.uid);
-    expect(p.retirement_account_ids.sort()).toEqual([String(a.account_id), String(neg.account_id)].sort());
+    expect(p.retirement_account_ids.sort()).toEqual(
+      [String(a.account_id), String(neg.account_id), String(closed.account_id)].sort()
+    );
     expect(p.retirement_asset_ids).toEqual([String(asset.asset_id)]);
+  });
+
+  test("basis 'all' adds the yearly set-aside to annual spending (ruling D8); 'fixed' does not", async () => {
+    await ctx.addSpending();
+    await prisma.yearly_costs.create({
+      data: { users_user_id: ctx.uid, name: 'Insurance', amount: 1_200_000n, due_month: 3, active: true, created_at: 1n },
+    });
+    await updateFinancialProfile(ctx.uid, { date_of_birth: '1996-06-15' });
+    expect((await getRetirement(ctx.uid, { now: NOW })).inputs?.annual_spending_today).toBe(180000 + 12000);
+    await updateFinancialProfile(ctx.uid, { retirement_spending_basis: 'fixed' });
+    expect((await getRetirement(ctx.uid, { now: NOW })).inputs?.annual_spending_today).toBe(120000);
+  });
+
+  test('retirement_age is checked against the age only when it or the date of birth changes', async () => {
+    await updateFinancialProfile(ctx.uid, { date_of_birth: '1980-01-01', retirement_age: 50 });
+    // Time passes: the stored retirement age is now at or below the current age
+    await prisma.user_financial_profile.update({ where: { users_user_id: ctx.uid }, data: { retirement_age: 40 } });
+    const saved = await updateFinancialProfile(ctx.uid, { retirement_age: 40, date_of_birth: '1980-01-01', expected_return_pct: 9 });
+    expect(saved).toMatchObject({ retirement_age: 40, expected_return_pct: 9 });
+    await expectThrowErrorCode(() => updateFinancialProfile(ctx.uid, { retirement_age: 41 }), 400);
+    await expectThrowErrorCode(() => updateFinancialProfile(ctx.uid, { date_of_birth: '1979-01-01' }), 400);
+  });
+
+  test("another user's account or asset ids, and a loan account, cannot be ticked; a retirement account cannot become emergency", async () => {
+    const other = await UserService.createUser({ username: 'ret2', password: '123', email: 'ret2@x.com' });
+    const theirAcc = await prisma.accounts.create({
+      data: { name: 'Theirs', type: MYFIN.ACCOUNT_TYPES.SAVINGS, description: '', status: MYFIN.ACCOUNT_STATUS.ACTIVE, exclude_from_budgets: false, current_balance: 0, users_user_id: other.user_id },
+    });
+    const theirAsset = await prisma.invest_assets.create({
+      data: { name: 'TheirFund', type: Object.values(MYFIN.INVEST.ASSET_TYPE)[0], units: 1, created_at: 1, users_user_id: other.user_id },
+    });
+    await expectThrowErrorCode(() => updateFinancialProfile(ctx.uid, { retirement_account_ids: [Number(theirAcc.account_id)] }), 400);
+    await expectThrowErrorCode(() => updateFinancialProfile(ctx.uid, { retirement_asset_ids: [Number(theirAsset.asset_id)] }), 400);
+    const loanAc = await ctx.mkAcc('HDFC loan', 0, MYFIN.ACCOUNT_TYPES.LOAN);
+    await expectThrowErrorCode(() => updateFinancialProfile(ctx.uid, { retirement_account_ids: [Number(loanAc.account_id)] }), 400);
+
+    const ok = await ctx.mkAcc('Ok', 0, MYFIN.ACCOUNT_TYPES.SAVINGS);
+    await updateFinancialProfile(ctx.uid, { retirement_account_ids: [Number(ok.account_id)] });
+    await expectThrowErrorCode(
+      () =>
+        AccountService.updateAccount(
+          {
+            account_id: ok.account_id,
+            new_name: 'Ok',
+            new_type: MYFIN.ACCOUNT_TYPES.SAVINGS,
+            new_description: '',
+            new_status: MYFIN.ACCOUNT_STATUS.ACTIVE,
+            exclude_from_budgets: false,
+            current_balance: 0,
+            new_is_emergency_fund: true,
+            users_user_id: ctx.uid,
+          },
+          ctx.uid
+        ),
+      400
+    );
+    expect((await prisma.accounts.findUniqueOrThrow({ where: { account_id: ok.account_id } })).is_emergency_fund).toBe(false);
+  });
+
+  test('restore rejects out-of-range retirement fields with 406 before wiping anything', async () => {
+    await updateFinancialProfile(ctx.uid, { date_of_birth: '1990-03-04' });
+    const backup = JSON.parse(JSON.stringify(await BackupManager.createBackup(ctx.uid)));
+    const bad: Array<Record<string, unknown>> = [
+      { expected_return_pct: 31 },
+      { expected_return_pct: 'abc' },
+      { inflation_pct: -1 },
+      { inflation_pct: 21 },
+      { swr_pct: 0.5 },
+      { swr_pct: 11 },
+      { retirement_age: 81 },
+      { retirement_age: 55.5 },
+      { date_of_birth: '1990-02-31' },
+      { date_of_birth: 12 },
+      { family_support_monthly: -5 },
+      { family_support_monthly: '1.5' },
+      { family_support_years: -1 },
+      { retirement_spending_basis: 'some' },
+      { savings_target_value: 'x' },
+      { small_spend_cutoff: 1.5 },
+    ];
+    for (const b of bad) {
+      const body = { ...backup, financial_profile: { ...backup.financial_profile, ...b } };
+      await expectThrowErrorCode(() => UserService.restoreUser(ctx.uid, body), 406);
+    }
+    expect((await getFinancialProfile(ctx.uid)).date_of_birth).toBe('1990-03-04');
+    expect(await prisma.accounts.count({ where: { users_user_id: ctx.uid } })).toBe(1);
+    // A null date of birth and string cents are fine
+    await UserService.restoreUser(ctx.uid, {
+      ...backup,
+      financial_profile: { ...backup.financial_profile, date_of_birth: null, family_support_monthly: '120000' },
+    });
+    expect(await getFinancialProfile(ctx.uid)).toMatchObject({ date_of_birth: null, family_support_monthly: 1200 });
   });
 
   test('earmark rules: not emergency, sinking, INVAC or debt accounts; may overlap the savings target', async () => {

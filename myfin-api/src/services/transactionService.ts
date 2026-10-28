@@ -586,14 +586,17 @@ const deleteTransaction = async (userId: bigint, transactionId: number, dbClient
       throw APIError.notFound(`Account could not be found.`);
     }
 
+    // Ruling D7: the row a lent/borrowed entry started from is that entry's principal
+    if (trx.debt_id != null && (trx.debt_role === 'lend' || trx.debt_role === 'borrow'))
+      throw APIError.badRequest('Delete or unlink the debt entry first.');
+    await assertLoanRowDeletable(trx, prismaTx);
+
     // Delete trx references from transaction_has_tags
     await prismaTx.transaction_has_tags.deleteMany({
       where: {
         transactions_transaction_id: transactionId,
       },
     });
-
-    await assertLoanRowDeletable(trx, prismaTx);
     // Repayments backed by this transaction stop counting towards their debt; a loan EMI is unpaid
     const debtRecalcs =
       trx.debt_id != null ? await forgetDeletedTransactions([trx.transaction_id], prismaTx) : new Map();

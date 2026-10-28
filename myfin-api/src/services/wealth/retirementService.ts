@@ -4,7 +4,8 @@ import APIError from '../../errorHandling/apiError.js';
 import { type YearMonth, IST_OFFSET_SECONDS } from '../insights/insightsPrimitives.js';
 import { typicalMonth } from '../insights/typicalMonth.js';
 import { getFinancialProfile, updateFinancialProfile } from '../financialProfileService.js';
-import { investValuesAt } from './netWorthService.js';
+import { yearlySetasideMonthlyCents } from '../planning/yearlyCostService.js';
+import { balancesAt, investValuesAt } from './netWorthService.js';
 import {
   type ProjectionRow,
   type RetirementInputs,
@@ -55,24 +56,39 @@ const currentMonthIST = (now: number): YearMonth => {
   return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 };
 };
 
-/** Σ ticked non-investing account balances (negatives as 0) + Σ ticked assets' latest value, in currency. */
+/**
+ * Σ active ticked non-investing account balances as of `now` (rows dated before it, as in
+ * netWorthAt; negatives as 0) + Σ ticked assets' latest value, in currency.
+ */
 async function currentCorpus(userId: bigint, now: number): Promise<number> {
   const [accounts, assets] = await Promise.all([
     prisma.accounts.findMany({
-      where: { users_user_id: userId, is_retirement: true, type: { not: MYFIN.ACCOUNT_TYPES.INVESTING } },
-      select: { current_balance: true },
+      where: {
+        users_user_id: userId,
+        is_retirement: true,
+        status: MYFIN.ACCOUNT_STATUS.ACTIVE,
+        type: { not: MYFIN.ACCOUNT_TYPES.INVESTING },
+      },
+      select: { account_id: true },
     }),
     prisma.invest_assets.findMany({
       where: { users_user_id: userId, is_retirement: true },
       select: { asset_id: true },
     }),
   ]);
-  const accountCents = accounts.reduce((sum, a) => sum + Math.max(0, Number(a.current_balance ?? 0)), 0);
-  const [assetCents] = await investValuesAt(
-    userId,
-    [now],
-    assets.map((a) => a.asset_id)
-  );
+  const [balances, [assetCents]] = await Promise.all([
+    balancesAt(
+      accounts.map((a) => a.account_id),
+      [now]
+    ),
+    investValuesAt(
+      userId,
+      [now],
+      assets.map((a) => a.asset_id)
+    ),
+  ]);
+  let accountCents = 0;
+  for (const series of balances.values()) accountCents += Math.max(0, series[0]);
   return (accountCents + assetCents) / 100;
 }
 
@@ -87,7 +103,13 @@ export async function getRetirement(
 
   const age = profile.date_of_birth ? ageOn(profile.date_of_birth, now) : null;
   const basis = profile.retirement_spending_basis;
-  const monthlySpending = basis === 'fixed' ? typical.fixedCents : typical.spendingCents;
+  // Ruling D8: "everything" includes yearly costs, which the typical month leaves out
+  const monthlySpending =
+    basis === 'fixed'
+      ? typical.fixedCents
+      : typical.spendingCents == null
+        ? null
+        : typical.spendingCents + (await yearlySetasideMonthlyCents(userId));
   const annualSpending = monthlySpending == null ? null : money((monthlySpending * 12) / 100);
 
   const savingsMonthly =

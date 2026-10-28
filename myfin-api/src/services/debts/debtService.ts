@@ -159,7 +159,15 @@ async function ownedTransaction(userId: bigint, transactionId: bigint, db: DbCli
   if (row.debt_id != null) throw APIError.badRequest('This transaction is already linked to a debt.');
   if (row.yearly_cost_id != null)
     throw APIError.badRequest('This transaction is linked to a yearly cost. Unlink it from the yearly cost first.');
+  await assertNotSalaryPlanSalary(transactionId, db);
   return row;
+}
+
+/** A salary plan's salary income is income by definition: it cannot also be debt principal. */
+export async function assertNotSalaryPlanSalary(transactionId: bigint, db: DbClient = prisma): Promise<void> {
+  const plans = await db.salary_plans.count({ where: { salary_transaction_id: transactionId } });
+  if (plans > 0)
+    throw APIError.badRequest("This transaction is a salary plan's salary. It cannot be linked to a debt or loan.");
 }
 
 /** Links a transaction to a debt, failing with 400 if another request linked it first. */
@@ -269,27 +277,42 @@ export async function peopleTotals(
   userId: bigint,
   atEpoch?: number
 ): Promise<{ owedToYouCents: number; youOweCents: number }> {
-  const debts = await prisma.debts.findMany({
-    where: {
-      users_user_id: userId,
-      kind: { in: [...PEOPLE_KINDS] },
-      ...(atEpoch == null ? {} : { start_date: { lt: atEpoch } }),
-    },
-    include: {
-      payments: {
-        where: atEpoch == null ? undefined : { date: { lt: atEpoch } },
-        select: { principal_part: true },
-      },
-    },
-  });
-  let owedToYouCents = 0;
-  let youOweCents = 0;
-  for (const d of debts) {
-    const left = Math.max(0, outstandingCents(d, d.payments));
-    if (d.kind === 'lent') owedToYouCents += left;
-    else youOweCents += left;
+  if (atEpoch == null) {
+    const [all] = await peopleTotalsAt(userId, [Number.MAX_SAFE_INTEGER]);
+    return all;
   }
-  return { owedToYouCents, youOweCents };
+  const [at] = await peopleTotalsAt(userId, [atEpoch]);
+  return at;
+}
+
+/** peopleTotals at each boundary (exclusive), from one read of the entries and their payments. */
+export async function peopleTotalsAt(
+  userId: bigint,
+  boundaries: number[]
+): Promise<Array<{ owedToYouCents: number; youOweCents: number }>> {
+  if (boundaries.length === 0) return [];
+  const last = Math.max(...boundaries);
+  const debts = await prisma.debts.findMany({
+    where: { users_user_id: userId, kind: { in: [...PEOPLE_KINDS] }, start_date: { lt: last } },
+    include: { payments: { where: { date: { lt: last } }, select: { principal_part: true, date: true } } },
+  });
+  return boundaries.map((b) => {
+    let owedToYouCents = 0;
+    let youOweCents = 0;
+    for (const d of debts) {
+      if (!(Number(d.start_date) < b)) continue;
+      const left = Math.max(
+        0,
+        outstandingCents(
+          d,
+          d.payments.filter((p) => Number(p.date) < b)
+        )
+      );
+      if (d.kind === 'lent') owedToYouCents += left;
+      else youOweCents += left;
+    }
+    return { owedToYouCents, youOweCents };
+  });
 }
 
 export async function listDebts(
@@ -570,6 +593,7 @@ export async function forgetDeletedTransactions(
 export default {
   outstandingCents,
   peopleTotals,
+  peopleTotalsAt,
   listDebts,
   createPeopleDebt,
   updateDebt,

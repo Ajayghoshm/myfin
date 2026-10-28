@@ -123,6 +123,37 @@ describe('goal-linked investments', () => {
     expect((await c.list())[0].asset_funding).toBe(90000);
   });
 
+  test('a value drop does not lock goal edits; only new or increased links are checked against the value', async () => {
+    const a = await c.asset(c.uid, 'Fund', 10_000_000); // 1,00,000
+    await c.goal([link(a, ABS, 80000)]);
+    await prisma.invest_asset_evo_snapshot.updateMany({
+      where: { invest_assets_asset_id: a.asset_id },
+      data: { current_value: 5_000_000 }, // drops to 50,000
+    });
+    const [g] = await c.list();
+    const save = (extra: Record<string, unknown>) =>
+      GoalService.updateGoal(
+        {
+          goal_id: BigInt(g.goal_id),
+          name: g.name,
+          priority: g.priority,
+          amount: g.amount,
+          is_archived: false,
+          funding_accounts: [],
+          funding_assets: [link(a, ABS, 80000)],
+          ...extra,
+        },
+        c.uid
+      );
+    await save({ name: 'Renamed' });
+    await save({ name: 'Renamed', is_archived: true });
+    const stored = await prisma.goals.findUniqueOrThrow({ where: { goal_id: BigInt(g.goal_id) } });
+    expect(stored.name).toBe('Renamed');
+    expect(stored.is_archived).toBe(true);
+    await expectThrowErrorCode(() => save({ funding_assets: [link(a, ABS, 90000)] }), 400);
+    await expectThrowErrorCode(() => save({ funding_assets: [link(a, ABS, 80000), link(a, REL, 10)] }), 400);
+  });
+
   test('SIP is the 6-month average of buys times the share', async () => {
     const a = await c.asset(c.uid, 'Fund', 10_000_000);
     for (const m of [5, 6, 7, 8, 9, 10]) await c.buy(a.asset_id, { year: 2026, month: m }, 500000);
@@ -218,5 +249,24 @@ describe('goal-linked investments', () => {
     delete backup.goal_has_assets;
     await UserService.restoreUser(c.uid, backup);
     expect(await prisma.goal_has_asset.count()).toBe(0);
+  });
+
+  test('restore rejects malformed goal asset links with 406 before wiping anything', async () => {
+    const a = await c.asset(c.uid, 'Fund', 10_000_000);
+    await c.goal([link(a, REL, 60)]);
+    const backup = JSON.parse(JSON.stringify(await BackupManager.createBackup(c.uid)));
+    const good = backup.goal_has_assets[0];
+    for (const bad of [
+      { invest_assets_asset_id: 999999 },
+      { goals_goal_id: 999999 },
+      { match_type: 'half' },
+      { match_value: -1 },
+      { match_value: 'abc' },
+    ]) {
+      const body = { ...backup, goal_has_assets: [{ ...good, ...bad }] };
+      await expectThrowErrorCode(() => UserService.restoreUser(c.uid, body), 406);
+    }
+    expect(await prisma.goal_has_asset.count()).toBe(1);
+    expect(await prisma.goals.count({ where: { users_user_id: c.uid } })).toBe(1);
   });
 });

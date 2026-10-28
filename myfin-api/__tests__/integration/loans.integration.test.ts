@@ -12,6 +12,7 @@ import {
   disbursementCandidates,
   getLoan,
   installmentCandidates,
+  interestCategory,
   linkDisbursement,
   unlinkDisbursement,
   listLoans,
@@ -327,6 +328,57 @@ describe('debts: formal loans and EMIs', () => {
     const restored = await prisma.transactions.findUniqueOrThrow({ where: { transaction_id: debit } });
     expect(restored).toMatchObject({ amount: 1066185n, debt_id: null, debt_role: null });
     expect(await ctx.balance(ctx.bank.account_id)).toBe(-10661.85);
+  });
+
+  test("deleting a loan also deletes its loan account's legacy entry", async () => {
+    const loan = await newLoan(ctx.uid, ctx.bank.account_id);
+    const loanAccountId = BigInt(loan.loan_account_id!);
+    await prisma.legacy_entries.create({
+      data: { users_user_id: ctx.uid, kind: 'account', account_id: loanAccountId, data: { nominee: 'A' }, created_at: 1n, updated_at: 1n },
+    });
+    await prisma.legacy_entries.create({
+      data: { users_user_id: ctx.uid, kind: 'instruction', data: { text: 'keep me' }, created_at: 1n, updated_at: 1n },
+    });
+    await deleteDebt(ctx.uid, BigInt(loan.debt_id));
+    expect(await prisma.legacy_entries.findMany({ where: { users_user_id: ctx.uid }, select: { kind: true } })).toEqual([
+      { kind: 'instruction' },
+    ]);
+  });
+
+  test('a debit more than 45 days from the installment date cannot be matched', async () => {
+    const loan = await newLoan(ctx.uid, ctx.bank.account_id);
+    const far = await ctx.add(E, 'NACH HDFC EMI', 10661.85, 25, { year: 2026, month: 11 }); // 51 days after 5 Oct
+    await expectThrowErrorCode(() => matchInstallment(ctx.uid, BigInt(loan.debt_id), 1, Number(far), NOW), 400);
+    const near = await ctx.add(E, 'NACH HDFC EMI', 10661.85, 15, { year: 2026, month: 11 }); // 41 days
+    expect((await matchInstallment(ctx.uid, BigInt(loan.debt_id), 1, Number(near), NOW)).schedule[0].status).toBe('paid');
+  });
+
+  test("a salary plan's salary transaction cannot be a loan disbursement", async () => {
+    const salary = await ctx.add(I, 'SALARY ACME', 120000, 1);
+    await prisma.salary_plans.create({
+      data: { users_user_id: ctx.uid, month: 202610, salary_transaction_id: salary, salary_amount: 12000000n, buckets: [], created_at: 1n },
+    });
+    await expectThrowErrorCode(() => newLoan(ctx.uid, ctx.bank.account_id, { disbursement_transaction_id: Number(salary) }), 400);
+    const loan = await newLoan(ctx.uid, ctx.bank.account_id);
+    await expectThrowErrorCode(() => linkDisbursement(ctx.uid, BigInt(loan.debt_id), Number(salary), NOW), 400);
+  });
+
+  test('concurrent first uses of the Loan interest category create it once and all succeed', async () => {
+    const ids = await Promise.all(Array.from({ length: 6 }, () => interestCategory(ctx.uid)));
+    expect(new Set(ids.map(String)).size).toBe(1);
+    expect(await prisma.categories.count({ where: { users_user_id: ctx.uid, name: 'Loan interest' } })).toBe(1);
+  });
+
+  test('a lender name at the 255-character limit still gets account names that fit', async () => {
+    const lender = 'L'.repeat(255);
+    const first = await newLoan(ctx.uid, ctx.bank.account_id, { lender });
+    const second = await newLoan(ctx.uid, ctx.bank.account_id, { lender });
+    const names = await prisma.accounts.findMany({
+      where: { account_id: { in: [BigInt(first.loan_account_id!), BigInt(second.loan_account_id!)] } },
+      select: { name: true },
+    });
+    expect(names.map((n) => n.name.length).every((l) => l <= 255)).toBe(true);
+    expect(new Set(names.map((n) => n.name)).size).toBe(2);
   });
 
   test('prepayment what-if', async () => {

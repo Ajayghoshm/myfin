@@ -204,10 +204,16 @@ export async function updateFinancialProfile(
     const a = patch.retirement_age;
     if (!Number.isInteger(a) || a < 1 || a > MAX_RETIREMENT_AGE)
       throw APIError.badRequest(`retirement_age must be an integer up to ${MAX_RETIREMENT_AGE}.`);
-    const dob = data.date_of_birth !== undefined ? data.date_of_birth : current.date_of_birth;
-    const age = dob ? ageOn(dob, nowSeconds()) : null;
-    if (age !== null && a <= age) throw APIError.badRequest('retirement_age must be above your current age.');
     data.retirement_age = a;
+  }
+  // Checked against the age only when this patch changes the retirement age or the date of birth,
+  // so an unrelated save still works once the user has reached the stored retirement age
+  const retirementAge = data.retirement_age ?? current.retirement_age;
+  const dob = data.date_of_birth !== undefined ? data.date_of_birth : current.date_of_birth;
+  if (retirementAge !== current.retirement_age || dob !== current.date_of_birth) {
+    const age = dob ? ageOn(dob, nowSeconds()) : null;
+    if (age !== null && retirementAge <= age)
+      throw APIError.badRequest('retirement_age must be above your current age.');
   }
   if (patch.expected_return_pct !== undefined)
     data.expected_return_pct = ranged('expected_return_pct', patch.expected_return_pct, 0, 30);
