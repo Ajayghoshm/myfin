@@ -1,7 +1,7 @@
 import { axios } from '../../data/axios.ts';
+import { CachedTransaction } from '../../data/localStore.ts';
 import { Account } from '../auth/authServices.ts';
 import { Category } from '../category/categoryServices.ts';
-import { CachedTransaction } from '../../data/localStore.ts';
 
 export type TransactionsPageResponse = {
   filtered_count: number;
@@ -145,9 +145,7 @@ export type AddTransactionRequest = {
   external_id?: string;
 };
 
-const addTransactionStep1 = (
-  data: AddTransactionRequest,
-) => {
+const addTransactionStep1 = (data: AddTransactionRequest) => {
   return axios.post<{ message: string; transaction_id?: string | number }>(
     '/trxs/step1',
     data,
@@ -321,6 +319,22 @@ const getShareInboxFile = (id: string) =>
 const deleteShareInboxFile = (id: string) =>
   axios.delete(`/trxs/import/inbox/${encodeURIComponent(id)}`);
 
+export type SharePairingCode = {
+  code: string;
+  expires_at: number;
+  url: string;
+};
+export type ShareDevice = { id: string; name: string; created_at: number };
+
+const createSharePairingCode = () =>
+  axios.post<SharePairingCode>('/trxs/import/inbox/pair');
+
+const listShareDevices = () =>
+  axios.get<ShareDevice[]>('/trxs/import/inbox/devices');
+
+const deleteShareDevice = (id: string) =>
+  axios.delete(`/trxs/import/inbox/devices/${encodeURIComponent(id)}`);
+
 export type BulkUpdateTransactionsRequest = {
   transaction_ids?: bigint[];
   filter?: {
@@ -362,6 +376,9 @@ export default {
   importPhonePePreview,
   importPhonePeCategorize,
   listShareInbox,
+  createSharePairingCode,
+  listShareDevices,
+  deleteShareDevice,
   getShareInboxFile,
   deleteShareInboxFile,
 };

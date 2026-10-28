@@ -12,6 +12,7 @@ import Logger from '../utils/Logger.js';
 import ConvertUtils from '../utils/convertUtils.js';
 import PhonePeImportService from '../services/phonePeImportService.js';
 import ShareInbox from '../share/shareInbox.js';
+import SharePairing from '../share/sharePairing.js';
 import CommonsController from './commonsController.js';
 
 // READ
@@ -423,6 +424,39 @@ const deleteShareInboxFile = async (req: Request, res: Response, next: NextFunct
   }
 };
 
+const createSharePairingCode = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await CommonsController.checkAuthSessionValidity(req);
+    res.json(SharePairing.createCode());
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
+const listShareDevices = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await CommonsController.checkAuthSessionValidity(req);
+    res.json(await SharePairing.listDevices());
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
+const deleteShareDevice = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await CommonsController.checkAuthSessionValidity(req);
+    if (!(await SharePairing.removeDevice(String(req.params.id)))) {
+      return next(APIError.notFound('Device not found'));
+    }
+    res.json({ deleted: true });
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
 const importPhonePePreviewSchema = joi.object({
   csv: joi.string().required(),
 });
@@ -548,6 +582,9 @@ export default {
   importPhonePePreview,
   importPhonePeCategorize,
   listShareInbox,
+  createSharePairingCode,
+  listShareDevices,
+  deleteShareDevice,
   getShareInboxFile,
   deleteShareInboxFile,
 };

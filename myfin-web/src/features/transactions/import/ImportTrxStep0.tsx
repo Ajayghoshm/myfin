@@ -15,6 +15,7 @@ import {
 import TrxServices, {
   ShareInboxItem,
 } from '../../../services/trx/trxServices.ts';
+import PairPhoneDialog from './PairPhoneDialog.tsx';
 
 export type Props = {
   onNext: (clipboardText: string) => void;
@@ -27,6 +28,7 @@ const ImportTrxStep0 = (props: Props) => {
   const snackbar = useSnackbar();
   const phonePeInputRef = useRef<HTMLInputElement>(null);
   const [inbox, setInbox] = useState<ShareInboxItem[]>([]);
+  const [pairOpen, setPairOpen] = useState(false);
 
   const loadInbox = useCallback(() => {
     TrxServices.listShareInbox()
@@ -194,6 +196,14 @@ const ImportTrxStep0 = (props: Props) => {
       >
         {t('importTransactions.uploadPhonePe')}
       </Button>
+      <Button
+        variant="text"
+        onClick={() => setPairOpen(true)}
+        sx={{ width: 'fit-content', mt: theme.spacing(1) }}
+      >
+        {t('importTransactions.pairPhone')}
+      </Button>
+      <PairPhoneDialog open={pairOpen} onClose={() => setPairOpen(false)} />
       {inbox.length > 0 && (
         <Box sx={{ mt: theme.spacing(3) }}>
           <Typography variant="subtitle1">

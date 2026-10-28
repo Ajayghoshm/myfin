@@ -24,12 +24,12 @@
   <div id="status"></div>
   <ul id="queue"></ul>
   <button id="send">Send now</button>
-  <details style="margin-top:24px">
-    <summary>Pairing token</summary>
-    <p class="muted">The SHARE_TOKEN from the laptop's myfin-api .env.</p>
-    <input id="token" type="password" autocomplete="off" placeholder="Share token">
-    <button id="save">Save</button>
-  </details>
+  <section id="pair" hidden>
+    <p><strong>Pair with your laptop</strong></p>
+    <p class="muted">In MyFin on the laptop open Transactions &gt; Import &gt; Pair phone, then scan the QR code or type the 6-digit code here.</p>
+    <input id="code" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="6-digit code">
+    <button id="save">Pair</button>
+  </section>
   <script src="app.js"></script>
 </body>
 </html>
