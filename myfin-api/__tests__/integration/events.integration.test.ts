@@ -130,6 +130,46 @@ describe('event reminders and upcoming', () => {
     expect(items[1].amount).toBeCloseTo(10661.85, 2);
   });
 
+  test('upcoming: unpaid money items overdue by up to 7 days are included and flagged', async () => {
+    const later = at(ym(2026, 11), 8) + 9 * 3600; // 2026-11-08 10:00 IST
+    await createEvent(ctx.uid, rent('Rent'), NOW); // 11-01: 7 days overdue
+    await createEvent(ctx.uid, rent('Rent paid'), NOW);
+    await ctx.spend('Paid to RENT CO', 15000, at(ym(2026, 11), 1)); // claimed by one of the two
+    await createEvent(ctx.uid, { name: 'Old', kind: 'renewal', date: '2026-10-31', repeat: 'once', amount: 99 }, NOW); // 8 days
+    await createEvent(ctx.uid, { name: 'Amma birthday', kind: 'birthday', date: '1965-11-05', repeat: 'yearly' }, NOW);
+    await createLoan(
+      ctx.uid,
+      { lender: 'HDFC', principal: 120000, rate: 12, tenure_months: 12, emi_day: 5, account_id: ctx.bank.account_id, start_date: at(ym(2026, 10), 1) },
+      NOW
+    );
+    const items = (await upcoming(ctx.uid, 30, later)).filter((i) => i.days_until < 0);
+    const unpaid = items.map((i) => [i.source, i.date, i.days_until, i.overdue, i.status]);
+    // Exactly one rent occurrence is unpaid (the other is matched); the EMI of 11-05 is unpaid
+    expect(unpaid).toEqual([
+      ['event', '2026-11-01', -7, true, 'pending'],
+      ['emi', '2026-11-05', -3, true, 'pending'],
+    ]);
+    const future = (await upcoming(ctx.uid, 30, later)).filter((i) => i.days_until >= 0);
+    expect(future.every((i) => i.overdue === false)).toBe(true);
+  });
+
+  test('upcoming: a card due without an amount shows the card outstanding', async () => {
+    const card = await ctx.account('Card 9', MYFIN.ACCOUNT_TYPES.CREDIT);
+    await TransactionService.createTransaction(ctx.uid, {
+      account_from_id: card.account_id,
+      amount: 4321.5,
+      type: E,
+      description: 'Shop',
+      date_timestamp: at(ym(2026, 10), 20),
+      is_essential: false,
+    } as never);
+    await createEvent(ctx.uid, { name: 'Card 9 due', kind: 'card_due', date: '2026-01-15', repeat: 'monthly', account_id: Number(card.account_id) }, NOW);
+    await createEvent(ctx.uid, { name: 'Card 9 fixed', kind: 'card_due', date: '2026-01-16', repeat: 'monthly', amount: 500, account_id: Number(card.account_id) }, NOW);
+    const items = await upcoming(ctx.uid, 30, NOW);
+    expect(items.find((i) => i.name === 'Card 9 due')?.amount).toBeCloseTo(4321.5, 2);
+    expect(items.find((i) => i.name === 'Card 9 fixed')?.amount).toBe(500);
+  });
+
   test('gift budget: tagged spend near the occurrence counts; linked + tagged counts once', async () => {
     const ev = await createEvent(ctx.uid, { name: 'Amma birthday', kind: 'birthday', date: '1965-11-02', repeat: 'yearly', gift_budget: 3000 }, NOW);
     const tag = await prisma.tags.findFirstOrThrow({ where: { users_user_id: ctx.uid, name: 'event:Amma birthday' } });

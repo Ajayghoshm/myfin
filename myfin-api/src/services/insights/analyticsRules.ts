@@ -97,3 +97,12 @@ export function targetPercent(
   if (!base || base <= 0) return null;
   return (value / base) * 100;
 }
+
+/**
+ * The one savings-target rule (ruling E9, same as the web `meetsSavingsTarget`): the savings rate
+ * (a fraction) meets the target (a percent) when the figures as displayed, rounded to whole
+ * percents, do: Math.round(rate %) ≥ Math.round(target %). 19.6 % meets 20 %.
+ */
+export function meetsSavingsTarget(rate: number, targetPct: number): boolean {
+  return Math.round(rate * 100) >= Math.round(targetPct);
+}

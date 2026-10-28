@@ -267,6 +267,44 @@ describe('milestones', () => {
     ]);
   });
 
+  test('savings: a month counts only once its grace period has ended (day 11 of the next month)', async () => {
+    await updateFinancialProfile(ctx.uid, { savings_target_mode: 'percent', savings_target_value: 20 });
+    const months: [YearMonth, number][] = [
+      [ym(2026, 6), 90000], // 10 %
+      [ym(2026, 7), 70000], // 30 %
+      [ym(2026, 8), 75000], // 25 %
+      [SEP, 60000], // 40 %
+    ];
+    for (const [m, spend] of months) {
+      await ctx.trx(I, 100000, at(m, 1));
+      await ctx.trx(E, spend, at(m, 3));
+    }
+    // October 3rd: September is still in its grace period -> July is the best month, no streak yet
+    await evaluateMilestones(ctx.uid, at(OCT, 3));
+    expect((await rows(ctx.uid, 'best_savings_month')).map((r) => r.key)).toEqual(['2026-07']);
+    expect(await rows(ctx.uid, 'savings_streak')).toEqual([]);
+    // October 11th: September counts
+    await evaluateMilestones(ctx.uid, monthRangeIST(OCT).from + 10 * DAY);
+    expect((await rows(ctx.uid, 'best_savings_month')).map((r) => r.key)).toEqual(['2026-07', '2026-09']);
+    expect((await rows(ctx.uid, 'savings_streak')).map((r) => r.key)).toEqual(['2026-09']);
+  });
+
+  test('savings streak: the rounded rate meets the rounded target (19.6 % vs 20 %)', async () => {
+    await updateFinancialProfile(ctx.uid, { savings_target_mode: 'percent', savings_target_value: 20 });
+    const months: [YearMonth, number][] = [
+      [ym(2026, 6), 90000], // 10 %
+      [ym(2026, 7), 80400], // 19.6 %
+      [ym(2026, 8), 80400],
+      [SEP, 80400],
+    ];
+    for (const [m, spend] of months) {
+      await ctx.trx(I, 100000, at(m, 1));
+      await ctx.trx(E, spend, at(m, 3));
+    }
+    await evaluateMilestones(ctx.uid, NOW);
+    expect((await rows(ctx.uid, 'savings_streak')).map((r) => r.key)).toEqual(['2026-09']);
+  });
+
   test('dismiss hides the banner, the timeline still lists it; another user gets 401', async () => {
     await ctx.trx(I, 150000, at(SEP, 5));
     const [m] = await evaluateMilestones(ctx.uid, NOW);

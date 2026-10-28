@@ -3,13 +3,13 @@ import { prisma } from '../../config/prisma.js';
 import APIError from '../../errorHandling/apiError.js';
 import { getFinancialProfile } from '../financialProfileService.js';
 import GoalService from '../goalService.js';
-import { formatYearMonth, targetPercent } from '../insights/analyticsRules.js';
+import { formatYearMonth, meetsSavingsTarget, targetPercent } from '../insights/analyticsRules.js';
 import { getMonthInsights } from '../insights/insightsService.js';
 import { type YearMonth, monthRangeIST, shiftMonth } from '../insights/insightsPrimitives.js';
 import { emergencyFund } from '../planning/emergencyFundService.js';
 import { netWorthAt } from '../wealth/netWorthService.js';
 import { MILESTONE_KINDS, type MilestoneKind } from './milestoneKinds.js';
-import { monthKey, monthOfIST } from './monthlyRecordService.js';
+import { graceEnd, monthKey, monthOfIST } from './monthlyRecordService.js';
 
 export { MILESTONE_KINDS, type MilestoneKind };
 
@@ -156,13 +156,20 @@ async function debtCandidates(userId: bigint, now: number): Promise<Candidate[]>
   });
 }
 
+/** The latest month whose grace period has ended (now ≥ graceEnd): its figures are settled. */
+const lastSettled = (now: number): YearMonth => {
+  const previous = shiftMonth(monthOfIST(now), -1);
+  return now >= graceEnd(previous) ? previous : shiftMonth(previous, -1);
+};
+
 /**
- * Savings from the Insights trend of the 12 effective months ending with the last ended month
- * (the current month never counts). Months with no income are ignored for the best month and
- * break a streak.
+ * Savings from the Insights trend of the 12 effective months ending with the last settled month:
+ * only months with now ≥ graceEnd(month) count (ruling E8), so the current month never does and the
+ * previous month only from day 11. Months with no income are ignored for the best month and break
+ * a streak.
  */
 async function savingsCandidates(userId: bigint, now: number): Promise<Candidate[]> {
-  const lastEnded = shiftMonth(monthOfIST(now), -1);
+  const lastEnded = lastSettled(now);
   const [{ trend }, profile] = await Promise.all([getMonthInsights(userId, lastEnded), getFinancialProfile(userId)]);
   const out: Candidate[] = [];
   const months = trend.map((t) => ({ ym: { year: t.year, month: t.month }, income: t.income, rate: t.savings_rate }));
@@ -196,7 +203,7 @@ async function savingsCandidates(userId: bigint, now: number): Promise<Candidate
     const passes = months.map((m) => {
       if (m.income <= 0 || m.rate == null) return false;
       const target = targetPercent(profile.savings_target_mode, profile.savings_target_value, m.income, null);
-      return target != null && m.rate * 100 + 1e-9 >= target;
+      return target != null && meetsSavingsTarget(m.rate, target);
     });
     for (const end of freshStreakEnds(months.length, (i) => (i < 0 ? null : passes[i]))) {
       const m = months[end];

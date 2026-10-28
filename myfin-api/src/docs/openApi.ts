@@ -1275,7 +1275,13 @@ const collectReferencedIdentifiers = (node: ts.Node) => {
   const identifiers = new Set<string>();
 
   const visit = (currentNode: ts.Node) => {
-    if (ts.isIdentifier(currentNode)) {
+    // Object keys (`{ eventId: ID }`) and member names (`joi.object`) are not references
+    const parent = currentNode.parent;
+    const isName =
+      parent &&
+      ((ts.isPropertyAssignment(parent) && parent.name === currentNode) ||
+        (ts.isPropertyAccessExpression(parent) && parent.name === currentNode));
+    if (ts.isIdentifier(currentNode) && !isName) {
       identifiers.add(currentNode.text);
     }
 
@@ -1368,6 +1374,11 @@ const getControllerAnalysis = (controllerPath: string) => {
             ts.isFunctionExpression(declaration.initializer))
         ) {
           localHandlers.set(name, extractHandlerAnalysis(declaration.initializer));
+        } else if (declaration.initializer) {
+          const wrapped = getWrappedHandler(declaration.initializer, statements);
+          if (wrapped) {
+            localHandlers.set(name, extractWrappedHandlerAnalysis(wrapped, statements));
+          }
         }
       }
       continue;
@@ -1464,6 +1475,139 @@ const collectImportBindings = (
   }
 };
 
+/**
+ * `handler(<arrow>)`: a call to a local wrapper (declared earlier in the controller) that checks the
+ * session (`checkAuthSessionValidity`) and sends `res.json(await fn(userId, req))`. Returns the
+ * wrapped arrow / function expression, else undefined.
+ */
+const getWrappedHandler = (
+  initializer: ts.Expression,
+  statements: Map<string, StatementEntry>
+): ts.ArrowFunction | ts.FunctionExpression | undefined => {
+  if (!ts.isCallExpression(initializer) || !ts.isIdentifier(initializer.expression)) {
+    return undefined;
+  }
+  const wrapper = statements.get(initializer.expression.text);
+  const inner = initializer.arguments[0];
+  if (
+    !wrapper ||
+    !wrapper.text.includes('checkAuthSessionValidity') ||
+    !inner ||
+    !(ts.isArrowFunction(inner) || ts.isFunctionExpression(inner))
+  ) {
+    return undefined;
+  }
+  return inner;
+};
+
+/**
+ * The wrapped function gets `(userId, req)`; it requires auth (the wrapper checks the session) and
+ * its return value is the 200 JSON response. Request schemas are read from its body and from local
+ * helpers it passes `req` to (e.g. `const id = async (req) => idSchema.validateAsync(req.params)`).
+ */
+const extractWrappedHandlerAnalysis = (
+  inner: ts.ArrowFunction | ts.FunctionExpression,
+  statements: Map<string, StatementEntry>
+): HandlerAnalysis => {
+  const requestParam = inner.parameters[1];
+  const requestParamName =
+    requestParam && ts.isIdentifier(requestParam.name) ? requestParam.name.text : '__no_request__';
+  const handlerAnalysis: HandlerAnalysis = {
+    localValues: new Map(),
+    requiresAuth: true,
+    responses: [],
+    usesMobileHeader: false,
+  };
+
+  const visitedHelpers = new Set<string>();
+  const scan = (root: ts.Node, reqName: string) => {
+    const visit = (node: ts.Node) => {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+        handlerAnalysis.localValues.set(node.name.text, node.initializer);
+      }
+      if (ts.isCallExpression(node)) {
+        collectRequestValidation(node, reqName, handlerAnalysis);
+        // A local helper called with the request: scan it with its own parameter name
+        if (ts.isIdentifier(node.expression) && !visitedHelpers.has(node.expression.text)) {
+          const argIndex = node.arguments.findIndex((arg) => ts.isIdentifier(arg) && arg.text === reqName);
+          const helper = statements.get(node.expression.text)?.node;
+          if (
+            argIndex >= 0 &&
+            helper &&
+            ts.isVariableDeclaration(helper) &&
+            helper.initializer &&
+            (ts.isArrowFunction(helper.initializer) || ts.isFunctionExpression(helper.initializer))
+          ) {
+            visitedHelpers.add(node.expression.text);
+            const param = helper.initializer.parameters[argIndex];
+            if (param && ts.isIdentifier(param.name)) {
+              scan(helper.initializer.body, param.name.text);
+            }
+          }
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    if (ts.isBlock(root)) ts.forEachChild(root, visit);
+    else visit(root);
+  };
+  scan(inner.body, requestParamName);
+
+  const returned: ts.Expression[] = [];
+  if (ts.isBlock(inner.body)) {
+    const collectReturns = (node: ts.Node) => {
+      if (ts.isArrowFunction(node) || ts.isFunctionExpression(node) || ts.isFunctionDeclaration(node)) {
+        return;
+      }
+      if (ts.isReturnStatement(node) && node.expression) {
+        returned.push(node.expression);
+      }
+      ts.forEachChild(node, collectReturns);
+    };
+    ts.forEachChild(inner.body, collectReturns);
+  } else {
+    returned.push(inner.body);
+  }
+  for (const expression of returned) {
+    handlerAnalysis.responses.push({ expression, method: 'json', statusCode: 200 });
+  }
+  return handlerAnalysis;
+};
+
+/** `<schema>.validateAsync(<req>.body | .params | .query)` records the schema name. */
+const collectRequestValidation = (
+  node: ts.CallExpression,
+  requestParamName: string,
+  handlerAnalysis: HandlerAnalysis
+) => {
+  if (
+    ts.isPropertyAccessExpression(node.expression) &&
+    node.expression.name.text === 'validateAsync' &&
+    ts.isIdentifier(node.expression.expression) &&
+    node.arguments.length > 0
+  ) {
+    let target = node.arguments[0];
+    // `req.body ?? {}` / `req.body || {}`
+    if (
+      ts.isBinaryExpression(target) &&
+      (target.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken ||
+        target.operatorToken.kind === ts.SyntaxKind.BarBarToken)
+    ) {
+      target = target.left;
+    }
+    if (
+      ts.isPropertyAccessExpression(target) &&
+      ts.isIdentifier(target.expression) &&
+      target.expression.text === requestParamName
+    ) {
+      const field = target.name.text;
+      if (field === 'body') handlerAnalysis.bodySchemaName = node.expression.expression.text;
+      if (field === 'params') handlerAnalysis.paramsSchemaName = node.expression.expression.text;
+      if (field === 'query') handlerAnalysis.querySchemaName = node.expression.expression.text;
+    }
+  }
+};
+
 const extractHandlerAnalysis = (
   handlerNode: ts.ArrowFunction | ts.FunctionExpression
 ): HandlerAnalysis => {
@@ -1482,26 +1626,7 @@ const extractHandlerAnalysis = (
     }
 
     if (ts.isCallExpression(node)) {
-      if (
-        ts.isPropertyAccessExpression(node.expression) &&
-        node.expression.name.text === 'validateAsync' &&
-        ts.isIdentifier(node.expression.expression) &&
-        node.arguments.length > 0 &&
-        ts.isPropertyAccessExpression(node.arguments[0]) &&
-        ts.isIdentifier(node.arguments[0].expression) &&
-        node.arguments[0].expression.text === requestParamName
-      ) {
-        const target = node.arguments[0].name.text;
-        if (target === 'body') {
-          handlerAnalysis.bodySchemaName = node.expression.expression.text;
-        }
-        if (target === 'params') {
-          handlerAnalysis.paramsSchemaName = node.expression.expression.text;
-        }
-        if (target === 'query') {
-          handlerAnalysis.querySchemaName = node.expression.expression.text;
-        }
-      }
+      collectRequestValidation(node, requestParamName, handlerAnalysis);
 
       if (
         ts.isPropertyAccessExpression(node.expression) &&

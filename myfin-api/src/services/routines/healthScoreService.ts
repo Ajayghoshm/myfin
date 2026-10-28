@@ -3,7 +3,7 @@ import { MYFIN } from '../../consts.js';
 import { listAccountsWithFreshness } from '../accountFreshnessService.js';
 import { listLoans } from '../debts/loanService.js';
 import { getFinancialProfile } from '../financialProfileService.js';
-import { formatYearMonth, targetPercent } from '../insights/analyticsRules.js';
+import { formatYearMonth, meetsSavingsTarget, targetPercent } from '../insights/analyticsRules.js';
 import { type YearMonth, monthRangeIST, shiftMonth } from '../insights/insightsPrimitives.js';
 import { getMonthInsights } from '../insights/insightsService.js';
 import { ownershipSql, typicalMonth } from '../insights/typicalMonth.js';
@@ -11,8 +11,8 @@ import { emergencyFund } from '../planning/emergencyFundService.js';
 import { sinkingStatus } from '../planning/yearlyCostService.js';
 import { balancesAt } from '../wealth/netWorthService.js';
 import {
+  type FreezePolicy,
   GRACE_DAYS,
-  freezeAfterGrace,
   getOrFreeze,
   graceEnd,
   isPastMonth,
@@ -50,7 +50,11 @@ export type HealthScore = {
   total: number;
   checks: HealthCheck[];
 };
-export type StoredHealth = HealthScore & { frozen: boolean };
+export type StoredHealth = HealthScore & {
+  frozen: boolean;
+  /** A past month first read from M+3 on: computed live from today's data, never stored. */
+  reconstructed: boolean;
+};
 
 /** Fixed costs at most this share of typical income. */
 export const FIXED_SHARE_MAX = 0.5;
@@ -58,6 +62,8 @@ export const FIXED_SHARE_MAX = 0.5;
 export const EMI_SHARE_MAX = 0.4;
 /** A card balance must be cleared by transfers within this many days. */
 export const CARD_CLEAR_DAYS = 35;
+/** A past month freezes at the latest this long after M+1 starts, whatever the card windows. */
+const FREEZE_CAP_DAYS = 36;
 /** Tolerance when comparing card payments to the balance (₹1). */
 const CARD_TOLERANCE_CENTS = 100;
 const HISTORY_MONTHS = 12;
@@ -132,7 +138,7 @@ async function savingsRateCheck(c: Ctx, typicalIncomeCents: number | null): Prom
       null,
       txt('savings_no_income_month', `No income this month (aim ≥ ${aim} %)`, { target: aim })
     );
-  const status = rate * 100 + 1e-9 >= target ? 'pass' : 'fail';
+  const status = meetsSavingsTarget(rate, target) ? 'pass' : 'fail';
   const r = pctNum(rate);
   return check(
     'savings_rate',
@@ -216,6 +222,33 @@ async function debtEmisCheck(c: Ctx, typicalIncomeCents: number | null): Promise
   );
 }
 
+type CardRef = { id: bigint; at: number; cents: number | null };
+
+/**
+ * Each active card's reference: its latest balance check dated in M, else the start of M (balance
+ * not yet known: `cents` null). A check stores the real balance as the positive amount owed for
+ * cards and loan accounts (balanceCheckService), so it is negated back to a raw balance here.
+ */
+async function cardRefs(userId: bigint, range: { from: number; to: number }): Promise<CardRef[]> {
+  const cards = await prisma.accounts.findMany({
+    where: { users_user_id: userId, type: MYFIN.ACCOUNT_TYPES.CREDIT, status: MYFIN.ACCOUNT_STATUS.ACTIVE },
+    select: { account_id: true, type: true },
+    orderBy: { account_id: 'asc' },
+  });
+  return Promise.all(
+    cards.map(async (card): Promise<CardRef> => {
+      const last = await prisma.balance_checks.findFirst({
+        where: { accounts_account_id: card.account_id, checked_at: { gte: range.from, lt: range.to } },
+        orderBy: [{ checked_at: 'desc' }, { check_id: 'desc' }],
+      });
+      if (!last) return { id: card.account_id, at: range.from, cents: null };
+      const owedForm = card.type === MYFIN.ACCOUNT_TYPES.CREDIT || card.type === MYFIN.ACCOUNT_TYPES.LOAN;
+      const real = Number(last.real_balance);
+      return { id: card.account_id, at: Number(last.checked_at), cents: owedForm ? -real : real };
+    })
+  );
+}
+
 /**
  * Each active card's reference balance: its latest balance check dated in M (the real balance), else
  * its balance at the end of M−1. A negative balance is cleared when transfers into the card within
@@ -224,25 +257,9 @@ async function debtEmisCheck(c: Ctx, typicalIncomeCents: number | null): Promise
  * not set up; else pass.
  */
 async function creditCardsCheck(c: Ctx): Promise<HealthCheck> {
-  const cards = await prisma.accounts.findMany({
-    where: { users_user_id: c.userId, type: MYFIN.ACCOUNT_TYPES.CREDIT, status: MYFIN.ACCOUNT_STATUS.ACTIVE },
-    select: { account_id: true },
-    orderBy: { account_id: 'asc' },
-  });
-  if (cards.length === 0) return check('credit_cards', 'not_set_up', null, txt('cards_none', 'Add your credit-card accounts'));
+  const refs = await cardRefs(c.userId, c.range);
+  if (refs.length === 0) return check('credit_cards', 'not_set_up', null, txt('cards_none', 'Add your credit-card accounts'));
 
-  const refs: { id: bigint; at: number; cents: number | null }[] = [];
-  for (const card of cards) {
-    const last = await prisma.balance_checks.findFirst({
-      where: { accounts_account_id: card.account_id, checked_at: { gte: c.range.from, lt: c.range.to } },
-      orderBy: [{ checked_at: 'desc' }, { check_id: 'desc' }],
-    });
-    refs.push(
-      last
-        ? { id: card.account_id, at: Number(last.checked_at), cents: Number(last.real_balance) }
-        : { id: card.account_id, at: c.range.from, cents: null }
-    );
-  }
   const noCheck = refs.filter((r) => r.cents == null).map((r) => r.id);
   const atStart = await balancesAt(noCheck, [c.range.from]);
   for (const r of refs) if (r.cents == null) r.cents = atStart.get(r.id.toString())?.[0] ?? 0;
@@ -374,15 +391,16 @@ export async function healthScore(userId: bigint, ym: YearMonth, now: number = n
   const stateNow = isPastMonth(ym, now) ? range.to - 1 : now;
   const c: Ctx = { userId, ym, range, now, stateNow };
   const typical = await typicalMonth(userId, ym);
-  const checks = [
-    await savingsRateCheck(c, typical.incomeCents),
-    await emergencyFundCheck(c),
-    await yearlyCostsCheck(c),
-    await fixedCostsCheck(c, typical),
-    await creditCardsCheck(c),
-    await debtEmisCheck(c, typical.incomeCents),
-    await dataCheck(c),
-  ];
+  // Independent checks run concurrently; the array keeps the fixed order
+  const checks = await Promise.all([
+    savingsRateCheck(c, typical.incomeCents),
+    emergencyFundCheck(c),
+    yearlyCostsCheck(c),
+    fixedCostsCheck(c, typical),
+    creditCardsCheck(c),
+    debtEmisCheck(c, typical.incomeCents),
+    dataCheck(c),
+  ]);
   return {
     month: formatYearMonth(ym),
     passed: checks.filter((k) => k.status === 'pass').length,
@@ -413,27 +431,42 @@ const emptyHealth = (ym: YearMonth): StoredHealth => ({
   passed: 0,
   total: 0,
   frozen: false,
+  reconstructed: false,
   checks: KEYS.map((k) => check(k, 'not_set_up', null, txt('no_data', 'No data for this month yet'))),
 });
 
 export const beforeData = (ym: YearMonth, start: number | null) => start == null || monthRangeIST(ym).to <= start;
 
+/**
+ * Health freeze policy (ruling E10): from day 11 (IST) of M+1 and once every active card's 35-day
+ * window (from its reference: the latest check dated in M, else the start of M) has closed, so the
+ * card result can no longer change; at the latest from M+1 + 36 days, whatever the status.
+ */
+async function healthPolicy(userId: bigint, ym: YearMonth): Promise<FreezePolicy<HealthScore>> {
+  const range = monthRangeIST(ym);
+  const refs = await cardRefs(userId, range);
+  const windowsClosed = Math.max(range.from, ...refs.map((r) => r.at)) + CARD_CLEAR_DAYS * DAY;
+  const cap = monthRangeIST(shiftMonth(ym, 1)).from + FREEZE_CAP_DAYS * DAY;
+  return (_data, now) => now >= cap || (now >= graceEnd(ym) && now >= windowsClosed);
+}
+
 async function forMonth(userId: bigint, ym: YearMonth, now: number): Promise<StoredHealth> {
-  const { data, frozen } = await getOrFreeze<HealthScore>(
+  const { data, frozen, reconstructed } = await getOrFreeze<HealthScore>(
     userId,
     ym,
     'health',
     () => healthScore(userId, ym, now),
     now,
-    freezeAfterGrace(ym)
+    isPastMonth(ym, now) ? await healthPolicy(userId, ym) : undefined
   );
-  return { ...data, frozen };
+  return { ...data, frozen, reconstructed };
 }
 
 /**
- * The month's score. A past month is frozen on its first read on/after day 11 (IST) of the next
- * month; before that, and for the current month, it is live. Months before the user's data are a
- * cheap all-not-set-up result that is never stored.
+ * The month's score. A past month is frozen on its first read once it is settled (healthPolicy:
+ * day 11 of M+1 and every card window closed) and before M+3; before that, and for the current
+ * month, it is live. A past month first read from M+3 on is reconstructed (live, never stored).
+ * Months before the user's data are a cheap all-not-set-up result that is never stored.
  */
 export async function healthForMonth(userId: bigint, ym: YearMonth, now: number = nowSeconds()): Promise<StoredHealth> {
   if (beforeData(ym, await dataStart(userId))) return emptyHealth(ym);
@@ -460,7 +493,7 @@ export async function healthHistory(userId: bigint, now: number = nowSeconds()):
   const out: StoredHealth[] = [];
   for (const ym of months) {
     const stored = frozen.get(monthKey(ym));
-    if (stored) out.push({ ...stored, frozen: true });
+    if (stored) out.push({ ...stored, frozen: true, reconstructed: false });
     else if (beforeData(ym, start)) out.push(emptyHealth(ym));
     else out.push(await forMonth(userId, ym, now));
   }

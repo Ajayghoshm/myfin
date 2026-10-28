@@ -1,10 +1,12 @@
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import app from '../../src/app.js';
 import { prisma } from '../../src/config/prisma.js';
 import { MYFIN } from '../../src/consts.js';
+import { listAccountsWithFreshness } from '../../src/services/accountFreshnessService.js';
 import AccountService from '../../src/services/accountService.js';
+import { recordCheck } from '../../src/services/balanceCheckService.js';
 import { createLoan } from '../../src/services/debts/loanService.js';
 import { updateFinancialProfile } from '../../src/services/financialProfileService.js';
 import { monthRangeIST, type YearMonth } from '../../src/services/insights/insightsPrimitives.js';
@@ -194,14 +196,24 @@ describe('financial health score', () => {
     expect(bank).toBeTruthy();
   });
 
-  test('a balance check dated in the month is the reference', async () => {
-    const { card } = await scenario(ctx);
-    // A check on Oct 6 showing -3,000 owed; nothing paid since -> window running
-    await prisma.balance_checks.create({
-      data: { accounts_account_id: card.account_id, checked_at: BigInt(at(OCT, 6)), real_balance: -300000n, myfin_balance: -300000n, result: 'matched' },
-    });
+  test('a balance check dated in the month is the reference (real balance = amount owed)', async () => {
+    const { card, bank, add } = await scenario(ctx);
+    // Oct 6: ₹3,000 spent on the card, and the user records the real balance: ₹3,000 owed
+    await add({ type: E, amount: 3000, ym: OCT, day: 6, description: 'Shop', from: card.account_id, to: null });
+    const clock = vi.spyOn(Date, 'now').mockReturnValue((at(OCT, 6) + 3600) * 1000);
+    try {
+      await recordCheck(ctx.uid, card.account_id, 3000);
+    } finally {
+      clock.mockRestore();
+    }
+    const stored = await prisma.balance_checks.findFirstOrThrow({ where: { accounts_account_id: card.account_id } });
+    expect(Number(stored.real_balance)).toBe(300000);
+    // Nothing paid since -> window running, then fail after 35 days
     expect(byKey(await healthScore(ctx.uid, OCT, NOW)).credit_cards).toBe('not_set_up');
     expect(byKey(await healthScore(ctx.uid, OCT, at(OCT, 6) + 36 * DAY)).credit_cards).toBe('fail');
+    // Paid in full within the window -> pass
+    await add({ type: T, amount: 3000, ym: OCT, day: 25, description: 'Card bill', from: bank.account_id, to: card.account_id });
+    expect(byKey(await healthScore(ctx.uid, OCT, at(OCT, 6) + 36 * DAY)).credit_cards).toBe('pass');
   });
 
   test('past months are frozen on first read; the current month stays live', async () => {
@@ -237,7 +249,7 @@ describe('financial health score', () => {
     expect(b.frozen).toBe(true);
     expect(a.data).toEqual(b.data);
     const live = await getOrFreeze(ctx.uid, OCT, 'health', async () => ({ who: 'live' }), NOW);
-    expect(live).toEqual({ data: { who: 'live' }, frozen: false });
+    expect(live).toEqual({ data: { who: 'live' }, frozen: false, reconstructed: false });
     expect(await prisma.monthly_records.count({ where: { users_user_id: ctx.uid } })).toBe(1);
   });
 
@@ -248,18 +260,23 @@ describe('financial health score', () => {
     expect(hist[0].month).toBe('2025-11');
     expect(hist[11].month).toBe('2026-10');
     expect(hist[11].frozen).toBe(false);
-    // Data starts in July: Nov-Jun are empty and unstored; Jul-Sep are frozen
+    // Data starts in July: Nov-Jun are empty and unstored; July is first read from October (M+3):
+    // reconstructed, live and unstored; Aug-Sep are frozen
     expect(hist.slice(0, 8).every((h) => !h.frozen && h.total === 0)).toBe(true);
-    expect(hist.slice(8, 11).every((h) => h.frozen)).toBe(true);
-    expect(hist[11].passed).toBe(3);
-    expect(await prisma.monthly_records.count({ where: { users_user_id: ctx.uid } })).toBe(3);
+    expect(hist[8]).toMatchObject({ month: '2026-07', frozen: false, reconstructed: true });
+    expect(hist[8].total).toBeGreaterThan(0);
+    expect(hist.slice(9, 11).every((h) => h.frozen && !h.reconstructed)).toBe(true);
+    expect(hist[11]).toMatchObject({ passed: 3, reconstructed: false });
+    expect(await prisma.monthly_records.count({ where: { users_user_id: ctx.uid } })).toBe(2);
     // A second read takes the frozen months from the store
     expect(await healthHistory(ctx.uid, NOW)).toEqual(hist);
   });
 
   test('a past month freezes only from day 11 of the next month; checks up to day 10 count', async () => {
-    const { bank, card } = await scenario(ctx);
+    const { bank, card, add } = await scenario(ctx);
     await prisma.accounts.deleteMany({ where: { users_user_id: ctx.uid, name: 'Old wallet' } });
+    // Keeps the bank fresh as of the end of September (later transactions don't count)
+    await add({ type: E, amount: 100, ym: SEP, day: 28, description: 'Paid to GROCER' });
     const early = await healthForMonth(ctx.uid, SEP, at(OCT, 5));
     expect(early.frozen).toBe(false);
     expect(early.checks.find((c) => c.key === 'data')).toMatchObject({ status: 'pass', hint_key: 'data_ok_pending' });
@@ -278,8 +295,9 @@ describe('financial health score', () => {
   });
 
   test('missing balance checks fail once day 10 of the next month has passed', async () => {
-    await scenario(ctx);
+    const { add } = await scenario(ctx);
     await prisma.accounts.deleteMany({ where: { users_user_id: ctx.uid, name: 'Old wallet' } });
+    await add({ type: E, amount: 100, ym: SEP, day: 28, description: 'Paid to GROCER' });
     const sep = await healthForMonth(ctx.uid, SEP, monthRangeIST(OCT).from + 10 * DAY);
     expect(sep.frozen).toBe(true);
     expect(sep.checks.find((c) => c.key === 'data')).toMatchObject({
@@ -298,6 +316,67 @@ describe('financial health score', () => {
     await updateFinancialProfile(ctx.uid, { savings_target_value: 30000 });
     s = (await healthScore(ctx.uid, OCT, NOW)).checks.find((c) => c.key === 'savings_rate')!;
     expect(s).toMatchObject({ status: 'fail', hint_params: { rate: 25, target: 30 } });
+  });
+
+  test('a past month first read from the start of M+3 is reconstructed: live, never stored', async () => {
+    await scenario(ctx);
+    const jul = await healthForMonth(ctx.uid, JUL, NOW);
+    expect(jul).toMatchObject({ month: '2026-07', frozen: false, reconstructed: true });
+    expect(await prisma.monthly_records.count({ where: { users_user_id: ctx.uid } })).toBe(0);
+    // The last moment before M+3 still freezes
+    const aug = await healthForMonth(ctx.uid, AUG, monthRangeIST(SEP).from + 60 * DAY - 1);
+    expect(aug).toMatchObject({ frozen: true, reconstructed: false });
+    // A frozen month stays frozen (not reconstructed) when read later
+    expect(await healthForMonth(ctx.uid, AUG, NOW + 400 * DAY)).toMatchObject({ frozen: true, reconstructed: false });
+    expect(await getOrFreeze(ctx.uid, JUL, 'health', async () => ({ who: 'x' }), NOW)).toEqual({
+      data: { who: 'x' },
+      frozen: false,
+      reconstructed: true,
+    });
+  });
+
+  test('freshness for a past month ignores transactions dated after it', async () => {
+    const { bank } = await scenario(ctx);
+    const endSep = monthRangeIST(OCT).from - 1;
+    const asOf = (await listAccountsWithFreshness(ctx.uid, endSep)).find((a) => a.account_id === bank.account_id)!;
+    // Bank's last September transaction is the 3rd: 27 days before the end of September -> stale
+    expect(asOf.last_transaction_at).toBe(at(SEP, 3));
+    expect(asOf.freshness).toBe('stale');
+    const sep = await healthScore(ctx.uid, SEP, NOW);
+    expect(sep.checks.find((c) => c.key === 'data')).toMatchObject({ status: 'fail', hint_params: { count: 2 } });
+  });
+
+  test('savings target: the rounded rate meets the rounded target (19.6 % vs 20 % passes)', async () => {
+    const { add } = await scenario(ctx);
+    // October spending 75,000 -> 80,400: rate 19.6 %
+    await add({ type: E, amount: 5400, ym: OCT, day: 19, description: 'Paid to GROCER' });
+    let s = (await healthScore(ctx.uid, OCT, NOW)).checks.find((c) => c.key === 'savings_rate')!;
+    expect(s).toMatchObject({ status: 'pass', hint_params: { rate: 20, target: 20 } });
+    // 19.4 % rounds to 19 -> fail
+    await add({ type: E, amount: 200, ym: OCT, day: 19, description: 'Paid to GROCER' });
+    s = (await healthScore(ctx.uid, OCT, NOW)).checks.find((c) => c.key === 'savings_rate')!;
+    expect(s).toMatchObject({ status: 'fail', hint_params: { rate: 19, target: 20 } });
+  });
+
+  test("a past month waits for every card's 35-day window before freezing", async () => {
+    const { card } = await scenario(ctx);
+    await prisma.accounts.deleteMany({ where: { users_user_id: ctx.uid, name: 'Old wallet' } });
+    // A balance check on September 25: its window runs until October 30
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(at(SEP, 25) * 1000);
+    try {
+      await recordCheck(ctx.uid, card.account_id, 3000);
+    } finally {
+      clock.mockRestore();
+    }
+    const day11 = monthRangeIST(OCT).from + 10 * DAY;
+    expect((await healthForMonth(ctx.uid, SEP, day11)).frozen).toBe(false);
+    const closes = at(SEP, 25) + 35 * DAY;
+    expect((await healthForMonth(ctx.uid, SEP, closes - 1)).frozen).toBe(false);
+    expect(await prisma.monthly_records.count({ where: { users_user_id: ctx.uid } })).toBe(0);
+    const frozen = await healthForMonth(ctx.uid, SEP, closes);
+    expect(frozen.frozen).toBe(true);
+    // The ₹3,000 owed was cleared by the October 5 transfer of ₹10,000
+    expect(byKey(frozen).credit_cards).toBe('pass');
   });
 
   test('backup round trip keeps monthly records; bad rows are rejected (406); wipe clears them', async () => {

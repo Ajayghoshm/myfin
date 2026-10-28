@@ -147,6 +147,20 @@ describe('month-end review', () => {
     expect(hist.every((h) => typeof h.complete === 'boolean')).toBe(true);
   });
 
+  test('a month first read from the start of M+3 is reconstructed: live, unstored, flagged', async () => {
+    await septemberWithGaps();
+    const later = monthRangeIST({ year: 2026, month: 12 }).from + 3600; // Dec 1: September is 3 months back
+    const r = await monthReview(ctx.uid, SEP, later);
+    expect(r).toMatchObject({ month: '2026-09', frozen: false, reconstructed: true, before_data: false });
+    expect(await prisma.monthly_records.count({ where: { users_user_id: ctx.uid } })).toBe(0);
+    const hist = await reviewHistory(ctx.uid, later);
+    expect(hist.find((h) => h.month === '2026-09')).toMatchObject({ frozen: false, reconstructed: true });
+    // October (2 months back) still freezes on its first read
+    expect(hist.find((h) => h.month === '2026-10')).toMatchObject({ frozen: true, reconstructed: false });
+    // A month frozen in time keeps reading as frozen
+    expect(await monthReview(ctx.uid, OCT, later + 365 * DAY)).toMatchObject({ frozen: true, reconstructed: false });
+  });
+
   test('a tick committed while the review is being computed survives the freeze', async () => {
     await septemberWithGaps();
     const original = prisma.budgets.count.bind(prisma.budgets);

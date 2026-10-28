@@ -35,12 +35,21 @@ export type MonthReview = {
   complete: boolean;
   steps: ReviewStep[];
   frozen: boolean;
+  /** A past month first read from M+3 on: computed live from today's data, never stored. */
+  reconstructed: boolean;
   /** The month ends before the user's data starts; computed live, never stored. */
   before_data: boolean;
 };
-export type ReviewHistoryEntry = { month: string; done: number; total: 6; complete: boolean; frozen: boolean };
+export type ReviewHistoryEntry = {
+  month: string;
+  done: number;
+  total: 6;
+  complete: boolean;
+  frozen: boolean;
+  reconstructed: boolean;
+};
 
-type StoredReview = Omit<MonthReview, "frozen" | "before_data"> & { reviewed: boolean };
+type StoredReview = Omit<MonthReview, 'frozen' | 'reconstructed' | 'before_data'> & { reviewed: boolean };
 
 const HISTORY_MONTHS = 12;
 const nowSeconds = () => Math.floor(Date.now() / 1000);
@@ -207,19 +216,26 @@ const reviewPolicy =
   (data, now) =>
     data.complete || now >= graceEnd(ym);
 
-const toReview = ({ reviewed: _r, ...rest }: StoredReview, frozen: boolean, before_data = false): MonthReview => ({
+const toReview = (
+  { reviewed: _r, ...rest }: StoredReview,
+  frozen: boolean,
+  reconstructed: boolean,
+  before_data = false
+): MonthReview => ({
   ...rest,
   frozen,
+  reconstructed,
   before_data,
 });
 
 /**
  * The month-end review of `ym`. Months before the user's data are computed but never stored. The
- * current month is live; a past month freezes when complete or on the first read from day 11 of M+1.
+ * current month is live; a past month freezes when complete or on the first read from day 11 of M+1,
+ * unless it is first read from M+3 on: then it is reconstructed (live, never stored).
  */
 export async function monthReview(userId: bigint, ym: YearMonth, now: number = nowSeconds()): Promise<MonthReview> {
-  if (beforeData(ym, await dataStart(userId))) return toReview(await computeReview(userId, ym, now), false, true);
-  const { data, frozen } = await getOrFreeze<StoredReview>(
+  if (beforeData(ym, await dataStart(userId))) return toReview(await computeReview(userId, ym, now), false, false, true);
+  const { data, frozen, reconstructed } = await getOrFreeze<StoredReview>(
     userId,
     ym,
     'review',
@@ -228,7 +244,7 @@ export async function monthReview(userId: bigint, ym: YearMonth, now: number = n
     reviewPolicy(ym),
     mergeReviewed
   );
-  return toReview(data, frozen);
+  return toReview(data, frozen, reconstructed);
 }
 
 /**
@@ -267,12 +283,26 @@ export async function reviewHistory(userId: bigint, now: number = nowSeconds()):
   for (const ym of months) {
     const stored = frozen.get(monthKey(ym));
     if (stored) {
-      out.push({ month: stored.month, done: stored.done, total: 6, complete: stored.complete, frozen: true });
+      out.push({
+        month: stored.month,
+        done: stored.done,
+        total: 6,
+        complete: stored.complete,
+        frozen: true,
+        reconstructed: false,
+      });
     } else if (beforeData(ym, start)) {
-      out.push({ month: formatYearMonth(ym), done: 0, total: 6, complete: false, frozen: false });
+      out.push({ month: formatYearMonth(ym), done: 0, total: 6, complete: false, frozen: false, reconstructed: false });
     } else {
       const r = await monthReview(userId, ym, now);
-      out.push({ month: r.month, done: r.done, total: 6, complete: r.complete, frozen: r.frozen });
+      out.push({
+        month: r.month,
+        done: r.done,
+        total: 6,
+        complete: r.complete,
+        frozen: r.frozen,
+        reconstructed: r.reconstructed,
+      });
     }
   }
   return out;

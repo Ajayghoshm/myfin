@@ -8,7 +8,8 @@ import CommonsController from './commonsController.js';
 
 const MONTH = joi.string().pattern(/^\d{4}-(0[1-9]|1[0-2])$/);
 const reviewQuerySchema = joi.object({ month: MONTH.optional() }).unknown(true);
-const reviewedSchema = joi.object({ month: MONTH.required(), reviewed: joi.boolean().required() });
+const reviewedParamsSchema = joi.object({ month: MONTH.required() }).unknown(true);
+const reviewedSchema = joi.object({ reviewed: joi.boolean().required() }).unknown(true);
 
 const parseMonth = (m: string) => ({ year: Number(m.slice(0, 4)), month: Number(m.slice(5, 7)) });
 
@@ -31,9 +32,10 @@ const getReview = async (req: Request, res: Response, next: NextFunction) => {
 const setReviewed = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const sessionData = await CommonsController.checkAuthSessionValidity(req);
-    const input = await reviewedSchema.validateAsync({ month: req.params.month, reviewed: req.body?.reviewed });
-    await MonthReviewService.setReviewed(sessionData.userId, parseMonth(input.month), input.reviewed);
-    res.json({ month: input.month, reviewed: input.reviewed });
+    const { month } = await reviewedParamsSchema.validateAsync(req.params);
+    const input = await reviewedSchema.validateAsync(req.body ?? {});
+    await MonthReviewService.setReviewed(sessionData.userId, parseMonth(month), input.reviewed);
+    res.json({ month, reviewed: input.reviewed });
   } catch (err) {
     Logger.addErrorLog(err);
     next(err || APIError.internalServerError());
@@ -53,4 +55,4 @@ const getReviewHistory = async (req: Request, res: Response, next: NextFunction)
 export default { getReview, setReviewed, getReviewHistory };
 
 // Exported for tests
-export { reviewQuerySchema, reviewedSchema };
+export { reviewQuerySchema, reviewedParamsSchema, reviewedSchema };

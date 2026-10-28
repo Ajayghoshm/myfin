@@ -1,4 +1,5 @@
 import { prisma } from '../config/prisma.js';
+import { Prisma } from '../generated/prisma/client.js';
 import { MYFIN } from '../consts.js';
 import AccountService from './accountService.js';
 
@@ -57,9 +58,14 @@ export function freshnessFor(
   };
 }
 
-/** Accounts of the user with balances plus freshness fields (one grouped query per source). */
+/**
+ * Accounts of the user with balances plus freshness fields (one grouped query per source). With an
+ * explicit `nowEpoch` (e.g. the end of a past month), freshness is judged as of that moment:
+ * transactions and balance checks dated after it are ignored. Balances are always today's.
+ */
 export async function listAccountsWithFreshness(userId: bigint, nowEpoch?: number) {
   const now = nowEpoch ?? Math.floor(Date.now() / 1000);
+  const asOf = nowEpoch != null ? Prisma.sql`AND t.date_timestamp <= ${nowEpoch}` : Prisma.empty;
   const accounts = (await AccountService.getAccountsForUserWithAmounts(userId, false)) as Array<{
     account_id: bigint;
     type: string;
@@ -73,18 +79,21 @@ export async function listAccountsWithFreshness(userId: bigint, nowEpoch?: numbe
       SELECT t.accounts_account_from_id AS account_id, t.date_timestamp
         FROM transactions t
         JOIN accounts a ON a.account_id = t.accounts_account_from_id
-       WHERE a.users_user_id = ${userId} AND t.is_adjustment = false
+       WHERE a.users_user_id = ${userId} AND t.is_adjustment = false ${asOf}
       UNION ALL
       SELECT t.accounts_account_to_id AS account_id, t.date_timestamp
         FROM transactions t
         JOIN accounts a ON a.account_id = t.accounts_account_to_id
-       WHERE a.users_user_id = ${userId} AND t.is_adjustment = false
+       WHERE a.users_user_id = ${userId} AND t.is_adjustment = false ${asOf}
     ) x GROUP BY account_id`;
   const lastTrxMap = new Map(lastTrx.map((r) => [String(r.account_id), Number(r.last_at)]));
 
   const checks = await prisma.balance_checks.groupBy({
     by: ['accounts_account_id'],
-    where: { accounts: { users_user_id: userId } },
+    where: {
+      accounts: { users_user_id: userId },
+      ...(nowEpoch != null ? { checked_at: { lte: nowEpoch } } : {}),
+    },
     _max: { checked_at: true },
   });
   const checkMap = new Map(

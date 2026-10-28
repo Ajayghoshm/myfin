@@ -46,6 +46,8 @@ const LIST_AHEAD_DAYS = 30;
 const SUGGESTION_MONTHS = 4;
 const HISTORY_DAYS = 365;
 const HISTORY_MAX = 6;
+/** Unpaid money items (events and EMIs) stay in Upcoming this many days past their date. */
+const OVERDUE_DAYS = 7;
 
 const isPeople = (kind: string) => PEOPLE_KINDS.includes(kind);
 
@@ -116,7 +118,11 @@ export type UpcomingItem = {
   name: string;
   kind: string;
   date: string;
+  /** Negative for an overdue item. */
   days_until: number;
+  /** An unpaid money item (event or EMI) whose date has passed, by up to 7 days. */
+  overdue: boolean;
+  /** Currency. A card due without an amount shows the card's current outstanding (null when none). */
   amount: number | null;
   status: 'pending' | 'done';
   gift_budget: number | null;
@@ -546,17 +552,45 @@ export async function listEvents(userId: bigint, now: number = nowSeconds()): Pr
   return toDtos(userId, rows, now);
 }
 
-/** Active events' occurrences and unpaid loan EMIs due in [today, today + days] (IST), by date. */
+/**
+ * Active events' occurrences and unpaid loan EMIs due in [today, today + days] (IST), by date, plus
+ * unpaid money items (money events and EMIs) overdue by up to 7 days (negative `days_until`,
+ * `overdue`). A card due without an amount shows the card's current outstanding.
+ */
 export async function upcoming(userId: bigint, days: number, now: number = nowSeconds()): Promise<UpcomingItem[]> {
   const today = istDate(now);
   const end = addDays(today, days);
+  const overdueFrom = addDays(today, -OVERDUE_DAYS);
   await autoMatch(userId, addDays(today, -AUTO_MATCH_BACK_DAYS), end, now);
   const events = await prisma.events.findMany({ where: { users_user_id: userId, active: true } });
   const states = await occurrenceStates(events.map((e) => e.event_id));
+  const cardIds = events
+    .filter((e) => e.kind === 'card_due' && e.amount == null && e.account_id != null)
+    .map((e) => e.account_id as bigint);
+  const outstanding = new Map(
+    (cardIds.length
+      ? await prisma.accounts.findMany({
+          where: { account_id: { in: cardIds }, users_user_id: userId },
+          select: { account_id: true, current_balance: true },
+        })
+      : []
+    ).map((a) => {
+      const balance = Number(a.current_balance ?? 0);
+      return [a.account_id.toString(), balance < 0 ? -balance / 100 : null] as const;
+    })
+  );
   const items: UpcomingItem[] = [];
   for (const e of events) {
-    for (const date of occurrencesBetween(e, today, end)) {
+    for (const date of occurrencesBetween(e, isPeople(e.kind) ? today : overdueFrom, end)) {
       const occ = await occurrence(userId, e, date, states, today);
+      const overdue = date < today;
+      if (overdue && occ.status === 'done') continue;
+      const amount =
+        e.amount != null
+          ? currency(e.amount)
+          : e.kind === 'card_due' && e.account_id != null
+            ? (outstanding.get(e.account_id.toString()) ?? null)
+            : null;
       items.push({
         source: 'event',
         id: e.event_id.toString(),
@@ -564,7 +598,8 @@ export async function upcoming(userId: bigint, days: number, now: number = nowSe
         kind: e.kind,
         date,
         days_until: occ.days_until,
-        amount: e.amount != null ? currency(e.amount) : null,
+        overdue,
+        amount,
         status: occ.status,
         gift_budget: isPeople(e.kind) && e.gift_budget != null ? currency(e.gift_budget) : null,
         gift_spent: occ.gift_spent,
@@ -575,7 +610,7 @@ export async function upcoming(userId: bigint, days: number, now: number = nowSe
   for (const loan of await listLoans(userId, now)) {
     if (loan.status !== 'open') continue;
     for (const r of loan.schedule) {
-      if (r.status === 'paid' || r.date < today || r.date > end) continue;
+      if (r.status === 'paid' || r.date < overdueFrom || r.date > end) continue;
       items.push({
         source: 'emi',
         id: `${loan.debt_id}:${r.n}`,
@@ -583,6 +618,7 @@ export async function upcoming(userId: bigint, days: number, now: number = nowSe
         kind: 'emi',
         date: r.date,
         days_until: daysBetween(today, r.date),
+        overdue: r.date < today,
         amount: r.emi,
         status: 'pending',
         gift_budget: null,
