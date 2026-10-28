@@ -26,6 +26,7 @@ import SafeToSpendCard from '../insights/SafeToSpendCard.tsx';
 import EmergencyFundCard from '../insights/EmergencyFundCard.tsx';
 import SalaryPlanCard from '../salaryPlan/SalaryPlanCard.tsx';
 import HealthScoreCard from '../health/HealthScoreCard.tsx';
+import MonthReviewCard from '../review/MonthReviewCard.tsx';
 
 const generateDebtIncomeDistributionChartData = (accounts: Account[]) => {
   return (
@@ -291,6 +292,9 @@ const Dashboard = () => {
       </Grid>
       <Grid size={12} sx={{ '&:empty': { display: 'none' } }}>
         <SalaryPlanCard />
+      </Grid>
+      <Grid size={12} sx={{ '&:empty': { display: 'none' } }}>
+        <MonthReviewCard />
       </Grid>
       <Grid size={12} sx={{ '&:empty': { display: 'none' } }}>
         <HealthScoreCard />

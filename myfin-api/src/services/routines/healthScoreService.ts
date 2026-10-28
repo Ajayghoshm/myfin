@@ -289,29 +289,47 @@ async function creditCardsCheck(c: Ctx): Promise<HealthCheck> {
 }
 
 /**
+ * Active accounts with freshness enabled, how many are stale (as of `stateNow`) and how many have no
+ * balance check dated in M or within the first 10 days of M+1 ("balances checked for M"). Shared by
+ * the health `data` check and the month-end review's reconcile step.
+ */
+export async function balanceCoverage(userId: bigint, ym: YearMonth, stateNow: number) {
+  const accounts = await listAccountsWithFreshness(userId, stateNow);
+  const enabled = accounts.filter(
+    (a) => a.status === MYFIN.ACCOUNT_STATUS.ACTIVE && a.stale_after_days_effective != null
+  );
+  const deadline = graceEnd(ym);
+  const range = monthRangeIST(ym);
+  const checked = enabled.length
+    ? await prisma.balance_checks.groupBy({
+        by: ['accounts_account_id'],
+        where: {
+          accounts_account_id: { in: enabled.map((a) => a.account_id) },
+          checked_at: { gte: range.from, lt: deadline },
+        },
+      })
+    : [];
+  const checkedIds = new Set(checked.map((r) => r.accounts_account_id.toString()));
+  return {
+    enabled,
+    stale: enabled.filter((a) => a.freshness === 'stale'),
+    unchecked: enabled.filter((a) => !checkedIds.has(a.account_id.toString())),
+    deadline,
+  };
+}
+
+/**
  * No active freshness-enabled account is stale (as of `stateNow`), and each has a balance check
  * dated in M or within the first 10 days of M+1. A missing check fails only once that grace period
  * has passed (judged against the real `now`); until then it is pending.
  */
 async function dataCheck(c: Ctx): Promise<HealthCheck> {
-  const accounts = await listAccountsWithFreshness(c.userId, c.stateNow);
-  const enabled = accounts.filter(
-    (a) => a.status === MYFIN.ACCOUNT_STATUS.ACTIVE && a.stale_after_days_effective != null
-  );
-  if (enabled.length === 0)
+  const cov = await balanceCoverage(c.userId, c.ym, c.stateNow);
+  if (cov.enabled.length === 0)
     return check('data', 'not_set_up', null, txt('data_not_enabled', 'Turn on freshness tracking for your accounts'));
-
-  const stale = enabled.filter((a) => a.freshness === 'stale').length;
-  const deadline = graceEnd(c.ym);
-  const checked = await prisma.balance_checks.groupBy({
-    by: ['accounts_account_id'],
-    where: {
-      accounts_account_id: { in: enabled.map((a) => a.account_id) },
-      checked_at: { gte: c.range.from, lt: deadline },
-    },
-  });
-  const checkedIds = new Set(checked.map((r) => r.accounts_account_id.toString()));
-  const unchecked = enabled.filter((a) => !checkedIds.has(a.account_id.toString())).length;
+  const stale = cov.stale.length;
+  const unchecked = cov.unchecked.length;
+  const deadline = cov.deadline;
   const day = GRACE_DAYS;
 
   if (stale > 0)
@@ -374,7 +392,7 @@ export async function healthScore(userId: bigint, ym: YearMonth, now: number = n
 }
 
 /** Earliest of the user's first transaction and first account creation; null = no data at all. */
-async function dataStart(userId: bigint): Promise<number | null> {
+export async function dataStart(userId: bigint): Promise<number | null> {
   const [trx] = await prisma.$queryRaw<Array<{ first: bigint | null }>>`
     SELECT MIN(transactions.date_timestamp) AS first ${ownershipSql(userId)}`;
   const accounts = await prisma.accounts.findMany({
@@ -398,7 +416,7 @@ const emptyHealth = (ym: YearMonth): StoredHealth => ({
   checks: KEYS.map((k) => check(k, 'not_set_up', null, txt('no_data', 'No data for this month yet'))),
 });
 
-const beforeData = (ym: YearMonth, start: number | null) => start == null || monthRangeIST(ym).to <= start;
+export const beforeData = (ym: YearMonth, start: number | null) => start == null || monthRangeIST(ym).to <= start;
 
 async function forMonth(userId: bigint, ym: YearMonth, now: number): Promise<StoredHealth> {
   const { data, frozen } = await getOrFreeze<HealthScore>(

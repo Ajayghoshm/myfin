@@ -38,6 +38,42 @@ export function useGetHealthHistory() {
   });
 }
 
+export const QUERY_KEY_GET_REVIEW = 'QUERY_KEY_GET_REVIEW';
+
+/** `ym` is 'YYYY-MM'; omitted = the previous month. */
+export function useGetReview(ym?: string, enabled = true) {
+  return useQuery({
+    queryKey: [QUERY_KEY_GET_REVIEW, ym ?? 'previous'],
+    queryFn: async () => (await insightsServices.getReview(ym)).data,
+    placeholderData: keepPreviousData,
+    enabled,
+  });
+}
+
+export const QUERY_KEY_GET_REVIEW_HISTORY = 'QUERY_KEY_GET_REVIEW_HISTORY';
+
+export function useGetReviewHistory() {
+  return useQuery({
+    queryKey: [QUERY_KEY_GET_REVIEW_HISTORY],
+    queryFn: async () => (await insightsServices.getReviewHistory()).data,
+  });
+}
+
+export function useSetReviewed() {
+  return useMutation({
+    mutationFn: async (input: { month: string; reviewed: boolean }) =>
+      (await insightsServices.setReviewed(input.month, input.reviewed)).data,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: [QUERY_KEY_GET_REVIEW],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: [QUERY_KEY_GET_REVIEW_HISTORY],
+      });
+    },
+  });
+}
+
 export const QUERY_KEY_GET_SAFE_TO_SPEND = 'QUERY_KEY_GET_SAFE_TO_SPEND';
 
 export function useGetSafeToSpend() {

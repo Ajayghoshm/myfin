@@ -26,6 +26,7 @@ import Debts from '../features/debts/Debts.tsx';
 import LegacyPrint from '../features/profile/LegacyPrint.tsx';
 import Retirement from '../features/retirement/Retirement.tsx';
 import Health from '../features/health/Health.tsx';
+import Review from '../features/review/Review.tsx';
 
 export const ROUTE_AUTH = '/auth';
 export const ROUTE_RECOVER_PASSWORD = '/recover-password';
@@ -62,6 +63,7 @@ export const ROUTE_YEARLY_COSTS = '/yearly-costs';
 export const ROUTE_DEBTS = '/debts';
 export const ROUTE_RETIREMENT = '/retirement';
 export const ROUTE_HEALTH = '/health';
+export const ROUTE_REVIEW = '/review';
 export const ROUTE_SALARY_PLAN = '/salary-plan/:month';
 export const ROUTE_SETUP = '/setup';
 
@@ -113,6 +115,7 @@ const RoutesProvider = () => {
           />
           <Route path={ROUTE_INSIGHTS} element={<Insights />} />
           <Route path={ROUTE_HEALTH} element={<Health />} />
+          <Route path={ROUTE_REVIEW} element={<Review />} />
           <Route path={ROUTE_YEARLY_COSTS} element={<YearlyCosts />} />
           <Route path={ROUTE_DEBTS} element={<Debts />} />
           <Route path={ROUTE_RETIREMENT} element={<Retirement />} />

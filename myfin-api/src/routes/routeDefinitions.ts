@@ -17,6 +17,7 @@ import InvestReportsController from '../controllers/investReportsController.js';
 import InvestTransactionsController from '../controllers/investTransactionsController.js';
 import PlannedTransactionController from '../controllers/plannedTransactionController.js';
 import SalaryPlanController from '../controllers/salaryPlanController.js';
+import ReviewController from '../controllers/reviewController.js';
 import RuleController from '../controllers/ruleController.js';
 import SetupController from '../controllers/setupController.js';
 import StatsController from '../controllers/statsController.js';
@@ -113,6 +114,17 @@ export const routeGroups: RouteGroup[] = [
     controller: UserController as ControllerModule,
     controllerSourceBaseUrl: new URL('../controllers/userController', import.meta.url).href,
     routes: [{ method: 'post', path: '/', handlerName: 'checkSessionValidity' }],
+  },
+  {
+    tag: 'Month review',
+    basePath: '/review',
+    controller: ReviewController as ControllerModule,
+    controllerSourceBaseUrl: new URL('../controllers/reviewController', import.meta.url).href,
+    routes: [
+      { method: 'get', path: '/', handlerName: 'getReview' },
+      { method: 'get', path: '/history', handlerName: 'getReviewHistory' },
+      { method: 'post', path: '/:month/reviewed', handlerName: 'setReviewed' },
+    ],
   },
   {
     tag: 'Insights',

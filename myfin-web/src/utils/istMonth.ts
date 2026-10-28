@@ -36,3 +36,16 @@ export function istYearMonthOf(timestamp: number): string {
   const ist = new Date((timestamp + IST_OFFSET_SECONDS) * 1000);
   return formatYearMonth(ist.getUTCFullYear(), ist.getUTCMonth() + 1);
 }
+
+/** Today's day of the month in IST (1-31). */
+export function currentIstDay(): number {
+  return new Date(Date.now() + IST_OFFSET_SECONDS * 1000).getUTCDate();
+}
+
+/** The month before `ym` ('YYYY-MM'), as 'YYYY-MM'. */
+export function previousYearMonth(ym: string): string {
+  const { year, month } = parseYearMonth(ym);
+  return month === 1
+    ? formatYearMonth(year - 1, 12)
+    : formatYearMonth(year, month - 1);
+}

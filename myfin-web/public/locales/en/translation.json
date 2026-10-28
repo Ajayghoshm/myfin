@@ -78,6 +78,7 @@
     "debts": "Debts",
     "retirement": "Retirement",
     "health": "Health",
+    "review": "Month review",
     "tags": "Tags",
     "meta": "Meta"
   },
@@ -1278,6 +1279,55 @@
     "fillEmpty": "Fill only empty",
     "replaceAll": "Replace all",
     "skipped": "Not changed (they have a breakdown or are inactive): {{names}}"
+  },
+  "review": {
+    "title": "Month-end review",
+    "subtitle": "Six steps to close last month. Past months are kept as they were.",
+    "month": "Month",
+    "loading": "Loading…",
+    "cardTitle": "{{month}} review: {{done}} of {{total}} done",
+    "openReview": "Open the review",
+    "open": "Open",
+    "tickReviewed": "I've reviewed this month in Insights",
+    "frozen": "Frozen",
+    "frozenNote": "This month is frozen: later changes don't alter its review.",
+    "history": "Last 12 months",
+    "completed": "Complete",
+    "progress": "{{done}} of {{total}}",
+    "status": {
+      "done": "Done",
+      "todo": "To do",
+      "nothing_to_do": "Nothing to do"
+    },
+    "steps": {
+      "import": "Import stale accounts",
+      "sort": "Sort uncategorised spending",
+      "reconcile": "Reconcile balances",
+      "planned": "Resolve planned transfers",
+      "review": "Review Insights",
+      "plan": "Plan next month's budget"
+    },
+    "details": {
+      "import_none": "No account has freshness tracking turned on",
+      "import_done": "No account is stale",
+      "import_todo_one": "{{count}} account is stale; import its transactions",
+      "import_todo_other": "{{count}} accounts are stale; import their transactions",
+      "sort_done": "Every expense has a category",
+      "sort_todo_one": "{{count}} expense has no category",
+      "sort_todo_other": "{{count}} expenses have no category",
+      "reconcile_none": "No account has freshness tracking turned on",
+      "reconcile_done": "Balances are checked",
+      "reconcile_todo_one": "{{count}} account has no balance check for this month",
+      "reconcile_todo_other": "{{count}} accounts have no balance check for this month",
+      "planned_none": "No salary plan this month",
+      "planned_done": "Every planned transfer is resolved",
+      "planned_todo_one": "{{count}} planned transfer is still open",
+      "planned_todo_other": "{{count}} planned transfers are still open",
+      "review_done": "You reviewed Insights",
+      "review_todo": "Look through the month in Insights, then tick it off",
+      "plan_done": "Next month has a budget",
+      "plan_todo": "Create next month's budget"
+    }
   },
   "health": {
     "title": "Financial health",

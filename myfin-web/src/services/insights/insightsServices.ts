@@ -271,6 +271,56 @@ const getHealth = (month?: string) =>
 const getHealthHistory = () =>
   axios.get<HealthScore[]>('/insights/health/history');
 
+export type ReviewStepKey =
+  | 'import'
+  | 'sort'
+  | 'reconcile'
+  | 'planned'
+  | 'review'
+  | 'plan';
+
+export type ReviewStep = {
+  key: ReviewStepKey;
+  status: 'done' | 'todo' | 'nothing_to_do';
+  /** English fallback; `detail_key` + `detail_params` localise it. */
+  detail: string;
+  detail_key: string;
+  detail_params: Record<string, string | number>;
+  link: string;
+  items?: { id: string; label: string; link: string }[];
+};
+
+export type MonthReview = {
+  month: string;
+  done: number;
+  total: 6;
+  complete: boolean;
+  steps: ReviewStep[];
+  /** A past month's stored review, which never changes. */
+  frozen: boolean;
+};
+
+export type ReviewHistoryEntry = {
+  month: string;
+  done: number;
+  total: 6;
+  complete: boolean;
+  frozen: boolean;
+};
+
+/** `month` is 'YYYY-MM'; omitted = the previous month. */
+const getReview = (month?: string) =>
+  axios.get<MonthReview>('/review', { params: month ? { month } : {} });
+
+const getReviewHistory = () =>
+  axios.get<ReviewHistoryEntry[]>('/review/history');
+
+const setReviewed = (month: string, reviewed: boolean) =>
+  axios.post<{ month: string; reviewed: boolean }>(
+    `/review/${month}/reviewed`,
+    { reviewed },
+  );
+
 const getEmergencyFund = () =>
   axios.get<EmergencyFund>('/insights/emergency-fund');
 
@@ -292,6 +342,9 @@ export default {
   getEmergencyFund,
   getHealth,
   getHealthHistory,
+  getReview,
+  getReviewHistory,
+  setReviewed,
   getSafeToSpend,
   getSmallSpends,
   getNetWorth,

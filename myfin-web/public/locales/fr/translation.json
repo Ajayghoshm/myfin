@@ -77,6 +77,7 @@
     "debts": "Dettes",
     "retirement": "Retraite",
     "health": "Santé",
+    "review": "Bilan du mois",
     "tags": "Étiquettes",
     "meta": "Méta"
   },
@@ -1206,6 +1207,55 @@
     "fillEmpty": "Remplir seulement les vides",
     "replaceAll": "Tout remplacer",
     "skipped": "Non modifiées (détail ou catégorie inactive) : {{names}}"
+  },
+  "review": {
+    "title": "Bilan de fin de mois",
+    "subtitle": "Six étapes pour clôturer le mois dernier. Les mois passés sont conservés tels quels.",
+    "month": "Mois",
+    "loading": "Chargement…",
+    "cardTitle": "Bilan de {{month}} : {{done}} sur {{total}} faites",
+    "openReview": "Ouvrir le bilan",
+    "open": "Ouvrir",
+    "tickReviewed": "J'ai examiné ce mois dans Aperçus",
+    "frozen": "Figé",
+    "frozenNote": "Ce mois est figé : les changements ultérieurs ne modifient pas son bilan.",
+    "history": "12 derniers mois",
+    "completed": "Terminé",
+    "progress": "{{done}} sur {{total}}",
+    "status": {
+      "done": "Fait",
+      "todo": "À faire",
+      "nothing_to_do": "Rien à faire"
+    },
+    "steps": {
+      "import": "Importer les comptes en retard",
+      "sort": "Classer les dépenses sans catégorie",
+      "reconcile": "Rapprocher les soldes",
+      "planned": "Régler les virements prévus",
+      "review": "Examiner les aperçus",
+      "plan": "Préparer le budget du mois prochain"
+    },
+    "details": {
+      "import_none": "Aucun compte n'a le suivi de fraîcheur activé",
+      "import_done": "Aucun compte n'est en retard",
+      "import_todo_one": "{{count}} compte est en retard ; importez ses transactions",
+      "import_todo_other": "{{count}} comptes sont en retard ; importez leurs transactions",
+      "sort_done": "Chaque dépense a une catégorie",
+      "sort_todo_one": "{{count}} dépense n'a pas de catégorie",
+      "sort_todo_other": "{{count}} dépenses n'ont pas de catégorie",
+      "reconcile_none": "Aucun compte n'a le suivi de fraîcheur activé",
+      "reconcile_done": "Les soldes sont vérifiés",
+      "reconcile_todo_one": "{{count}} compte n'a pas de vérification de solde ce mois-ci",
+      "reconcile_todo_other": "{{count}} comptes n'ont pas de vérification de solde ce mois-ci",
+      "planned_none": "Pas de plan de salaire ce mois-ci",
+      "planned_done": "Tous les virements prévus sont réglés",
+      "planned_todo_one": "{{count}} virement prévu est encore en attente",
+      "planned_todo_other": "{{count}} virements prévus sont encore en attente",
+      "review_done": "Vous avez examiné les aperçus",
+      "review_todo": "Parcourez le mois dans Aperçus, puis cochez",
+      "plan_done": "Le mois prochain a un budget",
+      "plan_todo": "Créez le budget du mois prochain"
+    }
   },
   "health": {
     "title": "Santé financière",

@@ -78,6 +78,7 @@
     "debts": "Dívidas",
     "retirement": "Reforma",
     "health": "Saúde",
+    "review": "Revisão do mês",
     "tags": "Tags",
     "meta": "Meta"
   },
@@ -1280,6 +1281,55 @@
     "fillEmpty": "Preencher só vazias",
     "replaceAll": "Substituir tudo",
     "skipped": "Não alteradas (têm detalhamento ou estão inativas): {{names}}"
+  },
+  "review": {
+    "title": "Revisão de fim de mês",
+    "subtitle": "Seis passos para fechar o mês passado. Os meses anteriores ficam como estavam.",
+    "month": "Mês",
+    "loading": "A carregar…",
+    "cardTitle": "Revisão de {{month}}: {{done}} de {{total}} feitos",
+    "openReview": "Abrir a revisão",
+    "open": "Abrir",
+    "tickReviewed": "Revi este mês nos Insights",
+    "frozen": "Congelado",
+    "frozenNote": "Este mês está congelado: alterações posteriores não mudam a sua revisão.",
+    "history": "Últimos 12 meses",
+    "completed": "Concluído",
+    "progress": "{{done}} de {{total}}",
+    "status": {
+      "done": "Feito",
+      "todo": "Por fazer",
+      "nothing_to_do": "Nada a fazer"
+    },
+    "steps": {
+      "import": "Importar contas desatualizadas",
+      "sort": "Classificar despesas sem categoria",
+      "reconcile": "Conciliar saldos",
+      "planned": "Resolver transferências planeadas",
+      "review": "Rever os Insights",
+      "plan": "Planear o orçamento do próximo mês"
+    },
+    "details": {
+      "import_none": "Nenhuma conta tem o acompanhamento de atualização ativo",
+      "import_done": "Nenhuma conta está desatualizada",
+      "import_todo_one": "{{count}} conta está desatualizada; importe as suas transações",
+      "import_todo_other": "{{count}} contas estão desatualizadas; importe as suas transações",
+      "sort_done": "Todas as despesas têm categoria",
+      "sort_todo_one": "{{count}} despesa não tem categoria",
+      "sort_todo_other": "{{count}} despesas não têm categoria",
+      "reconcile_none": "Nenhuma conta tem o acompanhamento de atualização ativo",
+      "reconcile_done": "Os saldos estão verificados",
+      "reconcile_todo_one": "{{count}} conta não tem verificação de saldo neste mês",
+      "reconcile_todo_other": "{{count}} contas não têm verificação de saldo neste mês",
+      "planned_none": "Sem plano de salário neste mês",
+      "planned_done": "Todas as transferências planeadas estão resolvidas",
+      "planned_todo_one": "{{count}} transferência planeada ainda está em aberto",
+      "planned_todo_other": "{{count}} transferências planeadas ainda estão em aberto",
+      "review_done": "Reviu os Insights",
+      "review_todo": "Percorra o mês nos Insights e depois assinale",
+      "plan_done": "O próximo mês tem orçamento",
+      "plan_todo": "Crie o orçamento do próximo mês"
+    }
   },
   "health": {
     "title": "Saúde financeira",
