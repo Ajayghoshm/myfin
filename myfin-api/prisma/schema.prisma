@@ -622,6 +622,8 @@ model event_occurrences {
   /// pending | done
   status          String                          @default("pending") @db.VarChar(8)
   done_at         BigInt?
+  /// Marked done by hand; a money occurrence is also done while it has links
+  done_manual     Boolean                         @default(false)
   events          events                          @relation(fields: [events_event_id], references: [event_id], onDelete: Cascade)
   transactions    event_occurrence_transactions[]
 

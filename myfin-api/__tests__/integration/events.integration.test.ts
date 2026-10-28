@@ -5,6 +5,7 @@ import app from '../../src/app.js';
 import { prisma } from '../../src/config/prisma.js';
 import { MYFIN } from '../../src/consts.js';
 import AccountService from '../../src/services/accountService.js';
+import CategoryService from '../../src/services/categoryService.js';
 import { createLoan } from '../../src/services/debts/loanService.js';
 import { type YearMonth, monthRangeIST } from '../../src/services/insights/insightsPrimitives.js';
 import { createYearlyCost } from '../../src/services/planning/yearlyCostService.js';
@@ -111,6 +112,8 @@ describe('event reminders and upcoming', () => {
   test('upcoming: a birthday in 5 days and an unpaid EMI, sorted by date', async () => {
     await createEvent(ctx.uid, { name: 'Amma birthday', kind: 'birthday', date: '1965-11-02', repeat: 'yearly', gift_budget: 3000 }, NOW);
     await createEvent(ctx.uid, { name: 'Far away', kind: 'anniversary', date: '2020-12-25', repeat: 'yearly' }, NOW);
+    await createEvent(ctx.uid, { name: 'Visa renewal', kind: 'renewal', date: '2026-11-20', repeat: 'once', amount: 500 }, NOW);
+    await createEvent(ctx.uid, { name: 'Past once', kind: 'other', date: '2026-10-01', repeat: 'once' }, NOW);
     await createLoan(
       ctx.uid,
       { lender: 'HDFC', principal: 120000, rate: 12, tenure_months: 12, emi_day: 5, account_id: ctx.bank.account_id, start_date: at(ym(2026, 10), 1) },
@@ -120,6 +123,7 @@ describe('event reminders and upcoming', () => {
     expect(items.map((i) => [i.source, i.name, i.date, i.days_until])).toEqual([
       ['event', 'Amma birthday', '2026-11-02', 5],
       ['emi', 'HDFC', '2026-11-05', 8],
+      ['event', 'Visa renewal', '2026-11-20', 23],
     ]);
     expect(items[0]).toMatchObject({ kind: 'birthday', status: 'pending', gift_budget: 3000, gift_spent: 0, amount: null });
     expect(items[1]).toMatchObject({ kind: 'emi', status: 'pending', gift_budget: null, gift_spent: null });
@@ -267,6 +271,17 @@ describe('event reminders and upcoming', () => {
     await expectThrowErrorCode(() => linkTransaction(ctx.uid, BigInt(own.event_id), '2026-11-01', theirs, NOW), 401);
     const put = await fetch(`${base}/events/${id}`, { method: 'PUT', headers: ctx.headers, body: JSON.stringify(rent()) });
     expect(put.status).toBe(401);
+    const linkRes = await fetch(`${base}/events/occurrences/${id}/2026-11-01/link`, {
+      method: 'POST',
+      headers: ctx.headers,
+      body: JSON.stringify({ transaction_id: Number(mine) }),
+    });
+    expect(linkRes.status).toBe(401);
+    const unlinkRes = await fetch(`${base}/events/occurrences/${id}/2026-11-01/link/${theirs}`, {
+      method: 'DELETE',
+      headers: ctx.headers,
+    });
+    expect(unlinkRes.status).toBe(401);
     expect((await listEvents(ctx.uid, NOW)).map((e) => e.name)).toEqual(['Rent']);
   });
 
@@ -307,6 +322,90 @@ describe('event reminders and upcoming', () => {
     expect((await fetch(`${base}/events/${ev.event_id}`, { method: 'DELETE', headers: ctx.headers })).status).toBe(200);
   });
 
+  test('a payment outside ±5 days is ignored', async () => {
+    await createEvent(ctx.uid, rent(), NOW);
+    await ctx.spend('Paid to RENT CO', 15000, at(ym(2026, 11), 7)); // 6 days after the 1st
+    const item = (await upcoming(ctx.uid, 30, NOW)).find((x) => x.date === '2026-11-01');
+    expect(item).toMatchObject({ name: 'Rent', status: 'pending', transactions: [] });
+  });
+
+  test('deleting a linked transaction: link-only done returns to pending, manual done stays done', async () => {
+    const ev = await createEvent(ctx.uid, rent(), NOW);
+    const paid = await ctx.spend('Paid to RENT CO', 15000, at(ym(2026, 11), 1));
+    expect((await upcoming(ctx.uid, 30, NOW)).find((x) => x.date === '2026-11-01')).toMatchObject({ status: 'done' });
+    await TransactionService.deleteTransaction(ctx.uid, Number(paid));
+    expect((await upcoming(ctx.uid, 30, NOW)).find((x) => x.date === '2026-11-01')).toMatchObject({
+      status: 'pending',
+      transactions: [],
+    });
+
+    const netflix = await createEvent(ctx.uid, { name: 'Netflix', kind: 'renewal', date: '2026-01-15', repeat: 'monthly', amount: 649 }, NOW);
+    const trx = await ctx.spend('Card payment', 649, at(ym(2026, 11), 14));
+    await linkTransaction(ctx.uid, BigInt(netflix.event_id), '2026-11-15', trx, NOW);
+    const marked = await setOccurrenceDone(ctx.uid, BigInt(netflix.event_id), '2026-11-15', true, NOW);
+    expect(marked).toMatchObject({ status: 'done', done_manual: true });
+    await TransactionService.deleteTransaction(ctx.uid, Number(trx));
+    expect((await upcoming(ctx.uid, 30, NOW)).find((x) => x.name === 'Netflix')).toMatchObject({
+      status: 'done',
+      transactions: [],
+    });
+    // Undone by hand while still linked: a money occurrence stays done through its link
+    const other = await ctx.spend('Card payment', 649, at(ym(2026, 11), 14));
+    await linkTransaction(ctx.uid, BigInt(netflix.event_id), '2026-11-15', other, NOW);
+    expect(await setOccurrenceDone(ctx.uid, BigInt(netflix.event_id), '2026-11-15', false, NOW)).toMatchObject({
+      status: 'done',
+      done_manual: false,
+    });
+    expect(ev).toBeTruthy();
+  });
+
+  test('moving an event drops stranded occurrences so their payments can match again', async () => {
+    const ev = await createEvent(ctx.uid, rent(), NOW);
+    const paid = await ctx.spend('Paid to RENT CO', 15000, at(ym(2026, 11), 1));
+    expect((await upcoming(ctx.uid, 30, NOW)).find((x) => x.date === '2026-11-01')).toMatchObject({
+      status: 'done',
+      transactions: [String(paid)],
+    });
+    await updateEvent(ctx.uid, BigInt(ev.event_id), { ...rent(), date: '2026-01-05' }, NOW);
+    expect(await prisma.event_occurrences.count({ where: { events_event_id: BigInt(ev.event_id), date: '2026-11-01' } })).toBe(0);
+    const items = (await upcoming(ctx.uid, 30, NOW)).filter((x) => x.name === 'Rent');
+    expect(items.map((x) => [x.date, x.status, x.transactions])).toEqual([
+      ['2026-11-05', 'done', [String(paid)]],
+    ]);
+  });
+
+  test('manual link refuses adjustments and debt rows; deleting a category clears it on events', async () => {
+    const ev = await createEvent(ctx.uid, { name: 'Netflix', kind: 'renewal', date: '2026-01-15', repeat: 'monthly' }, NOW);
+    const adj = await prisma.transactions.create({
+      data: {
+        date_timestamp: at(ym(2026, 11), 14),
+        amount: 1000,
+        type: E,
+        description: 'Write-off',
+        accounts_account_from_id: ctx.bank.account_id,
+        is_adjustment: true,
+      },
+    });
+    await expectThrowErrorCode(() => linkTransaction(ctx.uid, BigInt(ev.event_id), '2026-11-15', adj.transaction_id, NOW), 400);
+    const lent = await prisma.transactions.create({
+      data: {
+        date_timestamp: at(ym(2026, 11), 14),
+        amount: 1000,
+        type: E,
+        description: 'Lent',
+        accounts_account_from_id: ctx.bank.account_id,
+        debt_role: 'lend',
+      },
+    });
+    await expectThrowErrorCode(() => linkTransaction(ctx.uid, BigInt(ev.event_id), '2026-11-15', lent.transaction_id, NOW), 400);
+
+    const cat = await prisma.categories.create({ data: { name: 'Subscriptions', type: E, users_user_id: ctx.uid } });
+    await updateEvent(ctx.uid, BigInt(ev.event_id), { name: 'Netflix', kind: 'renewal', date: '2026-01-15', repeat: 'monthly', category_id: Number(cat.category_id) }, NOW);
+    await CategoryService.deleteCategory(ctx.uid, Number(cat.category_id));
+    expect((await prisma.events.findUniqueOrThrow({ where: { event_id: BigInt(ev.event_id) } })).category_id).toBeNull();
+    expect((await listEvents(ctx.uid, NOW))[0].category_id).toBeNull();
+  });
+
   test('backup: a JSON round trip keeps events, occurrences, links and dismissals', async () => {
     const card = await ctx.account('Card 73', MYFIN.ACCOUNT_TYPES.CREDIT);
     const ev = await createEvent(ctx.uid, rent(), NOW);
@@ -317,6 +416,9 @@ describe('event reminders and upcoming', () => {
     );
     const bday = await createEvent(ctx.uid, { name: 'Amma birthday', kind: 'birthday', date: '1965-11-02', repeat: 'yearly', gift_budget: 3000 }, NOW);
     const paid = await ctx.spend('Paid to RENT CO', 15000, at(ym(2026, 11), 1));
+    const gift = await ctx.spend('Saree shop', 700, at(ym(2026, 10), 30));
+    const bdayTag = await prisma.tags.findFirstOrThrow({ where: { users_user_id: ctx.uid, name: 'event:Amma birthday' } });
+    await TagService.addTagToTransaction(ctx.uid, gift, bdayTag.tag_id);
     await upcoming(ctx.uid, 30, NOW); // auto-match
     await setOccurrenceDone(ctx.uid, BigInt(bday.event_id), '2025-11-02', true, NOW);
     await dismissSuggestion(ctx.uid, 'recurring:MAID');
@@ -342,12 +444,28 @@ describe('event reminders and upcoming', () => {
     const dismissals = await prisma.event_suggestion_dismissals.findMany({ where: { users_user_id: ctx.uid }, orderBy: { key: 'asc' } });
     expect(dismissals.map((d) => d.key)).toEqual([`card:${newCard.account_id}`, 'recurring:MAID']);
     expect(ev.event_id).not.toBe(String(events[2].event_id));
+    expect(events[0].occurrences[0].done_manual).toBe(true);
+    // Tagged-only gift spend survives (transaction tags are backed up)
+    const restoredBday = (await upcoming(ctx.uid, 30, NOW)).find((x) => x.name === 'Amma birthday');
+    expect(restoredBday).toMatchObject({ gift_spent: 700, transactions: [] });
+    // An old backup without the key restores without tag links
+    const old = JSON.parse(JSON.stringify(await BackupManager.createBackup(ctx.uid)));
+    expect(old.transaction_has_tags).toHaveLength(1);
+    delete old.transaction_has_tags;
+    await UserService.restoreUser(ctx.uid, old);
+    expect(await prisma.transaction_has_tags.count({ where: { tags: { users_user_id: ctx.uid } } })).toBe(0);
     expect(cardEv).toBeTruthy();
 
     // A malformed event is refused before the wipe
     const broken = JSON.parse(JSON.stringify(await BackupManager.createBackup(ctx.uid)));
     broken.events[0].repeat = 'weekly';
     await expectThrowErrorCode(() => UserService.restoreUser(ctx.uid, broken), 406);
+    const noCreated = JSON.parse(JSON.stringify(await BackupManager.createBackup(ctx.uid)));
+    noCreated.events[0].created_at = 'x';
+    await expectThrowErrorCode(() => UserService.restoreUser(ctx.uid, noCreated), 406);
+    const badTag = JSON.parse(JSON.stringify(await BackupManager.createBackup(ctx.uid)));
+    badTag.transaction_has_tags = [{ transaction_id: badTag.transactions[0].transaction_id, tag_id: 999999999 }];
+    await expectThrowErrorCode(() => UserService.restoreUser(ctx.uid, badTag), 406);
     expect(await prisma.events.count({ where: { users_user_id: ctx.uid } })).toBe(3);
   });
 });

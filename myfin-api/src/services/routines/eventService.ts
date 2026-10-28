@@ -76,8 +76,11 @@ export type Occurrence = {
   event_id: string;
   date: string;
   days_until: number;
+  /** Done when marked by hand, or (money events) while it has a linked transaction. */
   status: 'pending' | 'done';
   done_at: number | null;
+  /** Marked done by hand (a linked money occurrence is done without it). */
+  done_manual: boolean;
   /** People events: Σ tagged spend near the occurrence plus linked transactions. Null otherwise. */
   gift_spent: number | null;
   transactions: string[];
@@ -259,6 +262,14 @@ export async function updateEvent(
       } else if (!tag) {
         tagId = await tagFor(userId, data.name, eventId, tx);
       }
+      // A new date / repeat strands occurrence rows that are no longer occurrences: drop them (their
+      // links go with them, freeing the transactions to be linked or auto-matched again)
+      const stored = await tx.event_occurrences.findMany({
+        where: { events_event_id: eventId },
+        select: { occurrence_id: true, date: true },
+      });
+      const stranded = stored.filter((o) => !isOccurrence(data, o.date)).map((o) => o.occurrence_id);
+      if (stranded.length) await tx.event_occurrences.deleteMany({ where: { occurrence_id: { in: stranded } } });
       return tx.events.update({
         where: { event_id: eventId },
         data: { ...data, tag_id: tagId, ...(input.active === undefined ? {} : { active: input.active }) },
@@ -276,7 +287,25 @@ export async function deleteEvent(userId: bigint, eventId: bigint): Promise<void
   await prisma.events.delete({ where: { event_id: eventId } });
 }
 
-type OccurrenceState = { status: 'pending' | 'done'; done_at: number | null; linked: LinkedTransaction[] };
+/**
+ * Ruling E5: the status is derived, never trusted from the row: done when marked by hand, or for a
+ * money event while it has a linked transaction. So unlinking, and a linked transaction's deletion
+ * (the link cascades away), return a link-only money occurrence to pending.
+ */
+const isDone = (kind: string, doneManual: boolean, links: number) => doneManual || (!isPeople(kind) && links > 0);
+
+/** Keeps the stored status / done_at columns in step with the derived status after a change. */
+async function syncStatus(tx: Prisma.TransactionClient, occurrenceId: bigint, kind: string, now: number) {
+  const occ = await tx.event_occurrences.findUniqueOrThrow({ where: { occurrence_id: occurrenceId } });
+  const links = await tx.event_occurrence_transactions.count({ where: { occurrence_id: occurrenceId } });
+  const done = isDone(kind, occ.done_manual, links);
+  await tx.event_occurrences.update({
+    where: { occurrence_id: occurrenceId },
+    data: { status: done ? 'done' : 'pending', done_at: done ? (occ.done_at ?? now) : null },
+  });
+}
+
+type OccurrenceState = { done_manual: boolean; done_at: number | null; linked: LinkedTransaction[] };
 
 /** Stored occurrence rows of these events, keyed by event and date. */
 async function occurrenceStates(eventIds: bigint[], db: Db = prisma): Promise<Map<string, OccurrenceState>> {
@@ -296,7 +325,7 @@ async function occurrenceStates(eventIds: bigint[], db: Db = prisma): Promise<Ma
     rows.map((r) => [
       occKey(r.events_event_id, r.date),
       {
-        status: r.status === 'done' ? 'done' : 'pending',
+        done_manual: r.done_manual,
         done_at: r.done_at != null ? Number(r.done_at) : null,
         linked: r.transactions.map((l) => ({
           transaction_id: l.transaction.transaction_id.toString(),
@@ -348,8 +377,9 @@ async function occurrence(
     event_id: event.event_id.toString(),
     date,
     days_until: daysBetween(today, date),
-    status: st?.status ?? 'pending',
+    status: isDone(event.kind, st?.done_manual ?? false, linked.length) ? 'done' : 'pending',
     done_at: st?.done_at ?? null,
+    done_manual: st?.done_manual ?? false,
     gift_spent: isPeople(event.kind) ? (await giftSpentCents(userId, event.tag_id, date, transactions)) / 100 : null,
     transactions,
     linked,
@@ -364,6 +394,17 @@ async function toDtos(userId: bigint, rows: EventRow[], now: number): Promise<Ev
     ? await prisma.tags.findMany({ where: { tag_id: { in: tagIds } }, select: { tag_id: true, name: true } })
     : [];
   const tagName = new Map(tags.map((t) => [t.tag_id.toString(), t.name]));
+  // Deleting a category nulls it on events; a dangling id (older rows) still reads as no category
+  const catIds = rows.map((r) => r.category_id).filter((c): c is bigint => c != null);
+  const liveCategories = new Set(
+    (catIds.length
+      ? await prisma.categories.findMany({
+          where: { category_id: { in: catIds }, users_user_id: userId },
+          select: { category_id: true },
+        })
+      : []
+    ).map((c) => c.category_id.toString())
+  );
   const out: EventDto[] = [];
   for (const e of rows) {
     const yesterday = addDays(today, -1);
@@ -385,7 +426,7 @@ async function toDtos(userId: bigint, rows: EventRow[], now: number): Promise<Ev
       amount: e.amount != null ? currency(e.amount) : null,
       gift_budget: e.gift_budget != null ? currency(e.gift_budget) : null,
       account_id: idStr(e.account_id),
-      category_id: idStr(e.category_id),
+      category_id: e.category_id != null && liveCategories.has(e.category_id.toString()) ? e.category_id.toString() : null,
       payee_key: e.payee_key,
       tag_id: idStr(e.tag_id),
       tag_name: e.tag_id != null ? (tagName.get(e.tag_id.toString()) ?? null) : null,
@@ -464,7 +505,7 @@ async function autoMatch(userId: bigint, fromDate: string, toDate: string, now: 
            ${payeeKeySql} AS payee_key
     ${ownershipSql(userId)}
       AND transactions.date_timestamp >= ${from} AND transactions.date_timestamp < ${to}
-      AND ((transactions.type = ${MYFIN.TRX_TYPES.EXPENSE} AND ${countsForAnalyticsSql})
+      AND ((transactions.type = ${MYFIN.TRX_TYPES.EXPENSE} AND ${countsForAnalyticsSql} AND transactions.debt_id IS NULL)
         OR (transactions.type = ${MYFIN.TRX_TYPES.TRANSFER} AND transactions.is_adjustment = false AND transactions.debt_role IS NULL))
       AND NOT EXISTS (SELECT 1 FROM event_occurrence_transactions eot WHERE eot.transaction_id = transactions.transaction_id)`;
   const used = new Set<string>();
@@ -582,8 +623,9 @@ export async function setOccurrenceDone(
     const occ = await ensureOccurrence(tx, eventId, date);
     await tx.event_occurrences.update({
       where: { occurrence_id: occ.occurrence_id },
-      data: { status: done ? 'done' : 'pending', done_at: done ? now : null },
+      data: { done_manual: done, ...(done ? { done_at: now } : {}) },
     });
+    await syncStatus(tx, occ.occurrence_id, event.kind, now);
   });
   return occurrenceOf(userId, event, date, now);
 }
@@ -606,11 +648,15 @@ export async function linkTransaction(
         { accounts_transactions_accounts_account_to_idToaccounts: { users_user_id: userId } },
       ],
     },
-    select: { type: true },
+    select: { type: true, is_adjustment: true, debt_role: true },
   });
   if (!trx) throw APIError.notAuthorized();
   if (trx.type !== MYFIN.TRX_TYPES.EXPENSE && trx.type !== MYFIN.TRX_TYPES.TRANSFER)
     throw APIError.badRequest('Only expenses and transfers can be linked to an event.');
+  // Only rows that count: no balance adjustments, no debt bookkeeping (an EMI's interest part counts)
+  const counted = trx.debt_role == null || (trx.type === MYFIN.TRX_TYPES.EXPENSE && trx.debt_role === 'interest');
+  if (trx.is_adjustment || !counted)
+    throw APIError.badRequest('Balance adjustments and debt rows cannot be linked to an event.');
   const alreadyLinked = APIError.badRequest('This transaction is already linked to an event.');
   try {
     await prisma.$transaction(async (tx) => {
@@ -620,11 +666,7 @@ export async function linkTransaction(
       await tx.event_occurrence_transactions.create({
         data: { occurrence_id: occ.occurrence_id, transaction_id: transactionId },
       });
-      if (!isPeople(event.kind))
-        await tx.event_occurrences.update({
-          where: { occurrence_id: occ.occurrence_id },
-          data: { status: 'done', done_at: now },
-        });
+      await syncStatus(tx, occ.occurrence_id, event.kind, now);
     });
   } catch (err) {
     if (isP2002(err)) throw alreadyLinked;
@@ -633,7 +675,7 @@ export async function linkTransaction(
   return occurrenceOf(userId, event, date, now);
 }
 
-/** Unlinks; a money occurrence left without links goes back to pending (and is not auto-matched again). */
+/** Unlinks; a money occurrence left without links (and not marked by hand) goes back to pending; it is not auto-matched again. */
 export async function unlinkTransaction(
   userId: bigint,
   eventId: bigint,
@@ -652,12 +694,7 @@ export async function unlinkTransaction(
         })
       : { count: 0 };
     if (!occ || removed.count === 0) throw APIError.badRequest('This transaction is not linked to this occurrence.');
-    const left = await tx.event_occurrence_transactions.count({ where: { occurrence_id: occ.occurrence_id } });
-    if (!isPeople(event.kind) && left === 0)
-      await tx.event_occurrences.update({
-        where: { occurrence_id: occ.occurrence_id },
-        data: { status: 'pending', done_at: null },
-      });
+    await syncStatus(tx, occ.occurrence_id, event.kind, now);
   });
   return occurrenceOf(userId, event, date, now);
 }

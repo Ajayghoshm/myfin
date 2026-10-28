@@ -120,9 +120,13 @@ export interface BackupData {
     date: string;
     status: string;
     done_at: bigint | number | null;
+    /** Absent in backups made before done_manual. */
+    done_manual?: boolean;
   }[];
   event_occurrence_transactions?: { occurrence_id: bigint; transaction_id: bigint }[];
   event_suggestion_dismissals?: { key: string }[];
+  /** Transaction tags (ruling E4). Absent in older backups, which then restore without tag links. */
+  transaction_has_tags?: { transaction_id: bigint; tag_id: bigint }[];
   /** Debts (lent, borrowed, loans). Absent in older backups. */
   debts?: {
     debt_id: bigint;
@@ -412,6 +416,13 @@ class BackupManager {
         select: { key: true },
         orderBy: { key: 'asc' },
       }),
+      transaction_has_tags: (
+        await dbClient.transaction_has_tags.findMany({
+          where: { tags: { users_user_id: userId } },
+          select: { transactions_transaction_id: true, tags_tag_id: true },
+          orderBy: [{ tags_tag_id: 'asc' }, { transactions_transaction_id: 'asc' }],
+        })
+      ).map((l) => ({ transaction_id: l.transactions_transaction_id, tag_id: l.tags_tag_id })),
       financial_profile: await dbClient.user_financial_profile
         .findUnique({
           where: { users_user_id: userId },
@@ -708,7 +719,9 @@ class BackupManager {
         !isCents(e.amount) ||
         !isCents(e.gift_budget) ||
         (e.payee_key != null && !isKey(e.payee_key)) ||
-        (e.source_key != null && (!isKey(e.source_key) || sourceKeys.has(e.source_key)))
+        (e.source_key != null && (!isKey(e.source_key) || sourceKeys.has(e.source_key))) ||
+        !isWhole(e.created_at) ||
+        typeof e.active !== 'boolean'
       ) {
         throw badEvent('Event');
       }
@@ -728,7 +741,8 @@ class BackupManager {
         dayStartIST(o.date) == null ||
         occurrenceDays.has(day) ||
         (o.status !== 'pending' && o.status !== 'done') ||
-        (o.done_at != null && !isWhole(o.done_at))
+        (o.done_at != null && !isWhole(o.done_at)) ||
+        (o.done_manual != null && typeof o.done_manual !== 'boolean')
       ) {
         throw badEvent('Event occurrence');
       }
@@ -747,6 +761,13 @@ class BackupManager {
         throw badEvent('Event transaction link');
       }
       linkedTransactions.add(String(l.transaction_id));
+    }
+    const tagIdsInBackup = new Set((data.tags ?? []).map((t) => String(t.tag_id)));
+    const tagLinks = data.transaction_has_tags ?? [];
+    for (const l of tagLinks) {
+      if (!transactionIdsInBackup.has(String(l?.transaction_id)) || !tagIdsInBackup.has(String(l.tag_id))) {
+        throw APIError.notAcceptable('Transaction tag not recognized in backup', RestoreUserErrorCodes.MalformedBackup);
+      }
     }
     const eventDismissals = data.event_suggestion_dismissals ?? [];
     for (const d of eventDismissals) {
@@ -1349,6 +1370,22 @@ class BackupManager {
     }
     // endregion
 
+    // region Transaction tags (after transactions and tags)
+    if (tagLinks.length > 0) {
+      const rows = tagLinks
+        .map((l) => ({
+          transactions_transaction_id: transactionIdMap.get(String(l.transaction_id)),
+          // Keyed by the raw backup value, like the map itself
+          tags_tag_id: tagIdMap.get(l.tag_id),
+        }))
+        .filter(
+          (r): r is { transactions_transaction_id: bigint; tags_tag_id: bigint } =>
+            r.transactions_transaction_id != null && r.tags_tag_id != null
+        );
+      if (rows.length > 0) await dbClient.transaction_has_tags.createMany({ data: rows, skipDuplicates: true });
+    }
+    // endregion
+
     // region Event reminders (after transactions, which links point at)
     {
       const text = (map: Map<unknown, bigint>) => new Map([...map].map(([k, v]) => [String(k), v]));
@@ -1392,6 +1429,10 @@ class BackupManager {
             date: o.date,
             status: o.status,
             done_at: o.done_at != null ? BigInt(o.done_at) : null,
+            // Older backups: a done occurrence without links was marked by hand
+            done_manual:
+              o.done_manual ??
+              (o.status === 'done' && !occurrenceLinks.some((l) => String(l.occurrence_id) === String(o.occurrence_id))),
           },
         });
         occurrenceIdMap.set(String(o.occurrence_id), created.occurrence_id);

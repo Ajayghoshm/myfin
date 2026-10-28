@@ -24,6 +24,7 @@ import {
   QUERY_KEY_GET_REPAYMENT_SUGGESTIONS,
 } from '../debts/debtQueryKeys.ts';
 import { useUserData } from '../../providers/UserProvider.tsx';
+import { invalidateEventQueries } from '../events/eventHooks.ts';
 
 export const QUERY_KEY_GET_TRANSACTIONS = 'QUERY_KEY_GET_TRANSACTIONS';
 const QUERY_KEY_ADD_TRANSACTION_STEP0 = 'QUERY_KEY_ADD_TRANSACTION_STEP0';
@@ -55,6 +56,7 @@ function invalidatePlanningFigures() {
     QUERY_KEY_GET_LOAN_MATCH_SUGGESTIONS,
   ])
     void queryClient.invalidateQueries({ queryKey: [key] });
+  invalidateEventQueries();
 }
 
 export function useGetTransactions(

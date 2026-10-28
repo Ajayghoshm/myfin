@@ -54,7 +54,9 @@ const UpcomingCard = () => {
         alignItems="baseline"
         gap={1}
       >
-        <PanelTitle>{t('events.upcomingTitle')}</PanelTitle>
+        <PanelTitle>
+          {t('events.upcomingTitle', { days: UPCOMING_DAYS })}
+        </PanelTitle>
         <Link
           component={RouterLink}
           to={ROUTE_EVENTS}

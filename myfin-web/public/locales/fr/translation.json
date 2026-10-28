@@ -1702,7 +1702,7 @@
     "budget": "budget {{amount}}",
     "spent": "dépensé {{amount}}",
     "emiName": "Mensualité du prêt {{name}}",
-    "upcomingTitle": "À venir (30 prochains jours)",
+    "upcomingTitle": "À venir ({{days}} prochains jours)",
     "seeAll": "Tous les événements",
     "doneMark": "fait ✓",
     "paidMark": "payé ✓",

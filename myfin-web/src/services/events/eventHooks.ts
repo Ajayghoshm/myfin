@@ -7,14 +7,17 @@ export const QUERY_KEY_GET_UPCOMING = 'QUERY_KEY_GET_UPCOMING';
 export const QUERY_KEY_GET_EVENT_SUGGESTIONS =
   'QUERY_KEY_GET_EVENT_SUGGESTIONS';
 
-const invalidateAll = () => {
+/** Events and Upcoming read transactions and tags (auto-match, gift spend): refresh them when those change. */
+export function invalidateEventQueries() {
   for (const key of [
     QUERY_KEY_GET_EVENTS,
     QUERY_KEY_GET_UPCOMING,
     QUERY_KEY_GET_EVENT_SUGGESTIONS,
   ])
     void queryClient.invalidateQueries({ queryKey: [key] });
-};
+}
+
+const invalidateAll = invalidateEventQueries;
 
 export function useGetEvents() {
   return useQuery({

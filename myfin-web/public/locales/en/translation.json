@@ -1774,7 +1774,7 @@
     "budget": "budget {{amount}}",
     "spent": "spent {{amount}}",
     "emiName": "{{name}} loan EMI",
-    "upcomingTitle": "Upcoming (next 30 days)",
+    "upcomingTitle": "Upcoming (next {{days}} days)",
     "seeAll": "All events",
     "doneMark": "done ✓",
     "paidMark": "paid ✓",

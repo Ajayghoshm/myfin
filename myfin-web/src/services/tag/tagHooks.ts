@@ -4,6 +4,7 @@ import tagServices, {
 } from './tagServices.ts';
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query';
 import { queryClient } from '../../data/react-query.ts';
+import { invalidateEventQueries } from '../events/eventHooks.ts';
 
 const QUERY_KEY_GET_ENTITIES = 'QUERY_KEY_GET_ENTITIES';
 
@@ -27,6 +28,8 @@ export function useRemoveTag() {
     void queryClient.invalidateQueries({
       queryKey: [QUERY_KEY_GET_ENTITIES],
     });
+    // an event tag may have been renamed or removed
+    invalidateEventQueries();
     return result;
   }
 
@@ -57,6 +60,8 @@ export function useEditTag() {
     void queryClient.invalidateQueries({
       queryKey: [QUERY_KEY_GET_ENTITIES],
     });
+    // an event tag may have been renamed or removed
+    invalidateEventQueries();
     return result;
   }
 

@@ -74,7 +74,13 @@ class CategoryService {
       },
     });
 
-    return prisma.$transaction([deleteBudgetHasCategoriesRefs, deleteCat]);
+    // Events matched on this category fall back to no category
+    const unlinkEvents = dbClient.events.updateMany({
+      where: { users_user_id: userId, category_id: BigInt(categoryId) },
+      data: { category_id: null },
+    });
+
+    return prisma.$transaction([deleteBudgetHasCategoriesRefs, unlinkEvents, deleteCat]);
   }
 
   static async updateCategory(

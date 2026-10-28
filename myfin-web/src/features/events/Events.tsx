@@ -204,9 +204,18 @@ const Events = () => {
     );
   };
 
+  // A deleted category reads as none, so the select never holds a missing option
+  const openEdit = (e: MyFinEvent) => {
+    const draft = fromEvent(e);
+    const known = expenseCategories.some(
+      (c) => String(c.category_id) === draft.categoryId,
+    );
+    setDraft(known ? draft : { ...draft, categoryId: '' });
+  };
+
   const toggleDone = (e: MyFinEvent, o: EventOccurrence) =>
     setDone.mutate(
-      { eventId: e.event_id, date: o.date, done: o.status !== 'done' },
+      { eventId: e.event_id, date: o.date, done: !o.done_manual },
       { onError: showError },
     );
 
@@ -224,13 +233,16 @@ const Events = () => {
             {t('events.spent', { amount: formatCurrency.invoke(o.gift_spent) })}
           </Typography>
         )}
-        <Button
-          size="small"
-          disabled={setDone.isPending}
-          onClick={() => toggleDone(e, o)}
-        >
-          {o.status === 'done' ? t('events.markPending') : t('events.markDone')}
-        </Button>
+        {/* done only through a link: unlinking is the way back to pending */}
+        {(o.done_manual || o.status !== 'done') && (
+          <Button
+            size="small"
+            disabled={setDone.isPending}
+            onClick={() => toggleDone(e, o)}
+          >
+            {o.done_manual ? t('events.markPending') : t('events.markDone')}
+          </Button>
+        )}
       </Stack>
       {o.linked.map((l) => (
         <Stack
@@ -349,10 +361,7 @@ const Events = () => {
                       >
                         {t('events.history')}
                       </Button>
-                      <Button
-                        size="small"
-                        onClick={() => setDraft(fromEvent(e))}
-                      >
+                      <Button size="small" onClick={() => openEdit(e)}>
                         {t('common.edit')}
                       </Button>
                       <Button

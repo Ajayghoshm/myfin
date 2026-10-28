@@ -1776,7 +1776,7 @@
     "budget": "orçamento {{amount}}",
     "spent": "gasto {{amount}}",
     "emiName": "Prestação do empréstimo {{name}}",
-    "upcomingTitle": "Próximos (30 dias)",
+    "upcomingTitle": "Próximos ({{days}} dias)",
     "seeAll": "Todos os eventos",
     "doneMark": "feito ✓",
     "paidMark": "pago ✓",

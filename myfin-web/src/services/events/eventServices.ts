@@ -30,6 +30,8 @@ export type EventOccurrence = {
   days_until: number;
   status: 'pending' | 'done';
   done_at: number | null;
+  /** Marked done by hand; a linked money occurrence is done without it. */
+  done_manual: boolean;
   gift_spent: number | null;
   transactions: string[];
   linked: LinkedTransaction[];
