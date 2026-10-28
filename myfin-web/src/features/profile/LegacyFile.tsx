@@ -37,11 +37,18 @@ const LegacyFile = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const formatCurrency = useFormatNumberAsCurrency();
-  const { data } = useGetLegacy();
+  const { data, isError } = useGetLegacy();
   const remove = useDeleteLegacyEntry();
   const [dialog, setDialog] = useState<DialogState>(null);
 
-  if (!data) return null;
+  if (isError && !data)
+    return <Alert severity="error">{t('profile.legacy.loadFailed')}</Alert>;
+  if (!data)
+    return (
+      <Typography color="text.secondary">
+        {t('profile.legacy.loading')}
+      </Typography>
+    );
   const byKind = (kind: LegacyKind) =>
     data.entries.filter((e) => e.kind === kind);
 

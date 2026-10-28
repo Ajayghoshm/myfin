@@ -7,6 +7,10 @@ import { queryClient } from '../../data/react-query.ts';
 import { QUERY_KEY_GET_BUDGET_MATRIX } from '../budget/budgetHooks.ts';
 import { useUserData } from '../../providers/UserProvider.tsx';
 import { QUERY_KEY_IMPORT_TRANSACTIONS_STEP0 } from '../trx/trxHooks.ts';
+import {
+  QUERY_KEY_GET_RETIREMENT,
+  QUERY_KEY_GET_RETIREMENT_WHAT_IF,
+} from '../retirement/retirementQueryKeys.ts';
 
 export const QUERY_KEY_GET_ACCOUNTS = 'QUERY_KEY_GET_ACCOUNTS';
 
@@ -81,6 +85,12 @@ export function useEditAccount() {
     void queryClient.invalidateQueries({
       queryKey: [QUERY_KEY_IMPORT_TRANSACTIONS_STEP0],
     });
+    // Status and type decide whether a ticked account counts in the retirement corpus
+    for (const key of [
+      QUERY_KEY_GET_RETIREMENT,
+      QUERY_KEY_GET_RETIREMENT_WHAT_IF,
+    ])
+      void queryClient.invalidateQueries({ queryKey: [key] });
     return result;
   }
 

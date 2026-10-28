@@ -5,6 +5,10 @@ import {
   QUERY_KEY_GET_SAFE_TO_SPEND,
   QUERY_KEY_GET_SMALL_SPENDS,
 } from '../insights/insightsHooks.ts';
+import {
+  QUERY_KEY_GET_RETIREMENT,
+  QUERY_KEY_GET_RETIREMENT_WHAT_IF,
+} from '../retirement/retirementQueryKeys.ts';
 import { QUERY_KEY_GET_TRANSACTIONS } from '../trx/trxHooks.ts';
 import financialProfileServices, {
   FinancialProfilePatch,
@@ -51,7 +55,10 @@ export function useUpdateFinancialProfile() {
         queryKey: [QUERY_KEY_GET_TRANSACTIONS],
       });
       void queryClient.invalidateQueries({
-        queryKey: ['QUERY_KEY_GET_RETIREMENT'],
+        queryKey: [QUERY_KEY_GET_RETIREMENT],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: [QUERY_KEY_GET_RETIREMENT_WHAT_IF],
       });
     },
   });

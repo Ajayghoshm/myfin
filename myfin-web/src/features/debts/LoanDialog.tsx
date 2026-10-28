@@ -69,6 +69,12 @@ const LoanDialog = (props: { onClose: () => void }) => {
 
   const startEpoch = toEpoch(firstMonth ? firstMonth.startOf('month') : null);
   const disbursementCandidates = useGetDisbursementCandidates(startEpoch);
+  // The list follows the first EMI month: a pick that is no longer offered is dropped
+  const selectedDisbursementId = (disbursementCandidates.data ?? []).some(
+    (c) => c.transaction_id === disbursementId,
+  )
+    ? disbursementId
+    : '';
 
   const estimate = estimateEmi(Number(principal), Number(rate), Number(tenure));
 
@@ -106,7 +112,7 @@ const LoanDialog = (props: { onClose: () => void }) => {
         account_id: Number(accountId),
         start_date: start,
         disbursement_transaction_id:
-          disbursementId === '' ? null : Number(disbursementId),
+          selectedDisbursementId === '' ? null : Number(selectedDisbursementId),
       },
       {
         onSuccess: () => {
@@ -134,6 +140,7 @@ const LoanDialog = (props: { onClose: () => void }) => {
             label={t('debts.loans.lender')}
             value={lender}
             onChange={(e) => setLender(e.target.value)}
+            slotProps={{ htmlInput: { maxLength: 255 } }}
             autoFocus
           />
           <Stack direction={{ xs: 'column', sm: 'row' }} gap={2}>
@@ -209,7 +216,7 @@ const LoanDialog = (props: { onClose: () => void }) => {
           <TextField
             select
             label={t('debts.loans.disbursementPicker')}
-            value={disbursementId}
+            value={selectedDisbursementId}
             onChange={(e) => setDisbursementId(e.target.value)}
             helperText={t('debts.loans.disbursementPickerHelp')}
           >

@@ -244,6 +244,8 @@
       "saveAsPdf": "Guardar como PDF",
       "generatedOn": "Gerado em {{date}}",
       "regenerate": "Gerar novamente após alterações",
+      "loading": "A carregar o seu ficheiro…",
+      "loadFailed": "Não foi possível carregar o seu ficheiro. Tente novamente.",
       "kind": {
         "account": "Detalhes da conta",
         "policy": "Apólice de seguro",

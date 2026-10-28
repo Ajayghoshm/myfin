@@ -1,13 +1,15 @@
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query';
 import { queryClient } from '../../data/react-query.ts';
 import { QUERY_KEY_GET_FINANCIAL_PROFILE } from '../profile/financialProfileHooks.ts';
+import {
+  QUERY_KEY_GET_RETIREMENT,
+  QUERY_KEY_GET_RETIREMENT_WHAT_IF,
+} from './retirementQueryKeys.ts';
 import retirementServices, {
   RetirementOverrides,
 } from './retirementServices.ts';
 
-export const QUERY_KEY_GET_RETIREMENT = 'QUERY_KEY_GET_RETIREMENT';
-export const QUERY_KEY_GET_RETIREMENT_WHAT_IF =
-  'QUERY_KEY_GET_RETIREMENT_WHAT_IF';
+export { QUERY_KEY_GET_RETIREMENT, QUERY_KEY_GET_RETIREMENT_WHAT_IF };
 
 export function useGetRetirement() {
   return useQuery({

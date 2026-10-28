@@ -1,3 +1,4 @@
+import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import GlobalStyles from '@mui/material/GlobalStyles';
@@ -43,7 +44,8 @@ const LegacyPrint = () => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const formatCurrency = useFormatNumberAsCurrency();
-  const { data } = useGetLegacy();
+  // refetchOnMount 'always': wait for the fresh copy so the PDF never shows stale balances
+  const { data, isError, isFetching } = useGetLegacy();
   const generatedOn = new Intl.DateTimeFormat(i18n.language, {
     dateStyle: 'long',
   }).format(new Date());
@@ -81,10 +83,28 @@ const LegacyPrint = () => {
         <Button onClick={() => navigate(ROUTE_PROFILE)}>
           {t('common.goBack')}
         </Button>
-        <Button variant="contained" onClick={() => window.print()}>
+        <Button
+          variant="contained"
+          disabled={isFetching || !data}
+          onClick={() => window.print()}
+        >
           {t('profile.legacy.saveAsPdf')}
         </Button>
       </Stack>
+      {isFetching && (
+        <Typography
+          className="legacy-no-print"
+          color="text.secondary"
+          sx={{ mb: 2 }}
+        >
+          {t('profile.legacy.loading')}
+        </Typography>
+      )}
+      {isError && !isFetching && (
+        <Alert className="legacy-no-print" severity="error" sx={{ mb: 2 }}>
+          {t('profile.legacy.loadFailed')}
+        </Alert>
+      )}
       <Typography variant="h4" sx={{ mb: 1 }}>
         {t('profile.legacy.title')}
       </Typography>

@@ -315,10 +315,12 @@ const Transactions = () => {
   };
 
   // Only an unlinked expense (lent) or income (borrowed) can become a debt entry
+  // (not one linked to a yearly cost: the API refuses it)
   const canMarkAsDebt = (trx: Transaction) => {
     const type = inferTrxType(trx);
     return (
       trx.debt_id == null &&
+      trx.yearly_cost_id == null &&
       !trx.is_adjustment &&
       (type === TransactionType.Expense || type === TransactionType.Income)
     );

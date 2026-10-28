@@ -124,6 +124,10 @@ const NetWorthCard = ({ ym, onSelectMonth }: Props) => {
       ? null
       : buildTransactionsLink({ account: line.account_id, range });
   const isEmpty = data.start === 0 && data.end === 0 && data.change === 0;
+  // Nothing to chart: every month of the trend is zero
+  const isTrendEmpty = chartData.every(
+    (d) => d.change === 0 && PART_KEYS.every((key) => d[key] === 0),
+  );
 
   return (
     <Card variant="outlined">
@@ -223,77 +227,82 @@ const NetWorthCard = ({ ym, onSelectMonth }: Props) => {
             </Stack>
           </Stack>
         )}
-        <Typography variant="subtitle2" mt={2} mb={1}>
-          {t('insights.netWorth.trend')}
-        </Typography>
-        <Box height={220}>
-          <ResponsiveBar<TrendDatum>
-            data={chartData}
-            keys={PART_KEYS}
-            indexBy="ym"
-            margin={{ top: 8, right: 8, bottom: 24, left: 64 }}
-            padding={0.25}
-            colors={(bar) => colors[bar.id as PartKey]}
-            enableLabel={false}
-            axisLeft={{
-              tickSize: 0,
-              tickPadding: 4,
-              tickValues: 4,
-              format: (value) => formatCurrency.invoke(Number(value)),
-            }}
-            axisBottom={{
-              tickSize: 0,
-              tickPadding: 4,
-              format: (value) =>
-                chartData.find((d) => d.ym === value)?.label ?? String(value),
-            }}
-            onClick={(bar) => onSelectMonth?.(String(bar.indexValue))}
-            tooltip={({ id, value, data: d }) => (
-              <Box
-                sx={{
-                  p: 1,
-                  bgcolor: 'background.paper',
-                  border: 1,
-                  borderColor: 'divider',
-                  borderRadius: 1,
+        {!isTrendEmpty && (
+          <>
+            <Typography variant="subtitle2" mt={2} mb={1}>
+              {t('insights.netWorth.trend')}
+            </Typography>
+            <Box height={220}>
+              <ResponsiveBar<TrendDatum>
+                data={chartData}
+                keys={PART_KEYS}
+                indexBy="ym"
+                margin={{ top: 8, right: 8, bottom: 24, left: 64 }}
+                padding={0.25}
+                colors={(bar) => colors[bar.id as PartKey]}
+                enableLabel={false}
+                axisLeft={{
+                  tickSize: 0,
+                  tickPadding: 4,
+                  tickValues: 4,
+                  format: (value) => formatCurrency.invoke(Number(value)),
                 }}
-              >
-                <Typography variant="caption" component="div">
-                  {d.label}
-                </Typography>
-                <Typography variant="caption" component="div">
-                  {`${t(`insights.netWorth.part.${id}`)}: ${signed(value ?? 0)}`}
-                </Typography>
-                <Typography variant="caption" component="div">
-                  {t('insights.netWorth.trendChange', {
-                    amount: signed(d.change),
-                  })}
-                </Typography>
-              </Box>
-            )}
-            legends={[]}
-            theme={{
-              text: { fill: theme.palette.text.secondary },
-              axis: { ticks: { text: { fontSize: 10 } } },
-              grid: { line: { stroke: theme.palette.divider } },
-            }}
-          />
-        </Box>
-        <Stack direction="row" gap={2} flexWrap="wrap" mt={1}>
-          {PART_KEYS.map((key) => (
-            <Stack key={key} direction="row" alignItems="center" gap={0.5}>
-              <Box
-                width={10}
-                height={10}
-                borderRadius="2px"
-                bgcolor={colors[key]}
+                axisBottom={{
+                  tickSize: 0,
+                  tickPadding: 4,
+                  format: (value) =>
+                    chartData.find((d) => d.ym === value)?.label ??
+                    String(value),
+                }}
+                onClick={(bar) => onSelectMonth?.(String(bar.indexValue))}
+                tooltip={({ id, value, data: d }) => (
+                  <Box
+                    sx={{
+                      p: 1,
+                      bgcolor: 'background.paper',
+                      border: 1,
+                      borderColor: 'divider',
+                      borderRadius: 1,
+                    }}
+                  >
+                    <Typography variant="caption" component="div">
+                      {d.label}
+                    </Typography>
+                    <Typography variant="caption" component="div">
+                      {`${t(`insights.netWorth.part.${id}`)}: ${signed(value ?? 0)}`}
+                    </Typography>
+                    <Typography variant="caption" component="div">
+                      {t('insights.netWorth.trendChange', {
+                        amount: signed(d.change),
+                      })}
+                    </Typography>
+                  </Box>
+                )}
+                legends={[]}
+                theme={{
+                  text: { fill: theme.palette.text.secondary },
+                  axis: { ticks: { text: { fontSize: 10 } } },
+                  grid: { line: { stroke: theme.palette.divider } },
+                }}
               />
-              <Typography variant="caption" color="text.secondary">
-                {t(`insights.netWorth.part.${key}`)}
-              </Typography>
+            </Box>
+            <Stack direction="row" gap={2} flexWrap="wrap" mt={1}>
+              {PART_KEYS.map((key) => (
+                <Stack key={key} direction="row" alignItems="center" gap={0.5}>
+                  <Box
+                    width={10}
+                    height={10}
+                    borderRadius="2px"
+                    bgcolor={colors[key]}
+                  />
+                  <Typography variant="caption" color="text.secondary">
+                    {t(`insights.netWorth.part.${key}`)}
+                  </Typography>
+                </Stack>
+              ))}
             </Stack>
-          ))}
-        </Stack>
+          </>
+        )}
       </CardContent>
     </Card>
   );

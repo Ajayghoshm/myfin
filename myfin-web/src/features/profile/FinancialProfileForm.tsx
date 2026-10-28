@@ -92,8 +92,12 @@ const FinancialProfileForm = () => {
     .map((a) => ({ id: String(a.account_id), label: a.name }));
   const savingsAccount =
     accountOptions.find((o) => o.id === savingsAccountId) ?? null;
+  // A retirement-ticked account cannot also be the sinking fund (it may be the savings target)
+  const sinkingOptions = accountOptions.filter(
+    (o) => !retirementAccountIds.includes(o.id),
+  );
   const sinkingAccount =
-    accountOptions.find((o) => o.id === sinkingAccountId) ?? null;
+    sinkingOptions.find((o) => o.id === sinkingAccountId) ?? null;
 
   const targetNumber = Number(targetValue);
   const isTargetValid =
@@ -121,10 +125,16 @@ const FinancialProfileForm = () => {
     Number.isFinite(Number(v)) &&
     Number(v) >= min &&
     Number(v) <= max;
+  // A real calendar date, not in the future (local today, as YYYY-MM-DD)
+  const todayIso = new Date().toLocaleDateString('en-CA');
+  const isRealDate = (v: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+    const [y, m, d] = v.split('-').map(Number);
+    const date = new Date(Date.UTC(y, m - 1, d));
+    return date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
+  };
   const isDobValid =
-    dateOfBirth === '' ||
-    (/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth) &&
-      !Number.isNaN(Date.parse(dateOfBirth)));
+    dateOfBirth === '' || (isRealDate(dateOfBirth) && dateOfBirth <= todayIso);
   const isRetAgeValid =
     inRange(retirementAge, 1, 80) && Number.isInteger(Number(retirementAge));
   const isReturnValid = inRange(returnPct, 0, 30);
@@ -296,7 +306,7 @@ const FinancialProfileForm = () => {
         <Autocomplete
           id="sinking-fund-account"
           value={sinkingAccount}
-          options={accountOptions}
+          options={sinkingOptions}
           onChange={(_event, value) => setSinkingAccountId(value?.id ?? null)}
           isOptionEqualToValue={(option, value) => option.id === value.id}
           renderInput={(params) => (
@@ -362,7 +372,10 @@ const FinancialProfileForm = () => {
           value={dateOfBirth}
           error={!isDobValid}
           onChange={(e) => setDateOfBirth(e.target.value)}
-          slotProps={{ inputLabel: { shrink: true } }}
+          slotProps={{
+            inputLabel: { shrink: true },
+            htmlInput: { max: todayIso },
+          }}
         />
       </Grid>
       <Grid size={{ xs: 12, md: 6 }}>

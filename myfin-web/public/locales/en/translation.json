@@ -244,6 +244,8 @@
       "saveAsPdf": "Save as PDF",
       "generatedOn": "Generated on {{date}}",
       "regenerate": "Regenerate after changes",
+      "loading": "Loading your file…",
+      "loadFailed": "Could not load your file. Please try again.",
       "kind": {
         "account": "Account details",
         "policy": "Insurance policy",
