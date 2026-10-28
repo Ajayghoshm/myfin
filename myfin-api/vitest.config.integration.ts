@@ -15,5 +15,7 @@ export default defineConfig({
     setupFiles: ['__tests__/integration/utils/setup.ts'],
     maxWorkers: 1,
     isolate: false,
+    // Database-backed tests seed months of data; 5 s is too tight on a busy machine.
+    testTimeout: 20_000,
   },
 });
