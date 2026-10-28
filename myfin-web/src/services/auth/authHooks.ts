@@ -17,6 +17,11 @@ export function useLogout() {
 
   function logout() {
     clearSessionData();
+    // Drop every cached response (except the session check) so the next login cannot
+    // reuse another session's data, e.g. account ids that no longer exist after a restore.
+    queryClient.removeQueries({
+      predicate: (query) => query.queryKey[0] !== QUERY_KEY_SESSION_VALIDITY,
+    });
     queryClient
       .invalidateQueries({ queryKey: [QUERY_KEY_SESSION_VALIDITY] })
       .then();
