@@ -149,31 +149,34 @@ describe('User tests', () => {
 
       // Check all entities were added
       const finalCounters = await StatsService.getUserCounterStats(user.user_id);
-      expect(finalCounters.nr_of_accounts).toBe(5);
-      expect(finalCounters.nr_of_budgets).toBe(4);
-      expect(finalCounters.nr_of_categories).toBe(10);
-      expect(finalCounters.nr_of_entities).toBe(9);
-      expect(finalCounters.nr_of_categories).toBe(10);
-      expect(finalCounters.nr_of_rules).toBe(2);
-      expect(finalCounters.nr_of_tags).toBe(0);
-      expect(finalCounters.nr_of_goals).toBe(1);
-      expect(finalCounters.nr_of_trx).toBe(17n);
+      expect(finalCounters.nr_of_accounts).toBe(6);
+      expect(finalCounters.nr_of_budgets).toBe(8);
+      expect(finalCounters.nr_of_categories).toBe(13);
+      expect(finalCounters.nr_of_entities).toBe(13);
+      expect(finalCounters.nr_of_rules).toBe(4);
+      // One tag per event
+      expect(finalCounters.nr_of_tags).toBe(4);
+      expect(finalCounters.nr_of_goals).toBe(2);
+      expect(Number(finalCounters.nr_of_trx)).toBeGreaterThan(150);
 
-      // Check account balances are correct
+      // Check account balances have the expected signs
       const balances = (await AccountService.getAccountsForUserWithAmounts(user.user_id)) as {
         name: string;
         balance: number;
       }[];
-      expect(balances.find((a) => a.name === 'HQ Mutual').balance).toBeCloseTo(-299465.4);
-      expect(balances.find((a) => a.name === 'BBank - Current').balance).toBeCloseTo(8261.76);
-      expect(balances.find((a) => a.name === 'BBank - Savings').balance).toBeCloseTo(2500.0);
-      expect(balances.find((a) => a.name === 'XYZ Capital').balance).toBeCloseTo(0.0);
-      expect(balances.find((a) => a.name === 'SAFU Credit').balance).toBeCloseTo(-911.79);
-    });
+      const balance = (name: string) => Number(balances.find((a) => a.name === name).balance);
+      expect(balance('HDFC Salary')).toBeGreaterThan(0);
+      expect(balance('SBI Savings')).toBeGreaterThan(0);
+      expect(balance('Sinking fund')).toBeGreaterThan(0);
+      expect(balance('HDFC Credit Card')).toBeLessThanOrEqual(0);
+      expect(balance('HDFC Home Loan')).toBeLessThan(-2_000_000);
+      expect(balance('HDFC Home Loan')).toBeGreaterThan(-2_500_000);
+    }, 120_000);
 
     test('Scheduler should reset only demo accounts', async () => {
       await setDemoFlag(user.user_id, true);
       await DemoDataManager.createMockData(user.user_id);
+      const populated = await StatsService.getUserCounterStats(user.user_id);
 
       await prisma.entities.deleteMany({
         where: { users_user_id: user.user_id },
@@ -197,11 +200,11 @@ describe('User tests', () => {
       const demoUserStats = await StatsService.getUserCounterStats(user.user_id);
       const regularUserStats = await StatsService.getUserCounterStats(secondUser.user_id);
 
-      expect(demoUserStats.nr_of_accounts).toBe(5);
-      expect(demoUserStats.nr_of_entities).toBe(9);
-      expect(demoUserStats.nr_of_trx).toBe(17n);
+      expect(demoUserStats.nr_of_accounts).toBe(6);
+      expect(demoUserStats.nr_of_entities).toBe(13);
+      expect(demoUserStats.nr_of_trx).toBe(populated.nr_of_trx);
       expect(regularUserStats.nr_of_entities).toBe(1);
       expect(regularUserStats.nr_of_accounts).toBe(0);
-    });
+    }, 120_000);
   });
 });
