@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import joi from 'joi';
 import { MYFIN } from '../consts.js';
 import APIError from '../errorHandling/apiError.js';
+import MonthBackupService from '../services/monthBackupService.js';
 import FolderBackupService from '../services/folderBackupService.js';
 import UserService from '../services/userService.js';
 import Logger from '../utils/Logger.js';
@@ -193,6 +194,28 @@ const clearUserData = async (req: Request, res: Response, next: NextFunction) =>
   }
 };
 
+const exportMonthSchema = joi.object({ month: joi.string().required() });
+const exportMonth = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    const { month } = await exportMonthSchema.validateAsync(req.query);
+    res.json(await MonthBackupService.exportMonth(sessionData.userId, month));
+  } catch (err) {
+    Logger.addErrorLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
+const importMonth = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    res.json(await MonthBackupService.importMonth(sessionData.userId, req.body));
+  } catch (err) {
+    Logger.addErrorLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
 const restoreUserSchema = joi.object({
   apiVersion: joi.string().required(),
   accounts: joi.array().items(joi.object().pattern(joi.string(), joi.any())).required(),
@@ -331,6 +354,8 @@ export default {
   backupUser,
   restoreUser,
   clearUserData,
+  exportMonth,
+  importMonth,
   listFolderBackups,
   createFolderBackup,
   restoreFolderBackup,

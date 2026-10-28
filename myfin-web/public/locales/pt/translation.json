@@ -319,6 +319,18 @@
     "importDataConfirmationSubtitle": "Os dados que está prestes a importar irão substituir os registos atualmente associados à sua conta de utilizador. Para evitar a perda acidental de dados, recomendamos que exporte os dados atuais antes de prosseguir com a importação.",
     "exportDataConfirmationTitle": "Atenção!",
     "exportDataConfirmationSubtitle": "Será gerado um ficheiro JSON não encriptado contendo todos os registos associados à sua conta de utilizador.",
+    "monthBackup": {
+      "exportTitle": "Exportar um mês",
+      "exportDescription": "Transfira as transações de um mês num ficheiro",
+      "importTitle": "Importar um mês",
+      "importDescription": "Adiciona as transações de um ficheiro mensal aos seus dados, sem alterar mais nada",
+      "exportHelp": "Guarda as transações desse mês com as respetivas contas, categorias, entidades e etiquetas (por nome), para poder juntar o ficheiro a qualquer conjunto de dados.",
+      "month": "Mês",
+      "download": "Transferir",
+      "importHelp": "As transações já existentes são ignoradas; nada é substituído ou eliminado. Contas, categorias, entidades e etiquetas em falta são criadas pelo nome.",
+      "notAMonthFile": "Este não é um ficheiro de cópia mensal válido.",
+      "importResult": "{{month}}: {{imported}} transações adicionadas, {{skipped}} já existentes. Criadas: {{accounts}} contas, {{categories}} categorias, {{entities}} entidades, {{tags}} etiquetas."
+    },
     "clearData": {
       "title": "Limpar todos os dados",
       "description": "Elimina permanentemente todos os seus registos (é obrigatório transferir primeiro uma cópia de segurança)",

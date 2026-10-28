@@ -319,6 +319,18 @@
     "importDataConfirmationSubtitle": "The data you are about to import will overwrite the records currently associated with your user account. To avoid accidental data loss, we recommend exporting your current data before proceeding with the import.",
     "exportDataConfirmationTitle": "Beware!",
     "exportDataConfirmationSubtitle": "An unencrypted JSON file will be generated containing all records associated with your user account.",
+    "monthBackup": {
+      "exportTitle": "Export a month",
+      "exportDescription": "Download one month's transactions as a file",
+      "importTitle": "Import a month",
+      "importDescription": "Add a month file's transactions to your data, without touching anything else",
+      "exportHelp": "Saves that month's transactions with their accounts, categories, entities and tags (by name), so the file can be merged into any dataset.",
+      "month": "Month",
+      "download": "Download",
+      "importHelp": "Transactions already present are skipped, nothing is overwritten or deleted. Missing accounts, categories, entities and tags are created by name.",
+      "notAMonthFile": "This is not a valid month backup file.",
+      "importResult": "{{month}}: {{imported}} transactions added, {{skipped}} already present. Created: {{accounts}} accounts, {{categories}} categories, {{entities}} entities, {{tags}} tags."
+    },
     "clearData": {
       "title": "Clear all data",
       "description": "Permanently delete all your records (a backup download is required first)",

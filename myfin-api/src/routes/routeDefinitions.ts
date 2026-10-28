@@ -73,6 +73,8 @@ export const routeGroups: RouteGroup[] = [
       { method: 'get', path: '/backup', handlerName: 'backupUser' },
       { method: 'put', path: '/restore', handlerName: 'restoreUser' },
       { method: 'post', path: '/clear', handlerName: 'clearUserData' },
+      { method: 'get', path: '/backup/month', handlerName: 'exportMonth' },
+      { method: 'post', path: '/restore/month', handlerName: 'importMonth' },
       { method: 'get', path: '/folder-backups', handlerName: 'listFolderBackups' },
       { method: 'post', path: '/folder-backups', handlerName: 'createFolderBackup' },
       { method: 'post', path: '/folder-backups/restore', handlerName: 'restoreFolderBackup' },

@@ -2,6 +2,7 @@ import {
   CalculateOutlined,
   CloudDownloadOutlined,
   DeleteForeverOutlined,
+  EventNoteOutlined,
   Restore,
   RocketLaunchOutlined,
 } from '@mui/icons-material';
@@ -31,6 +32,7 @@ import { useLogout } from '../../services/auth/authHooks.ts';
 import { useGetBackupData } from '../../services/user/userHooks.ts';
 import { downloadJsonFile } from '../../utils/fileUtils.ts';
 import ClearDataDialog from './ClearDataDialog.tsx';
+import MonthBackupDialog from './MonthBackupDialog.tsx';
 import RestoreUserDialog from './RestoreUserDialog.tsx';
 
 type UiState = {
@@ -121,6 +123,9 @@ const Utilities = () => {
 
   const [state, dispatch] = useReducer(reduceState, null, createInitialState);
   const [isClearDataOpen, setIsClearDataOpen] = useState(false);
+  const [monthBackupMode, setMonthBackupMode] = useState<
+    'export' | 'import' | null
+  >(null);
 
   const recalculateAllBalancesRequest = useRecalculateAllBalances();
   const autoPopulateWithDemoData = useAutoPopulateWithDemoData();
@@ -189,6 +194,13 @@ const Utilities = () => {
 
   return (
     <>
+      {monthBackupMode && (
+        <MonthBackupDialog
+          mode={monthBackupMode}
+          isOpen
+          onClose={() => setMonthBackupMode(null)}
+        />
+      )}
       {isClearDataOpen && (
         <ClearDataDialog
           isOpen={isClearDataOpen}
@@ -305,6 +317,28 @@ const Utilities = () => {
             <ListItemText
               primary={t('profile.importDataTitle')}
               secondary={t('profile.importDataDescription')}
+            />
+          </ListItemButton>
+        </ListItem>
+        <ListItem disablePadding>
+          <ListItemButton onClick={() => setMonthBackupMode('export')}>
+            <ListItemIcon>
+              <EventNoteOutlined />
+            </ListItemIcon>
+            <ListItemText
+              primary={t('profile.monthBackup.exportTitle')}
+              secondary={t('profile.monthBackup.exportDescription')}
+            />
+          </ListItemButton>
+        </ListItem>
+        <ListItem disablePadding>
+          <ListItemButton onClick={() => setMonthBackupMode('import')}>
+            <ListItemIcon>
+              <Restore />
+            </ListItemIcon>
+            <ListItemText
+              primary={t('profile.monthBackup.importTitle')}
+              secondary={t('profile.monthBackup.importDescription')}
             />
           </ListItemButton>
         </ListItem>

@@ -314,6 +314,18 @@
     "importDataConfirmationSubtitle": "Les données importées remplaceront les enregistrements associés à votre compte. Pour éviter toute perte accidentelle, nous recommandons d'exporter vos données avant de procéder à l'import.",
     "exportDataConfirmationTitle": "Attention !",
     "exportDataConfirmationSubtitle": "Un fichier JSON non chiffré sera généré, contenant tous les enregistrements de votre compte.",
+    "monthBackup": {
+      "exportTitle": "Exporter un mois",
+      "exportDescription": "Télécharger les transactions d'un mois dans un fichier",
+      "importTitle": "Importer un mois",
+      "importDescription": "Ajoute les transactions d'un fichier mensuel à vos données, sans rien modifier d'autre",
+      "exportHelp": "Enregistre les transactions de ce mois avec leurs comptes, catégories, entités et étiquettes (par nom), pour fusionner le fichier dans n'importe quel jeu de données.",
+      "month": "Mois",
+      "download": "Télécharger",
+      "importHelp": "Les transactions déjà présentes sont ignorées ; rien n'est écrasé ni supprimé. Les comptes, catégories, entités et étiquettes manquants sont créés par nom.",
+      "notAMonthFile": "Ce n'est pas un fichier de sauvegarde mensuelle valide.",
+      "importResult": "{{month}} : {{imported}} transactions ajoutées, {{skipped}} déjà présentes. Créés : {{accounts}} comptes, {{categories}} catégories, {{entities}} entités, {{tags}} étiquettes."
+    },
     "clearData": {
       "title": "Effacer toutes les données",
       "description": "Supprime définitivement tous vos enregistrements (une sauvegarde doit d'abord être téléchargée)",

@@ -18,7 +18,29 @@ const clearUserData = (confirmUsername: string) => {
   });
 };
 
+export type ImportMonthResult = {
+  month: string;
+  imported: number;
+  skipped: number;
+  created: {
+    accounts: number;
+    categories: number;
+    entities: number;
+    tags: number;
+  };
+};
+
+const getMonthBackup = (month: string) => {
+  return axios.get<unknown>('/user/backup/month', { params: { month } });
+};
+
+const importMonthBackup = (data: unknown) => {
+  return axios.post<ImportMonthResult>('/user/restore/month', data);
+};
+
 export default {
+  getMonthBackup,
+  importMonthBackup,
   getBackupData,
   clearUserData,
   restoreUserData,

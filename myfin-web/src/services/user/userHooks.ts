@@ -2,6 +2,7 @@ import { Account, AccountType } from '../auth/authServices.ts';
 import { useUserData } from '../../providers/UserProvider.tsx';
 import UserServices from './userServices.ts';
 import { useMutation } from '@tanstack/react-query';
+import { queryClient } from '../../data/react-query.ts';
 import {
   BusinessLogicError,
   CustomApiError,
@@ -106,6 +107,24 @@ export function useClearUserData() {
     mutationFn: async (confirmUsername: string) => {
       const data = await UserServices.clearUserData(confirmUsername);
       return data.data;
+    },
+  });
+}
+
+export function useGetMonthBackup() {
+  return useMutation({
+    mutationFn: async (month: string) =>
+      (await UserServices.getMonthBackup(month)).data,
+  });
+}
+
+export function useImportMonthBackup() {
+  return useMutation({
+    mutationFn: async (data: unknown) => {
+      const result = (await UserServices.importMonthBackup(data)).data;
+      // new transactions change every list, total and balance
+      await queryClient.invalidateQueries();
+      return result;
     },
   });
 }
