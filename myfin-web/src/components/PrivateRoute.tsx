@@ -19,6 +19,7 @@ import PaletteOutlinedIcon from '@mui/icons-material/PaletteOutlined';
 import CheckIcon from '@mui/icons-material/Check';
 import {
   AccountCircleOutlined,
+  HelpOutlineOutlined,
   LogoutOutlined,
 } from '@mui/icons-material';
 import { useContext, useEffect, useState } from 'react';
@@ -29,7 +30,7 @@ import {
   MY_FIN_THEME_PALETTE_PREVIEWS,
 } from '../theme';
 import TopSummary from './TopSummary.tsx';
-import { ROUTE_PROFILE, ROUTE_AUTH } from '../providers/RoutesProvider.tsx';
+import { ROUTE_PROFILE, ROUTE_AUTH, ROUTE_HELP } from '../providers/RoutesProvider.tsx';
 import { useTranslation } from 'react-i18next';
 import PlannedMatchPromptHost from '../features/transactions/PlannedMatchPromptHost.tsx';
 import { useUserData } from '../providers/UserProvider.tsx';
@@ -188,6 +189,14 @@ const PrivateRoute = () => {
                       );
                     })}
                   </Menu>
+                  <IconButton
+                    size="large"
+                    aria-label="help"
+                    onClick={() => navigate(ROUTE_HELP)}
+                    color="inherit"
+                  >
+                    <HelpOutlineOutlined />
+                  </IconButton>
                   <IconButton
                     size="large"
                     aria-label="profile"
