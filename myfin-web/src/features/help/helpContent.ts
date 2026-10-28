@@ -1,3 +1,6 @@
+import type { HelpSection } from './helpTypes.ts';
+import { MORE_SECTIONS } from './helpSections.ts';
+
 // Route paths are literals here: importing them from RoutesProvider would be a
 // circular import (RoutesProvider imports Help, which imports this file).
 const ROUTE_ACCOUNTS = '/accounts';
@@ -15,15 +18,7 @@ const ROUTE_YEARLY_COSTS = '/yearly-costs';
 // English only for now: the guide text is not part of the i18n catalogues yet.
 // Source: docs/adoption/myfin-tour-and-guide-source.md (code wins over specs).
 
-export type HelpSection = {
-  id: string;
-  group: string;
-  title: string;
-  summary: string;
-  route?: string;
-  howTo: string[];
-  rules: string[];
-};
+export type { HelpSection } from './helpTypes.ts';
 
 export type FirstWeekStep = {
   title: string;
@@ -109,7 +104,7 @@ export const FIRST_WEEK: FirstWeekStep[] = [
   },
 ];
 
-export const HELP_SECTIONS: HelpSection[] = [
+const GETTING_STARTED: HelpSection[] = [
   {
     id: 'sign-in',
     group: 'Getting started',
@@ -227,6 +222,11 @@ export const HELP_SECTIONS: HelpSection[] = [
       'The same one-role-per-account rule as Accounts applies to the Savings and Sinking-fund accounts.',
     ],
   },
+];
+
+export const HELP_SECTIONS: HelpSection[] = [
+  ...GETTING_STARTED,
+  ...MORE_SECTIONS,
 ];
 
 export const GLOSSARY: GlossaryEntry[] = [
