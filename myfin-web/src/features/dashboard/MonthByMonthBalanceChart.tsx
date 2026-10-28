@@ -91,6 +91,8 @@ const MonthlyOverviewChart = ({ data }: Props) => {
   return (
     <>
       <Stack height={200} sx={{ display: showEmptyView ? 'none' : 'block' }}>
+        {/* With no data yet, nivo's 'auto' bounds produce translate(0, NaN) */}
+        {chartData.length > 0 && (
         <ResponsiveBar
           data={chartData as unknown as readonly BarDatum[]}
           keys={['balance']}
@@ -174,6 +176,7 @@ const MonthlyOverviewChart = ({ data }: Props) => {
             );
           }}
         />
+        )}
       </Stack>
       <Stack
         height={200}
