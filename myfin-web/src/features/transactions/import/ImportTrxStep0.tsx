@@ -1,13 +1,20 @@
-import { KeyboardDoubleArrowRight, UploadFile } from '@mui/icons-material';
+import {
+  Delete,
+  KeyboardDoubleArrowRight,
+  UploadFile,
+} from '@mui/icons-material';
+import { Box, IconButton, useTheme } from '@mui/material';
 import Button from '@mui/material/Button';
-import { useTranslation } from 'react-i18next';
 import Typography from '@mui/material/Typography';
-import { Box, useTheme } from '@mui/material';
+import { ChangeEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   AlertSeverity,
   useSnackbar,
 } from '../../../providers/SnackbarProvider.tsx';
-import { ChangeEvent, useRef } from 'react';
+import TrxServices, {
+  ShareInboxItem,
+} from '../../../services/trx/trxServices.ts';
 
 export type Props = {
   onNext: (clipboardText: string) => void;
@@ -19,6 +26,39 @@ const ImportTrxStep0 = (props: Props) => {
   const { t } = useTranslation();
   const snackbar = useSnackbar();
   const phonePeInputRef = useRef<HTMLInputElement>(null);
+  const [inbox, setInbox] = useState<ShareInboxItem[]>([]);
+
+  const loadInbox = useCallback(() => {
+    TrxServices.listShareInbox()
+      .then((res) => setInbox(res.data))
+      .catch(() => setInbox([]));
+  }, []);
+
+  useEffect(() => {
+    loadInbox();
+  }, [loadInbox]);
+
+  const useInboxFile = async (item: ShareInboxItem) => {
+    try {
+      const res = await TrxServices.getShareInboxFile(item.id);
+      props.onPhonePeFile(res.data.csv);
+    } catch (error) {
+      console.error('Failed to read inbox file:', error);
+      snackbar.showSnackbar(
+        t('common.somethingWentWrongTryAgain'),
+        AlertSeverity.ERROR,
+      );
+    }
+  };
+
+  const deleteInboxFile = async (item: ShareInboxItem) => {
+    try {
+      await TrxServices.deleteShareInboxFile(item.id);
+    } catch (error) {
+      console.error('Failed to delete inbox file:', error);
+    }
+    loadInbox();
+  };
 
   const handlePhonePeFileChange = async (
     event: ChangeEvent<HTMLInputElement>,
@@ -154,6 +194,37 @@ const ImportTrxStep0 = (props: Props) => {
       >
         {t('importTransactions.uploadPhonePe')}
       </Button>
+      {inbox.length > 0 && (
+        <Box sx={{ mt: theme.spacing(3) }}>
+          <Typography variant="subtitle1">
+            {t('importTransactions.phoneInbox')}
+          </Typography>
+          {inbox.map((item) => (
+            <Box
+              key={item.id}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: theme.spacing(1),
+                mt: theme.spacing(1),
+              }}
+            >
+              <Button
+                variant="outlined"
+                onClick={() => void useInboxFile(item)}
+              >
+                {item.name} · {new Date(item.received_at).toLocaleString()}
+              </Button>
+              <IconButton
+                aria-label={t('common.delete')}
+                onClick={() => void deleteInboxFile(item)}
+              >
+                <Delete />
+              </IconButton>
+            </Box>
+          ))}
+        </Box>
+      )}
     </Box>
   );
 };

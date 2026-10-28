@@ -433,6 +433,9 @@ export const routeGroups: RouteGroup[] = [
         path: '/import/phonepe/categorize',
         handlerName: 'importPhonePeCategorize',
       },
+      { method: 'get', path: '/import/inbox', handlerName: 'listShareInbox' },
+      { method: 'get', path: '/import/inbox/:id', handlerName: 'getShareInboxFile' },
+      { method: 'delete', path: '/import/inbox/:id', handlerName: 'deleteShareInboxFile' },
     ],
   },
   {

@@ -306,6 +306,21 @@ const importPhonePeCategorize = (request: PhonePeCategorizeRequest) => {
   );
 };
 
+export type ShareInboxItem = {
+  id: string;
+  name: string;
+  size: number;
+  received_at: number;
+};
+
+const listShareInbox = () => axios.get<ShareInboxItem[]>('/trxs/import/inbox');
+
+const getShareInboxFile = (id: string) =>
+  axios.get<{ csv: string }>(`/trxs/import/inbox/${encodeURIComponent(id)}`);
+
+const deleteShareInboxFile = (id: string) =>
+  axios.delete(`/trxs/import/inbox/${encodeURIComponent(id)}`);
+
 export type BulkUpdateTransactionsRequest = {
   transaction_ids?: bigint[];
   filter?: {
@@ -346,4 +361,7 @@ export default {
   importTransactionsStep2,
   importPhonePePreview,
   importPhonePeCategorize,
+  listShareInbox,
+  getShareInboxFile,
+  deleteShareInboxFile,
 };

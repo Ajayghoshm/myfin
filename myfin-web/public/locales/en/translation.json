@@ -450,6 +450,7 @@
     "step2Text": "Review and make final adjustments to the transactions before adding them to the account.",
     "step3Text": "{{count}} new transactions have successfully been imported into {{accountName}}. Good job!",
     "uploadPhonePe": "Upload PhonePe statement",
+    "phoneInbox": "Received from your phone",
     "phonePeMappingLabel": "Match accounts",
     "phonePeMappingText": "Choose which MyFin account each PhonePe payment method belongs to. We'll remember it for next time.",
     "noNewTransactions": "No new transactions in this statement.",

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1976d2">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="web-app-manifest-192x192.png">
+  <title>MyFin Share</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; max-width: 480px; margin-inline: auto; color: #222; }
+    h1 { font-size: 1.3rem; }
+    button, input { font: inherit; padding: 10px 14px; border-radius: 8px; border: 1px solid #999; }
+    button { background: #1976d2; color: #fff; border: 0; }
+    ul { padding-left: 0; list-style: none; }
+    li { padding: 8px 0; border-bottom: 1px solid #eee; }
+    #status { margin: 12px 0; font-weight: 600; }
+    .muted { color: #666; font-size: .9rem; }
+  </style>
+</head>
+<body>
+  <h1>MyFin Share</h1>
+  <p class="muted">Share a PhonePe statement to this app. It is sent to your laptop's MyFin inbox.</p>
+  <div id="status"></div>
+  <ul id="queue"></ul>
+  <button id="send">Send now</button>
+  <details style="margin-top:24px">
+    <summary>Pairing token</summary>
+    <p class="muted">The SHARE_TOKEN from the laptop's myfin-api .env.</p>
+    <input id="token" type="password" autocomplete="off" placeholder="Share token">
+    <button id="save">Save</button>
+  </details>
+  <script src="app.js"></script>
+</body>
+</html>

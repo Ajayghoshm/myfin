@@ -1,0 +1,26 @@
+{
+  "name": "MyFin Share",
+  "short_name": "MyFin Share",
+  "start_url": "/share/",
+  "scope": "/share/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1976d2",
+  "icons": [
+    { "src": "web-app-manifest-192x192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "web-app-manifest-512x512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ],
+  "share_target": {
+    "action": "/share/receive",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "files": [
+        {
+          "name": "statements",
+          "accept": ["text/csv", "text/comma-separated-values", "application/csv", "application/vnd.ms-excel", "text/plain", ".csv"]
+        }
+      ]
+    }
+  }
+}

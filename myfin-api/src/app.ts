@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import { buildOpenApiDocument, registerSwagger } from './docs/openApi.js';
 import { apiErrorHandler, headerInjector, i18n, rateLimiter } from './middlewares/index.js';
 import router from './routes/router.js';
+import shareRouter from './share/shareRouter.js';
 import Logger from './utils/Logger.js';
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json');
@@ -46,6 +47,7 @@ app.get('/', (request, response) => {
   response.json({ info: 'MyFin API', version: version });
 });
 
+app.use('/share', shareRouter);
 router(app);
 app.use(apiErrorHandler);
 

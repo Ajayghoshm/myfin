@@ -11,6 +11,7 @@ import { salaryRuleFor } from '../services/insights/analyticsRules.js';
 import Logger from '../utils/Logger.js';
 import ConvertUtils from '../utils/convertUtils.js';
 import PhonePeImportService from '../services/phonePeImportService.js';
+import ShareInbox from '../share/shareInbox.js';
 import CommonsController from './commonsController.js';
 
 // READ
@@ -388,6 +389,40 @@ const importTransactionsStep2 = async (req: Request, res: Response, next: NextFu
   }
 };
 
+const listShareInbox = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await CommonsController.checkAuthSessionValidity(req);
+    res.json(await ShareInbox.list());
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
+const getShareInboxFile = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await CommonsController.checkAuthSessionValidity(req);
+    const csv = await ShareInbox.read(String(req.params.id));
+    if (csv === null) return next(APIError.notFound('Inbox file not found'));
+    res.json({ csv });
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
+const deleteShareInboxFile = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await CommonsController.checkAuthSessionValidity(req);
+    const removed = await ShareInbox.remove(String(req.params.id));
+    if (!removed) return next(APIError.notFound('Inbox file not found'));
+    res.json({ deleted: true });
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
 const importPhonePePreviewSchema = joi.object({
   csv: joi.string().required(),
 });
@@ -512,6 +547,9 @@ export default {
   importTransactionsStep2,
   importPhonePePreview,
   importPhonePeCategorize,
+  listShareInbox,
+  getShareInboxFile,
+  deleteShareInboxFile,
 };
 
 export { toTransactionFilter };
