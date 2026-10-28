@@ -298,6 +298,8 @@ export type MonthReview = {
   steps: ReviewStep[];
   /** A past month's stored review, which never changes. */
   frozen: boolean;
+  /** The month ends before the user's data starts. */
+  before_data: boolean;
 };
 
 export type ReviewHistoryEntry = {

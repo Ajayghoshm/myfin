@@ -14,6 +14,10 @@ import { useSearchParams } from 'react-router-dom';
 import DataCard from '../../components/DataCard.tsx';
 import PageHeader from '../../components/PageHeader.tsx';
 import {
+  AlertSeverity,
+  useSnackbar,
+} from '../../providers/SnackbarProvider.tsx';
+import {
   useGetReview,
   useGetReviewHistory,
   useSetReviewed,
@@ -40,6 +44,7 @@ const Review = () => {
   const review = useGetReview(ym);
   const history = useGetReviewHistory();
   const setReviewed = useSetReviewed();
+  const snackbar = useSnackbar();
   const data = review.data?.month === ym ? review.data : undefined;
   const monthLabel = (m: string) =>
     dayjs(`${m}-01`).toDate().toLocaleString(i18n.language, {
@@ -109,7 +114,19 @@ const Review = () => {
                       onToggleReviewed={
                         s.key === 'review'
                           ? (reviewed) =>
-                              setReviewed.mutate({ month: ym, reviewed })
+                              setReviewed.mutate(
+                                { month: ym, reviewed },
+                                {
+                                  onError: () => {
+                                    snackbar.showSnackbar(
+                                      t('review.tickFailed'),
+                                      AlertSeverity.ERROR,
+                                    );
+                                    void review.refetch();
+                                    void history.refetch();
+                                  },
+                                },
+                              )
                           : undefined
                       }
                     />

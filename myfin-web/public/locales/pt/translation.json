@@ -1288,6 +1288,7 @@
     "month": "Mês",
     "loading": "A carregar…",
     "cardTitle": "Revisão de {{month}}: {{done}} de {{total}} feitos",
+    "tickFailed": "Não foi possível guardar: este mês pode estar congelado. Recarregado.",
     "openReview": "Abrir a revisão",
     "open": "Abrir",
     "tickReviewed": "Revi este mês nos Insights",

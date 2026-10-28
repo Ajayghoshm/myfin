@@ -1,6 +1,6 @@
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { afterAll, beforeEach, describe, expect, test } from 'vitest';
+import { afterAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import app from '../../src/app.js';
 import { prisma } from '../../src/config/prisma.js';
 import { MYFIN } from '../../src/consts.js';
@@ -147,6 +147,34 @@ describe('month-end review', () => {
     expect(hist.every((h) => typeof h.complete === 'boolean')).toBe(true);
   });
 
+  test('a tick committed while the review is being computed survives the freeze', async () => {
+    await septemberWithGaps();
+    const original = prisma.budgets.count.bind(prisma.budgets);
+    const spy = vi.spyOn(prisma.budgets, 'count').mockImplementationOnce(((args: never) => {
+      // computeReview's last query: tick the box right now, after `reviewed` was already read as false
+      return setReviewed(ctx.uid, SEP, true, NOW).then(() => original(args));
+    }) as never);
+    const day11 = monthRangeIST(OCT).from + 10 * DAY;
+    const r = await monthReview(ctx.uid, SEP, day11);
+    spy.mockRestore();
+    expect(r.frozen).toBe(true);
+    expect(statuses(r).review).toBe('done');
+    const stored = await prisma.monthly_records.findFirstOrThrow({ where: { users_user_id: ctx.uid, kind: 'review' } });
+    expect((stored.data as { reviewed: boolean }).reviewed).toBe(true);
+    expect(stored.frozen_at).not.toBeNull();
+  });
+
+  test('unticking an unfrozen month; future and pre-data months are rejected', async () => {
+    await septemberWithGaps();
+    await setReviewed(ctx.uid, SEP, true, NOW);
+    expect(statuses(await monthReview(ctx.uid, SEP, NOW)).review).toBe('done');
+    await setReviewed(ctx.uid, SEP, false, NOW);
+    expect(statuses(await monthReview(ctx.uid, SEP, NOW)).review).toBe('todo');
+    await expect(setReviewed(ctx.uid, { year: 2026, month: 12 }, true, NOW)).rejects.toMatchObject({ code: 400 });
+    await expect(setReviewed(ctx.uid, { year: 2020, month: 1 }, true, NOW)).rejects.toMatchObject({ code: 400 });
+    expect((await monthReview(ctx.uid, { year: 2020, month: 1 }, NOW)).before_data).toBe(true);
+  });
+
   describe('routes', () => {
     let server: Server;
     let base: string;
@@ -160,16 +188,23 @@ describe('month-end review', () => {
 
     test('GET /review, POST reviewed, GET history; bad input 400', async () => {
       try {
-        const get = await fetch(`${base}/review?month=2026-09`, { headers: ctx.headers });
-        expect(get.status).toBe(200);
-        expect((await get.json()).month).toBe('2026-09');
-        expect((await fetch(`${base}/review`, { headers: ctx.headers })).status).toBe(200);
-        expect((await fetch(`${base}/review?month=2026-13`, { headers: ctx.headers })).status).toBe(400);
+        await septemberWithGaps();
         const post = (month: string, body: unknown) =>
           fetch(`${base}/review/${month}/reviewed`, { method: 'POST', headers: ctx.headers, body: JSON.stringify(body) });
         expect((await post('2026-09', { reviewed: true })).status).toBe(200);
         expect((await post('2026-09', { reviewed: 'x' })).status).toBe(400);
         expect((await post('bad', { reviewed: true })).status).toBe(400);
+        expect((await post('2026-12', { reviewed: true })).status).toBe(400);
+        expect((await post('2020-01', { reviewed: true })).status).toBe(400);
+        expect((await post('2026-09', { reviewed: false })).status).toBe(200);
+        await monthReview(ctx.uid, SEP, monthRangeIST(OCT).from + 10 * DAY); // freezes
+        expect((await post('2026-09', { reviewed: true })).status).toBe(409);
+
+        const get = await fetch(`${base}/review?month=2026-09`, { headers: ctx.headers });
+        expect(get.status).toBe(200);
+        expect((await get.json()).month).toBe('2026-09');
+        expect((await fetch(`${base}/review`, { headers: ctx.headers })).status).toBe(200);
+        expect((await fetch(`${base}/review?month=2026-13`, { headers: ctx.headers })).status).toBe(400);
         const hist = await (await fetch(`${base}/review/history`, { headers: ctx.headers })).json();
         expect(hist).toHaveLength(12);
       } finally {

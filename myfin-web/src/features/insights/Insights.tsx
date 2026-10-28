@@ -107,7 +107,9 @@ const Insights = () => {
       </Box>
       <Stack gap={2} mb={2}>
         <SafeToSpendCard />
-        <ForecastCard />
+        <Box id="forecast">
+          <ForecastCard />
+        </Box>
         <EmergencyFundCard />
       </Stack>
       {isError && <Alert severity="error">{t('insights.loadFailed')}</Alert>}

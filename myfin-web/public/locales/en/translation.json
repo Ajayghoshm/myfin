@@ -1286,6 +1286,7 @@
     "month": "Month",
     "loading": "Loading…",
     "cardTitle": "{{month}} review: {{done}} of {{total}} done",
+    "tickFailed": "Couldn't save: this month may be frozen. Reloaded.",
     "openReview": "Open the review",
     "open": "Open",
     "tickReviewed": "I've reviewed this month in Insights",

@@ -14,6 +14,7 @@ import {
   graceEnd,
   monthKey,
   monthOfIST,
+  withRecordLock,
 } from './monthlyRecordService.js';
 
 export type ReviewStepKey = 'import' | 'sort' | 'reconcile' | 'planned' | 'review' | 'plan';
@@ -34,10 +35,12 @@ export type MonthReview = {
   complete: boolean;
   steps: ReviewStep[];
   frozen: boolean;
+  /** The month ends before the user's data starts; computed live, never stored. */
+  before_data: boolean;
 };
 export type ReviewHistoryEntry = { month: string; done: number; total: 6; complete: boolean; frozen: boolean };
 
-type StoredReview = Omit<MonthReview, 'frozen'> & { reviewed: boolean };
+type StoredReview = Omit<MonthReview, "frozen" | "before_data"> & { reviewed: boolean };
 
 const HISTORY_MONTHS = 12;
 const nowSeconds = () => Math.floor(Date.now() / 1000);
@@ -180,50 +183,70 @@ async function computeReview(userId: bigint, ym: YearMonth, now: number): Promis
   return { month, done: doneCount, total: 6, complete: doneCount === 6, steps, reviewed };
 }
 
+/** Folds the stored (locked) manual `reviewed` flag into a computed review and recounts. */
+const mergeReviewed = (stored: unknown | null, computed: StoredReview): StoredReview => {
+  const reviewed = (stored as { reviewed?: boolean } | null)?.reviewed === true;
+  if (reviewed === computed.reviewed) return computed;
+  const steps = computed.steps.map((s) =>
+    s.key === 'review'
+      ? {
+          ...s,
+          status: reviewed ? ('done' as const) : ('todo' as const),
+          detail_key: reviewed ? 'review_done' : 'review_todo',
+          detail: reviewed ? 'You reviewed Insights' : 'Look through the month in Insights, then tick it off',
+        }
+      : s
+  );
+  const done = steps.filter((s) => s.status !== 'todo').length;
+  return { ...computed, steps, done, complete: done === 6, reviewed };
+};
+
 /** Freeze when complete, or once the month is settled (day 11 of M+1). */
 const reviewPolicy =
   (ym: YearMonth): FreezePolicy<StoredReview> =>
   (data, now) =>
     data.complete || now >= graceEnd(ym);
 
-const toReview = ({ reviewed: _r, ...rest }: StoredReview, frozen: boolean): MonthReview => ({ ...rest, frozen });
+const toReview = ({ reviewed: _r, ...rest }: StoredReview, frozen: boolean, before_data = false): MonthReview => ({
+  ...rest,
+  frozen,
+  before_data,
+});
 
 /**
  * The month-end review of `ym`. Months before the user's data are computed but never stored. The
  * current month is live; a past month freezes when complete or on the first read from day 11 of M+1.
  */
 export async function monthReview(userId: bigint, ym: YearMonth, now: number = nowSeconds()): Promise<MonthReview> {
-  if (beforeData(ym, await dataStart(userId))) return toReview(await computeReview(userId, ym, now), false);
+  if (beforeData(ym, await dataStart(userId))) return toReview(await computeReview(userId, ym, now), false, true);
   const { data, frozen } = await getOrFreeze<StoredReview>(
     userId,
     ym,
     'review',
     () => computeReview(userId, ym, now),
     now,
-    reviewPolicy(ym)
+    reviewPolicy(ym),
+    mergeReviewed
   );
   return toReview(data, frozen);
 }
 
-/** Step 5. Stored on the (unfrozen) month's row, created when missing; a frozen month → 409. */
-export async function setReviewed(userId: bigint, ym: YearMonth, reviewed: boolean): Promise<void> {
-  const where = recordWhere(userId, ym);
-  const frozen = () => APIError.conflict('This month is frozen; its review can no longer change');
-  const existing = await prisma.monthly_records.findFirst({ where });
-  if (existing?.frozen_at != null) throw frozen();
-  const data = { ...((existing?.data as object | null) ?? {}), reviewed } as Prisma.InputJsonValue;
-  if (existing) {
-    const res = await prisma.monthly_records.updateMany({ where: { ...where, frozen_at: null }, data: { data } });
-    if (res.count === 0) throw frozen();
-    return;
-  }
-  try {
-    await prisma.monthly_records.create({ data: { ...where, data } });
-  } catch (err) {
-    if (!/Unique constraint|Duplicate entry|P2002/i.test(String((err as { code?: string })?.code ?? err))) throw err;
-    const res = await prisma.monthly_records.updateMany({ where: { ...where, frozen_at: null }, data: { data } });
-    if (res.count === 0) throw frozen();
-  }
+/**
+ * Step 5. Stored on the (unfrozen) month's row under its row lock, created when missing. A frozen
+ * month → 409; a future month or one before the user's data → 400.
+ */
+export async function setReviewed(
+  userId: bigint,
+  ym: YearMonth,
+  reviewed: boolean,
+  now: number = nowSeconds()
+): Promise<void> {
+  if (monthKey(ym) > monthKey(monthOfIST(now))) throw APIError.badRequest('A future month cannot be reviewed');
+  if (beforeData(ym, await dataStart(userId))) throw APIError.badRequest('There is no data for this month');
+  await withRecordLock(userId, ym, 'review', (stored) => {
+    if (stored.frozen) throw APIError.conflict('This month is frozen; its review can no longer change');
+    return { ...((stored.data as object | null) ?? {}), reviewed } as Prisma.InputJsonValue;
+  });
 }
 
 /** The last 12 months, oldest first, ending with the previous month. */

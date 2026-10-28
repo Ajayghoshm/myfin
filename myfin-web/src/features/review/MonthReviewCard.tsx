@@ -18,7 +18,7 @@ const MonthReviewCard = () => {
   const visible = currentIstDay() <= LAST_REVIEW_DAY;
   const { data } = useGetReview(undefined, visible);
 
-  if (!visible || !data || data.complete) return null;
+  if (!visible || !data || data.complete || data.before_data) return null;
 
   const monthName = dayjs(`${data.month}-01`)
     .toDate()

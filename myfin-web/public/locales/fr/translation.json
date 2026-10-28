@@ -1214,6 +1214,7 @@
     "month": "Mois",
     "loading": "Chargement…",
     "cardTitle": "Bilan de {{month}} : {{done}} sur {{total}} faites",
+    "tickFailed": "Enregistrement impossible : ce mois est peut-être figé. Rechargé.",
     "openReview": "Ouvrir le bilan",
     "open": "Ouvrir",
     "tickReviewed": "J'ai examiné ce mois dans Aperçus",
