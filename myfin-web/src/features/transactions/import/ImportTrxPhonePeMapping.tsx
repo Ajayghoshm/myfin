@@ -21,17 +21,21 @@ import {
   AlertSeverity,
   useSnackbar,
 } from '../../../providers/SnackbarProvider.tsx';
+import { AccountStatus } from '../../../services/auth/authServices.ts';
 import {
   useImportPhonePeCategorize,
   useImportTransactionsStep0,
 } from '../../../services/trx/trxHooks.ts';
 import { PhonePePreviewResponse } from '../../../services/trx/trxServices.ts';
-import { AccountStatus } from '../../../services/auth/authServices.ts';
+import AddEditAccountDialog from '../../accounts/AddEditAccountDialog.tsx';
 import { IdLabelPair } from '../AddEditTransactionDialog.tsx';
 import {
   getImportSelectableAccounts,
   ImportTrxStep1Result,
 } from './ImportTrxStep1.tsx';
+
+// placeholder id of the "create new account" entry; never a real account id
+const CREATE_ACCOUNT_OPTION_ID = -9999n;
 
 export type Props = {
   csv: string;
@@ -81,6 +85,26 @@ const ImportTrxPhonePeMapping = (props: Props) => {
         })),
     [importTrxStep0Request.data, props.preview.instruments],
   );
+
+  // Instrument whose dropdown asked for a new account, and the account ids that existed then
+  const [creatingForKey, setCreatingForKey] = useState<string | null>(null);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [idsBeforeCreate, setIdsBeforeCreate] = useState<string[]>([]);
+
+  // Once the refreshed account list contains the account just created, select it
+  useEffect(() => {
+    if (creatingForKey == null || isCreateDialogOpen) return;
+    const created = accountOptions.find(
+      (option) => !idsBeforeCreate.includes(String(option.id)),
+    );
+    if (created) {
+      setSelectedAccounts((prev) => ({
+        ...prev,
+        [creatingForKey]: created.id,
+      }));
+      setCreatingForKey(null);
+    }
+  }, [accountOptions, creatingForKey, isCreateDialogOpen, idsBeforeCreate]);
 
   // Loading
   useEffect(() => {
@@ -136,8 +160,25 @@ const ImportTrxPhonePeMapping = (props: Props) => {
     return null;
   }
 
+  const closeCreateDialog = () => setIsCreateDialogOpen(false);
+
   return (
     <Grid container direction="column" spacing={2}>
+      {isCreateDialogOpen && (
+        <AddEditAccountDialog
+          isOpen={isCreateDialogOpen}
+          onClose={() => {
+            closeCreateDialog();
+            setCreatingForKey(null);
+          }}
+          onPositiveClick={closeCreateDialog}
+          onNegativeClick={() => {
+            closeCreateDialog();
+            setCreatingForKey(null);
+          }}
+          account={null}
+        />
+      )}
       <Grid>
         <Typography variant="body1" component="div" sx={{ mt: 2, mb: 2 }}>
           {t('importTransactions.phonePeMappingText')}
@@ -170,9 +211,23 @@ const ImportTrxPhonePeMapping = (props: Props) => {
                     <TableCell>
                       <Autocomplete
                         id={`account-${instrument.key}`}
-                        options={accountOptions}
+                        options={[
+                          ...accountOptions,
+                          {
+                            id: CREATE_ACCOUNT_OPTION_ID,
+                            label: t('importTransactions.createNewAccount'),
+                          },
+                        ]}
                         value={value}
                         onChange={(_event, newValue) => {
+                          if (newValue?.id === CREATE_ACCOUNT_OPTION_ID) {
+                            setIdsBeforeCreate(
+                              accountOptions.map((option) => String(option.id)),
+                            );
+                            setCreatingForKey(instrument.key);
+                            setIsCreateDialogOpen(true);
+                            return;
+                          }
                           setSelectedAccounts((prev) => ({
                             ...prev,
                             [instrument.key]: newValue?.id ?? null,

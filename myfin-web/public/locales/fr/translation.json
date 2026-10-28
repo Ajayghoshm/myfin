@@ -400,6 +400,7 @@
     "countedInMonth": "compté en {{month}}"
   },
   "importTransactions": {
+    "createNewAccount": "+ Créer un nouveau compte…",
     "importTransactions": "Importer des transactions",
     "strapLine": "Importez vos transactions en 3 étapes",
     "step0Label": "Importer depuis le presse-papiers",

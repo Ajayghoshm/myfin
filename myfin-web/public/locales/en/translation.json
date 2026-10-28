@@ -425,6 +425,7 @@
     "selectAllMatching_one": "Select the 1 matching transaction"
   },
   "importTransactions": {
+    "createNewAccount": "+ Create new account…",
     "importTransactions": "Import Transactions",
     "strapLine": "Import your transactions in 3 steps",
     "step0Label": "Import from clipboard",

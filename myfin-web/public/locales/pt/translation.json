@@ -427,6 +427,7 @@
     "selectedCount_one": "1 selecionada"
   },
   "importTransactions": {
+    "createNewAccount": "+ Criar nova conta…",
     "importTransactions": "Importar Transações",
     "strapLine": "Importe as suas transações em 3 passos",
     "step0Label": "Importar do clipboard",
