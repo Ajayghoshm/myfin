@@ -34,6 +34,7 @@ model accounts {
   planned_to                                                   planned_transactions[] @relation("planned_to")
   debts_paying                                                 debts[]             @relation("debts_account")
   debts_loan                                                   debts[]             @relation("debts_loan_account")
+  events                                                       events[]
 
   @@unique([name, users_user_id], map: "name_UNIQUE")
   @@index([users_user_id], map: "fk_accounts_users1_idx")
@@ -255,6 +256,7 @@ model transactions {
   debts                                                    debts?                 @relation("transactions_debt", fields: [debt_id], references: [debt_id], onDelete: SetNull, onUpdate: NoAction, map: "transactions_debt_fk")
   debt_payments                                            debt_payments[]        @relation("debt_payment_trx")
   debt_payments_principal                                  debt_payments[]        @relation("debt_payment_principal_trx")
+  event_occurrence_transactions                            event_occurrence_transactions[]
 
   @@index([accounts_account_from_id, accounts_account_to_id], map: "fk_transactions_accounts1_idx")
   @@index([categories_category_id], map: "fk_transactions_categories1_idx")
@@ -297,6 +299,8 @@ model users {
   debts                      debts[]
   legacy_entries             legacy_entries[]
   monthly_records            monthly_records[]
+  events                     events[]
+  event_suggestion_dismissals event_suggestion_dismissals[]
   currency                   String                       @default("EUR")
 }
 
@@ -307,6 +311,7 @@ model tags {
   users_user_id        BigInt
   users                users                  @relation(fields: [users_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_users_user_id")
   transaction_has_tags transaction_has_tags[]
+  events               events[]
 
   @@unique([name, users_user_id], map: "uq_name")
   @@index([users_user_id], map: "fk_users_user_id")
@@ -578,4 +583,66 @@ model monthly_records {
   users         users   @relation(fields: [users_user_id], references: [user_id], onDelete: Cascade)
 
   @@id([users_user_id, month, kind])
+}
+
+model events {
+  event_id      BigInt              @id @default(autoincrement())
+  users_user_id BigInt
+  name          String              @db.VarChar(255)
+  /// birthday | anniversary | wedding | rent | card_due | renewal | sip | other
+  kind          String              @db.VarChar(16)
+  /// First occurrence, YYYY-MM-DD (IST)
+  date          String              @db.VarChar(10)
+  /// once | monthly | yearly
+  repeat        String              @db.VarChar(8)
+  amount        BigInt?
+  gift_budget   BigInt?
+  account_id    BigInt?
+  category_id   BigInt?
+  payee_key     String?             @db.VarChar(255)
+  tag_id        BigInt?
+  /// The suggestion this event was accepted from (yearly:<id>, recurring:<payee_key>, card:<account_id>)
+  source_key    String?             @db.VarChar(255)
+  active        Boolean             @default(true)
+  created_at    BigInt
+  users         users               @relation(fields: [users_user_id], references: [user_id], onDelete: Cascade)
+  account       accounts?           @relation(fields: [account_id], references: [account_id], onDelete: SetNull)
+  tag           tags?               @relation(fields: [tag_id], references: [tag_id], onDelete: SetNull)
+  occurrences   event_occurrences[]
+
+  @@unique([users_user_id, source_key], map: "events_user_source_key")
+  @@index([users_user_id], map: "events_user_idx")
+}
+
+model event_occurrences {
+  occurrence_id   BigInt                          @id @default(autoincrement())
+  events_event_id BigInt
+  /// YYYY-MM-DD (IST)
+  date            String                          @db.VarChar(10)
+  /// pending | done
+  status          String                          @default("pending") @db.VarChar(8)
+  done_at         BigInt?
+  events          events                          @relation(fields: [events_event_id], references: [event_id], onDelete: Cascade)
+  transactions    event_occurrence_transactions[]
+
+  @@unique([events_event_id, date], map: "event_occurrences_event_date")
+}
+
+/// A transaction marks at most one occurrence.
+model event_occurrence_transactions {
+  occurrence_id  BigInt
+  transaction_id BigInt
+  occurrence     event_occurrences @relation(fields: [occurrence_id], references: [occurrence_id], onDelete: Cascade)
+  transaction    transactions      @relation(fields: [transaction_id], references: [transaction_id], onDelete: Cascade)
+
+  @@id([occurrence_id, transaction_id])
+  @@unique([transaction_id], map: "event_occurrence_transactions_trx")
+}
+
+model event_suggestion_dismissals {
+  users_user_id BigInt
+  key           String @db.VarChar(255)
+  users         users  @relation(fields: [users_user_id], references: [user_id], onDelete: Cascade)
+
+  @@id([users_user_id, key])
 }

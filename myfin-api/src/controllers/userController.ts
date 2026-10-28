@@ -220,6 +220,10 @@ const restoreUserSchema = joi.object({
   debts: joi.array().items(joi.object().pattern(joi.string(), joi.any())).optional(),
   legacy_entries: joi.array().items(joi.object().pattern(joi.string(), joi.any())).optional(),
   monthly_records: joi.array().items(joi.object().pattern(joi.string(), joi.any())).optional(),
+  events: joi.array().items(joi.object().pattern(joi.string(), joi.any())).optional(),
+  event_occurrences: joi.array().items(joi.object().pattern(joi.string(), joi.any())).optional(),
+  event_occurrence_transactions: joi.array().items(joi.object().pattern(joi.string(), joi.any())).optional(),
+  event_suggestion_dismissals: joi.array().items(joi.object().pattern(joi.string(), joi.any())).optional(),
   debt_payments: joi.array().items(joi.object().pattern(joi.string(), joi.any())).optional(),
   financial_profile: joi.object().pattern(joi.string(), joi.any()).allow(null).optional(),
 });

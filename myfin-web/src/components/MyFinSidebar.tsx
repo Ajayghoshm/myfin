@@ -12,6 +12,7 @@ import {
   FolderSharedOutlined,
   FavoriteBorderOutlined,
   FactCheckOutlined,
+  CelebrationOutlined,
   HandshakeOutlined,
   BeachAccessOutlined,
   InsertChartOutlined,
@@ -33,6 +34,7 @@ import {
   ROUTE_GOALS,
   ROUTE_HEALTH,
   ROUTE_REVIEW,
+  ROUTE_EVENTS,
   ROUTE_INSIGHTS,
   ROUTE_YEARLY_COSTS,
   ROUTE_DEBTS,
@@ -193,6 +195,13 @@ const MyFinSidebar = () => {
           >
             {' '}
             {t('sidebar.review')}
+          </MenuItem>
+          <MenuItem
+            icon={<CelebrationOutlined />}
+            component={<NavLink to={ROUTE_EVENTS} />}
+          >
+            {' '}
+            {t('sidebar.events')}
           </MenuItem>
           <MenuItem
             icon={<EventRepeatOutlined />}

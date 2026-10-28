@@ -8,6 +8,7 @@ import DebtController from '../controllers/debtController.js';
 import LegacyController from '../controllers/legacyController.js';
 import LoanController from '../controllers/loanController.js';
 import EntityController from '../controllers/entityController.js';
+import EventController from '../controllers/eventController.js';
 import RetirementController from '../controllers/retirementController.js';
 import FinancialProfileController from '../controllers/financialProfileController.js';
 import GoalController from '../controllers/goalController.js';
@@ -124,6 +125,28 @@ export const routeGroups: RouteGroup[] = [
       { method: 'get', path: '/', handlerName: 'getReview' },
       { method: 'get', path: '/history', handlerName: 'getReviewHistory' },
       { method: 'post', path: '/:month/reviewed', handlerName: 'setReviewed' },
+    ],
+  },
+  {
+    tag: 'Events',
+    basePath: '/events',
+    controller: EventController as ControllerModule,
+    controllerSourceBaseUrl: new URL('../controllers/eventController', import.meta.url).href,
+    routes: [
+      { method: 'get', path: '/', handlerName: 'getEvents' },
+      { method: 'post', path: '/', handlerName: 'createEvent' },
+      { method: 'get', path: '/upcoming', handlerName: 'getUpcoming' },
+      { method: 'get', path: '/suggestions', handlerName: 'getSuggestions' },
+      { method: 'post', path: '/suggestions/dismiss', handlerName: 'dismissSuggestion' },
+      { method: 'post', path: '/occurrences/:eventId/:date/done', handlerName: 'setOccurrenceDone' },
+      { method: 'post', path: '/occurrences/:eventId/:date/link', handlerName: 'linkTransaction' },
+      {
+        method: 'delete',
+        path: '/occurrences/:eventId/:date/link/:transactionId',
+        handlerName: 'unlinkTransaction',
+      },
+      { method: 'put', path: '/:id', handlerName: 'updateEvent' },
+      { method: 'delete', path: '/:id', handlerName: 'deleteEvent' },
     ],
   },
   {

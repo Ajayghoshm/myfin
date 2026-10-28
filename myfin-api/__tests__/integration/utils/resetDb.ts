@@ -2,6 +2,10 @@ import { prisma } from '../../../src/config/prisma.js';
 
 export default async () => {
   await prisma.$transaction([
+    prisma.event_occurrence_transactions.deleteMany(),
+    prisma.event_occurrences.deleteMany(),
+    prisma.events.deleteMany(),
+    prisma.event_suggestion_dismissals.deleteMany(),
     prisma.transaction_has_tags.deleteMany(),
     prisma.debt_payments.deleteMany(),
     prisma.transactions.deleteMany(),

@@ -479,6 +479,10 @@ const userService = {
           })
         );
 
+        // Delete events (occurrences and their links cascade) and dismissed event suggestions
+        await prismaTx.events.deleteMany({ where: { users_user_id: userId } });
+        await prismaTx.event_suggestion_dismissals.deleteMany({ where: { users_user_id: userId } });
+
         // Delete all current transactions
         await prismaTx.transaction_has_tags.deleteMany({
           where: {

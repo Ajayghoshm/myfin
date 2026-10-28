@@ -42,6 +42,7 @@ import {
   ContentCopy,
   Delete,
   Edit,
+  Event,
   FolderShared,
   Handshake,
   Search,
@@ -87,6 +88,9 @@ import { useLinkYearlyCostTransaction } from '../../services/yearlyCosts/yearlyC
 import DebtEntryDialog, {
   DebtSourceTransaction,
 } from '../debts/DebtEntryDialog.tsx';
+import LinkToEventDialog, {
+  LinkableTransaction,
+} from '../events/LinkToEventDialog.tsx';
 
 const ID_REGEX = /^\d+$/;
 const TRX_TYPES: string[] = Object.values(TransactionType);
@@ -181,6 +185,9 @@ const Transactions = () => {
   const [isRemoveDialogOpen, setRemoveDialogOpen] = useState(false);
   const [isAddEditDialogOpen, setEditDialogOpen] = useState(false);
   const [debtSource, setDebtSource] = useState<DebtSourceTransaction | null>(
+    null,
+  );
+  const [eventSource, setEventSource] = useState<LinkableTransaction | null>(
     null,
   );
   const [searchQuery, setSearchQuery] = useState('');
@@ -332,6 +339,22 @@ const Transactions = () => {
       type: inferTrxType(trx) === TransactionType.Income ? 'I' : 'E',
       description: trx.description,
       amount: Number(trx.amount),
+      date: Number(trx.date_timestamp),
+    });
+
+  // Expenses and transfers can be linked to an event occurrence (gift spend or a paid money event)
+  const canLinkToEvent = (trx: Transaction) => {
+    const type = inferTrxType(trx);
+    return (
+      !trx.is_adjustment &&
+      (type === TransactionType.Expense || type === TransactionType.Transfer)
+    );
+  };
+
+  const handleLinkToEventClick = (trx: Transaction) =>
+    setEventSource({
+      transactionId: String(trx.transaction_id),
+      description: trx.description ?? '',
       date: Number(trx.date_timestamp),
     });
 
@@ -587,7 +610,7 @@ const Transactions = () => {
       field: 'actions',
       headerName: t('common.actions'),
       flex: 150,
-      minWidth: 140,
+      minWidth: 180,
       editable: false,
       sortable: false,
       renderCell: (params) => (
@@ -610,6 +633,19 @@ const Transactions = () => {
                 }}
               >
                 <Handshake fontSize="medium" color="action" />
+              </IconButton>
+            </Tooltip>
+          )}
+          {canLinkToEvent(params.value) && (
+            <Tooltip title={t('transactions.linkToEvent')}>
+              <IconButton
+                aria-label={t('transactions.linkToEvent')}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleLinkToEventClick(params.value);
+                }}
+              >
+                <Event fontSize="medium" color="action" />
               </IconButton>
             </Tooltip>
           )}
@@ -871,6 +907,12 @@ const Transactions = () => {
         <DebtEntryDialog
           transaction={debtSource}
           onClose={() => setDebtSource(null)}
+        />
+      )}
+      {eventSource && (
+        <LinkToEventDialog
+          transaction={eventSource}
+          onClose={() => setEventSource(null)}
         />
       )}
       {isRemoveDialogOpen && (

@@ -4,6 +4,8 @@ import { prisma } from '../config/prisma.js';
 import { MYFIN } from '../consts.js';
 import { RestoreUserErrorCodes } from '../controllers/userController.js';
 import { validateLegacyData } from '../services/legacyValidation.js';
+import { dayStartIST } from '../services/insights/insightsPrimitives.js';
+import { EVENT_KINDS, EVENT_REPEATS } from '../services/routines/eventDates.js';
 import { MAX_RETIREMENT_AGE } from '../services/financialProfileService.js';
 import { ageOn } from '../services/wealth/retirementMath.js';
 import APIError from '../errorHandling/apiError.js';
@@ -95,6 +97,32 @@ export interface BackupData {
     data: unknown;
     frozen_at: bigint | number | string | null;
   }[];
+  /** Event reminders (#6). All four are absent in older backups. */
+  events?: {
+    event_id: bigint;
+    name: string;
+    kind: string;
+    date: string;
+    repeat: string;
+    amount: bigint | number | null;
+    gift_budget: bigint | number | null;
+    account_id: bigint | null;
+    category_id: bigint | null;
+    payee_key: string | null;
+    tag_id: bigint | null;
+    source_key: string | null;
+    active: boolean;
+    created_at: bigint | number;
+  }[];
+  event_occurrences?: {
+    occurrence_id: bigint;
+    events_event_id: bigint;
+    date: string;
+    status: string;
+    done_at: bigint | number | null;
+  }[];
+  event_occurrence_transactions?: { occurrence_id: bigint; transaction_id: bigint }[];
+  event_suggestion_dismissals?: { key: string }[];
   /** Debts (lent, borrowed, loans). Absent in older backups. */
   debts?: {
     debt_id: bigint;
@@ -366,6 +394,23 @@ class BackupManager {
         where: { users_user_id: userId },
         select: { month: true, kind: true, data: true, frozen_at: true },
         orderBy: [{ month: 'asc' }, { kind: 'asc' }],
+      }),
+      events: await dbClient.events.findMany({
+        where: { users_user_id: userId },
+        orderBy: { event_id: 'asc' },
+      }),
+      event_occurrences: await dbClient.event_occurrences.findMany({
+        where: { events: { users_user_id: userId } },
+        orderBy: { occurrence_id: 'asc' },
+      }),
+      event_occurrence_transactions: await dbClient.event_occurrence_transactions.findMany({
+        where: { occurrence: { events: { users_user_id: userId } } },
+        orderBy: [{ occurrence_id: 'asc' }, { transaction_id: 'asc' }],
+      }),
+      event_suggestion_dismissals: await dbClient.event_suggestion_dismissals.findMany({
+        where: { users_user_id: userId },
+        select: { key: true },
+        orderBy: { key: 'asc' },
       }),
       financial_profile: await dbClient.user_financial_profile
         .findUnique({
@@ -642,6 +687,70 @@ class BackupManager {
           RestoreUserErrorCodes.MalformedBackup
         );
       }
+    }
+
+    // Validate event reminders before wiping anything
+    const badEvent = (what: string) =>
+      APIError.notAcceptable(`${what} not recognized in backup`, RestoreUserErrorCodes.MalformedBackup);
+    const isKey = (v: unknown) => typeof v === 'string' && v.length > 0 && v.length <= 255;
+    const events = data.events ?? [];
+    const eventIds = new Set<string>();
+    const sourceKeys = new Set<string>();
+    for (const e of events) {
+      if (
+        !isWhole(e?.event_id) ||
+        eventIds.has(String(e.event_id)) ||
+        !isKey(e.name) ||
+        !(EVENT_KINDS as readonly string[]).includes(e.kind) ||
+        !(EVENT_REPEATS as readonly string[]).includes(e.repeat) ||
+        typeof e.date !== 'string' ||
+        dayStartIST(e.date) == null ||
+        !isCents(e.amount) ||
+        !isCents(e.gift_budget) ||
+        (e.payee_key != null && !isKey(e.payee_key)) ||
+        (e.source_key != null && (!isKey(e.source_key) || sourceKeys.has(e.source_key)))
+      ) {
+        throw badEvent('Event');
+      }
+      eventIds.add(String(e.event_id));
+      if (e.source_key != null) sourceKeys.add(e.source_key);
+    }
+    const occurrences = data.event_occurrences ?? [];
+    const occurrenceIds = new Set<string>();
+    const occurrenceDays = new Set<string>();
+    for (const o of occurrences) {
+      const day = `${o?.events_event_id}|${o?.date}`;
+      if (
+        !isWhole(o?.occurrence_id) ||
+        occurrenceIds.has(String(o.occurrence_id)) ||
+        !eventIds.has(String(o.events_event_id)) ||
+        typeof o.date !== 'string' ||
+        dayStartIST(o.date) == null ||
+        occurrenceDays.has(day) ||
+        (o.status !== 'pending' && o.status !== 'done') ||
+        (o.done_at != null && !isWhole(o.done_at))
+      ) {
+        throw badEvent('Event occurrence');
+      }
+      occurrenceIds.add(String(o.occurrence_id));
+      occurrenceDays.add(day);
+    }
+    const transactionIdsInBackup = new Set((data.transactions ?? []).map((t) => String(t.transaction_id)));
+    const linkedTransactions = new Set<string>();
+    const occurrenceLinks = data.event_occurrence_transactions ?? [];
+    for (const l of occurrenceLinks) {
+      if (
+        !occurrenceIds.has(String(l?.occurrence_id)) ||
+        !transactionIdsInBackup.has(String(l.transaction_id)) ||
+        linkedTransactions.has(String(l.transaction_id))
+      ) {
+        throw badEvent('Event transaction link');
+      }
+      linkedTransactions.add(String(l.transaction_id));
+    }
+    const eventDismissals = data.event_suggestion_dismissals ?? [];
+    for (const d of eventDismissals) {
+      if (!isKey(d?.key)) throw badEvent('Event suggestion dismissal');
     }
 
     // Delete all previous records
@@ -1237,6 +1346,70 @@ class BackupManager {
             p.original_category_id != null ? (categoryIdMap.get(p.original_category_id) ?? null) : null,
         },
       });
+    }
+    // endregion
+
+    // region Event reminders (after transactions, which links point at)
+    {
+      const text = (map: Map<unknown, bigint>) => new Map([...map].map(([k, v]) => [String(k), v]));
+      const accountsByText = text(accountIdMap);
+      const yearlyByText = text(yearlyCostIdMap);
+      // Suggestion keys hold account / yearly cost ids: point them at the restored rows (null when gone)
+      const remapKey = (key: string): string | null => {
+        const m = /^(card|yearly):(.+)$/.exec(key);
+        if (!m) return key;
+        const mapped = (m[1] === 'card' ? accountsByText : yearlyByText).get(m[2]);
+        return mapped != null ? `${m[1]}:${mapped}` : null;
+      };
+      const eventIdMap = new Map<string, bigint>();
+      for (const e of events) {
+        const created = await dbClient.events.create({
+          data: {
+            users_user_id: userId,
+            name: e.name,
+            kind: e.kind,
+            date: e.date,
+            repeat: e.repeat,
+            amount: e.amount != null ? BigInt(e.amount) : null,
+            gift_budget: e.gift_budget != null ? BigInt(e.gift_budget) : null,
+            // Keyed by the raw backup value (a Number after a JSON round trip), like every other map
+            account_id: e.account_id != null ? (accountIdMap.get(e.account_id) ?? null) : null,
+            category_id: e.category_id != null ? (categoryIdMap.get(e.category_id) ?? null) : null,
+            payee_key: e.payee_key ?? null,
+            tag_id: e.tag_id != null ? (tagIdMap.get(e.tag_id) ?? null) : null,
+            source_key: e.source_key != null ? remapKey(e.source_key) : null,
+            active: e.active !== false,
+            created_at: BigInt(e.created_at ?? 0),
+          },
+        });
+        eventIdMap.set(String(e.event_id), created.event_id);
+      }
+      const occurrenceIdMap = new Map<string, bigint>();
+      for (const o of occurrences) {
+        const created = await dbClient.event_occurrences.create({
+          data: {
+            events_event_id: eventIdMap.get(String(o.events_event_id)),
+            date: o.date,
+            status: o.status,
+            done_at: o.done_at != null ? BigInt(o.done_at) : null,
+          },
+        });
+        occurrenceIdMap.set(String(o.occurrence_id), created.occurrence_id);
+      }
+      for (const l of occurrenceLinks) {
+        const transactionId = transactionIdMap.get(String(l.transaction_id));
+        if (transactionId == null) continue;
+        await dbClient.event_occurrence_transactions.create({
+          data: { occurrence_id: occurrenceIdMap.get(String(l.occurrence_id)), transaction_id: transactionId },
+        });
+      }
+      const keys = [...new Set(eventDismissals.map((d) => remapKey(d.key)).filter((k): k is string => k != null))];
+      if (keys.length > 0) {
+        await dbClient.event_suggestion_dismissals.createMany({
+          data: keys.map((key) => ({ users_user_id: userId, key })),
+          skipDuplicates: true,
+        });
+      }
     }
     // endregion
 
