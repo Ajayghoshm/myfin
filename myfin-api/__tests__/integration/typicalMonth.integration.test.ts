@@ -163,4 +163,15 @@ describe('typicalMonth helper', () => {
     expect(t.byCategory.size).toBe(0);
     expect(t.oneOffIds.size).toBe(0);
   });
+
+  test('blank-description expense one-offs: big and unmatched is a one-off, a repeating same-category amount is not', async () => {
+    const rent = await ctx.mkCat('Rent', E, true);
+    for (const [i, ym] of [AUG, SEP, OCT].entries())
+      await ctx.add({ type: E, amount: 15000 + i * 500, ym, day: 2, description: '', categoryId: rent.category_id });
+    const house = await ctx.add({ type: E, amount: 300000, ym: AUG, day: 5, description: '' });
+    const t = await typicalMonth(ctx.uid, NOV);
+    expect([...t.oneOffIds]).toEqual([house.transaction_id.toString()]);
+    expect(t.spendingCents).toBe(1_550_000);
+    expect(t.unsortedCents).toBe(0);
+  });
 });

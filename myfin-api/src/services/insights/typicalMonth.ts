@@ -15,6 +15,8 @@ export const BASELINE_MONTHS = 3;
 const ONE_OFF_MIN_CENTS = 1_000_000;
 /** Key must appear in at least this many baseline months to not be an expense one-off. */
 const ONE_OFF_RECURRING_MONTHS = 2;
+/** Blank-description rows match another month's row when the amounts differ by at most this share. */
+const BLANK_AMOUNT_TOLERANCE = 0.1;
 /** An income row at least this many times the median monthly income is a one-off. */
 const INCOME_ONE_OFF_FACTOR = 1.5;
 
@@ -150,12 +152,24 @@ export function computeTypical(rows: Row[], baselineIdx: number[]) {
     seen.add(r.monthIdx);
     monthsByKey.set(r.payeeKey, seen);
   }
+  // A blank description has no payee to match on, so a big blank row recurs only when another
+  // blank row in a different month has the same category and an amount within 10 %.
+  const blankRecurs = (r: Row) =>
+    baseline.some(
+      (o) =>
+        isE(o) &&
+        o.payeeKey === '' &&
+        o.monthIdx !== r.monthIdx &&
+        o.categoryId === r.categoryId &&
+        Math.abs(o.cents - r.cents) <= r.cents * BLANK_AMOUNT_TOLERANCE
+    );
   const expenseOneOffs = baseline.filter(
     (r) =>
       isE(r) &&
       r.cents >= ONE_OFF_MIN_CENTS &&
-      r.payeeKey !== '' &&
-      (monthsByKey.get(r.payeeKey)?.size ?? 0) < ONE_OFF_RECURRING_MONTHS
+      (r.payeeKey === ''
+        ? !blankRecurs(r)
+        : (monthsByKey.get(r.payeeKey)?.size ?? 0) < ONE_OFF_RECURRING_MONTHS)
   );
 
   // Income one-offs: a single I row >= 1.5 x the median of the monthly income totals
