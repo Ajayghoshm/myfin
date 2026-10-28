@@ -932,7 +932,8 @@ class BackupManager {
     // endregion
     // region Invest Assets
     const assetPromises = data.invest_assets.map(async (asset) => {
-      if (!Object.values(MYFIN.INVEST.ASSET_TYPE).includes(asset.type)) {
+      // built-in type codes or a user-defined type name (see investAssetsController)
+      if (typeof asset.type !== 'string' || asset.type.trim() === '' || asset.type.length > 75) {
         throw APIError.notAcceptable(
           `Asset type not recognized for asset #${asset.asset_id}`,
           RestoreUserErrorCodes.MalformedBackup
