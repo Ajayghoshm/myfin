@@ -20,10 +20,14 @@ export const rateLimiter = (app?: Application): RequestHandler => {
     }
   }
 
+  // The dashboard and insights pages each load many cards, one request apiece.
+  const parsedLimit = Number(process.env.RATE_LIMIT_PER_MINUTE);
+  const limit = Number.isInteger(parsedLimit) && parsedLimit > 0 ? parsedLimit : 600;
+
   return rateLimit({
     windowMs: 60 * 1000,
-    limit: 100, // Max: 100 requests per minute
-    message: 'You have exceeded your 100 requests per minute limit.',
+    limit,
+    message: `You have exceeded your ${limit} requests per minute limit.`,
     legacyHeaders: true,
   });
 };
