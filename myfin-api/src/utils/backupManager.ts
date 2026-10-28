@@ -192,6 +192,8 @@ export interface BackupData {
     retirement_spending_basis?: string;
     family_support_monthly?: bigint | number;
     family_support_years?: number;
+    /** First milestone evaluation (#21); absent in older backups. */
+    milestones_evaluated_at?: bigint | number | string | null;
   } | null;
 }
 
@@ -228,7 +230,8 @@ function validProfileExtras(p: NonNullable<BackupData['financial_profile']>): bo
     (p.retirement_spending_basis == null || p.retirement_spending_basis === 'all' || p.retirement_spending_basis === 'fixed') &&
     isCents(p.family_support_monthly) &&
     isCents(p.savings_target_value) &&
-    isCents(p.small_spend_cutoff)
+    isCents(p.small_spend_cutoff) &&
+    isCents(p.milestones_evaluated_at)
   );
 }
 
@@ -460,6 +463,7 @@ class BackupManager {
             retirement_spending_basis: true,
             family_support_monthly: true,
             family_support_years: true,
+            milestones_evaluated_at: true,
           },
         })
         .then((row) => row ?? null),
@@ -1566,6 +1570,8 @@ class BackupManager {
           retirement_spending_basis: profile.retirement_spending_basis === 'fixed' ? 'fixed' : 'all',
           family_support_monthly: BigInt(profile.family_support_monthly ?? 0),
           family_support_years: profile.family_support_years ?? 0,
+          milestones_evaluated_at:
+            profile.milestones_evaluated_at != null ? BigInt(profile.milestones_evaluated_at) : null,
           updated_at: BigInt(profile.updated_at),
         },
       });

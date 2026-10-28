@@ -137,8 +137,6 @@ describe('milestones', () => {
       ctx.uid
     );
     const debt = await createPeopleDebt(ctx.uid, { kind: 'lent', name: 'Rahul', amount: 5000, date: at(SEP, 3) });
-    // Something fires on the first evaluation, so the next one is not a first-ever evaluation
-    await record(ctx.uid, 202609, 'health', { passed: 5, total: 5 });
     await evaluateMilestones(ctx.uid, NOW);
     expect(await rows(ctx.uid, 'goal_funded')).toEqual([]);
     expect(await rows(ctx.uid, 'debt_cleared')).toEqual([]);
@@ -184,6 +182,39 @@ describe('milestones', () => {
     expect(await rows(ctx.uid, 'debt_cleared')).toEqual([
       { kind: 'debt_cleared', key: noPayments.debt_id, dismissed: true },
       { kind: 'debt_cleared', key: recent.debt_id, dismissed: false },
+    ]);
+  });
+
+  test('a new user evaluated with nothing still gets the banner for a goal funded later', async () => {
+    expect(await evaluateMilestones(ctx.uid, NOW)).toEqual([]);
+    expect(await prisma.milestones.count({ where: { users_user_id: ctx.uid } })).toBe(0);
+    const profile = await prisma.user_financial_profile.findUniqueOrThrow({ where: { users_user_id: ctx.uid } });
+    expect(profile.milestones_evaluated_at).toBe(BigInt(NOW));
+
+    const savings = await ctx.account('Savings');
+    await ctx.trx(I, 20000, at(OCT, 2), savings.account_id);
+    await GoalService.createGoal(
+      {
+        name: 'Phone',
+        priority: 1,
+        amount: 20000,
+        funding_accounts: [{ account_id: Number(savings.account_id), funding_type: 'absolute', funding_amount: 20000 }],
+      },
+      ctx.uid
+    );
+    const shown = await evaluateMilestones(ctx.uid, NOW + DAY);
+    expect(shown.map((m) => [m.kind, m.dismissed])).toEqual([['goal_funded', false]]);
+    // The first evaluation's time is kept
+    const after = await prisma.user_financial_profile.findUniqueOrThrow({ where: { users_user_id: ctx.uid } });
+    expect(after.milestones_evaluated_at).toBe(BigInt(NOW));
+  });
+
+  test('concurrent first evaluations apply the first-ever rule once', async () => {
+    await ctx.trx(I, 600000, at(SEP, 5));
+    await Promise.all([evaluateMilestones(ctx.uid, NOW), evaluateMilestones(ctx.uid, NOW)]);
+    expect(await rows(ctx.uid)).toEqual([
+      { kind: 'net_worth', key: '100000', dismissed: true },
+      { kind: 'net_worth', key: '500000', dismissed: false },
     ]);
   });
 
@@ -300,6 +331,10 @@ describe('milestones', () => {
       key: newDebt.debt_id.toString(),
       data: { debt_id: newDebt.debt_id.toString() },
     });
+    const evaluatedAt = async () =>
+      (await prisma.user_financial_profile.findUniqueOrThrow({ where: { users_user_id: ctx.uid } }))
+        .milestones_evaluated_at;
+    expect(await evaluatedAt()).toBe(BigInt(NOW));
     // Evaluating again after the restore re-fires nothing
     await evaluateMilestones(ctx.uid, NOW);
     expect(await listMilestones(ctx.uid)).toHaveLength(4);
@@ -312,7 +347,9 @@ describe('milestones', () => {
     // An older backup without the key restores with no milestones
     const old = JSON.parse(JSON.stringify(await BackupManager.createBackup(ctx.uid)));
     delete old.milestones;
+    delete old.financial_profile.milestones_evaluated_at;
     await UserService.restoreUser(ctx.uid, old);
     expect(await listMilestones(ctx.uid)).toHaveLength(0);
+    expect(await evaluatedAt()).toBeNull();
   });
 });

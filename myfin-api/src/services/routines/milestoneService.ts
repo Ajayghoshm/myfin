@@ -296,16 +296,30 @@ function firstEvaluationShown(list: Candidate[], now: number): Set<Candidate> {
 /**
  * Inserts every newly achieved milestone (createMany + skipDuplicates on the unique (user, kind,
  * key), so it is idempotent and safe to run concurrently; a dip and recovery never re-fires).
+ * "First-ever" means the user has never been evaluated (profile.milestones_evaluated_at is null),
+ * even when that evaluation found nothing.
  *
  * Returns every undismissed milestone of the user (new in this call or not yet dismissed from an
  * earlier one), newest first: the banner keeps showing until the user dismisses it.
  */
 export async function evaluateMilestones(userId: bigint, now: number = nowSeconds()): Promise<Milestone[]> {
   const list = await candidates(userId, now);
-  if (list.length > 0) {
-    const first = (await prisma.milestones.count({ where: { users_user_id: userId } })) === 0;
-    const shown = first ? firstEvaluationShown(list, now) : null;
-    await prisma.milestones.createMany({
+  // The profile row carries milestones_evaluated_at; make sure it exists so it can be claimed
+  // (skipDuplicates: a concurrent insert of the same row is fine, unlike upsert's race)
+  await prisma.user_financial_profile.createMany({
+    data: [{ users_user_id: userId, updated_at: BigInt(now) }],
+    skipDuplicates: true,
+  });
+  await prisma.$transaction(async (tx) => {
+    // Claims the first-ever evaluation. The conditional update locks the profile row until commit,
+    // so a concurrent first evaluation waits, then finds it set and applies the normal rule.
+    const { count } = await tx.user_financial_profile.updateMany({
+      where: { users_user_id: userId, milestones_evaluated_at: null },
+      data: { milestones_evaluated_at: BigInt(now) },
+    });
+    if (list.length === 0) return;
+    const shown = count === 1 ? firstEvaluationShown(list, now) : null;
+    await tx.milestones.createMany({
       data: list.map((c) => ({
         users_user_id: userId,
         kind: c.kind,
@@ -316,7 +330,7 @@ export async function evaluateMilestones(userId: bigint, now: number = nowSecond
       })),
       skipDuplicates: true,
     });
-  }
+  });
   const rows = await prisma.milestones.findMany({
     where: { users_user_id: userId, dismissed: false },
     orderBy: [{ achieved_at: 'desc' }, { milestone_id: 'desc' }],

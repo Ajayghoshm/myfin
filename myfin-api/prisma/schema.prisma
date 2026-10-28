@@ -433,6 +433,8 @@ model user_financial_profile {
   retirement_spending_basis    String  @default("all") @db.VarChar(8)
   family_support_monthly       BigInt  @default(0)
   family_support_years         Int     @default(0)
+  /// Set by the first milestone evaluation (#21); null until then
+  milestones_evaluated_at      BigInt?
   updated_at         BigInt
   users              users   @relation(fields: [users_user_id], references: [user_id], onDelete: Cascade)
 }
