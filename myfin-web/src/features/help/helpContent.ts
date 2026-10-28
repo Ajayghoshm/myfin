@@ -1,16 +1,16 @@
-import {
-  ROUTE_ACCOUNTS,
-  ROUTE_BALANCE_CHECK,
-  ROUTE_CATEGORIES,
-  ROUTE_DEBTS,
-  ROUTE_EVENTS,
-  ROUTE_IMPORT_TRX,
-  ROUTE_PROFILE,
-  ROUTE_REVIEW,
-  ROUTE_RULES,
-  ROUTE_TRX,
-  ROUTE_YEARLY_COSTS,
-} from '../../providers/RoutesProvider.tsx';
+// Route paths are literals here: importing them from RoutesProvider would be a
+// circular import (RoutesProvider imports Help, which imports this file).
+const ROUTE_ACCOUNTS = '/accounts';
+const ROUTE_BALANCE_CHECK = '/accounts/balance-check';
+const ROUTE_CATEGORIES = '/categories';
+const ROUTE_DEBTS = '/debts';
+const ROUTE_EVENTS = '/events';
+const ROUTE_IMPORT_TRX = '/transactions/import';
+const ROUTE_PROFILE = '/profile';
+const ROUTE_REVIEW = '/review';
+const ROUTE_RULES = '/rules';
+const ROUTE_TRX = '/transactions';
+const ROUTE_YEARLY_COSTS = '/yearly-costs';
 
 // English only for now: the guide text is not part of the i18n catalogues yet.
 // Source: docs/adoption/myfin-tour-and-guide-source.md (code wins over specs).
