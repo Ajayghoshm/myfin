@@ -318,7 +318,17 @@
     "importDataConfirmationTitle": "Atenção!",
     "importDataConfirmationSubtitle": "Os dados que está prestes a importar irão substituir os registos atualmente associados à sua conta de utilizador. Para evitar a perda acidental de dados, recomendamos que exporte os dados atuais antes de prosseguir com a importação.",
     "exportDataConfirmationTitle": "Atenção!",
-    "exportDataConfirmationSubtitle": "Será gerado um ficheiro JSON não encriptado contendo todos os registos associados à sua conta de utilizador."
+    "exportDataConfirmationSubtitle": "Será gerado um ficheiro JSON não encriptado contendo todos os registos associados à sua conta de utilizador.",
+    "clearData": {
+      "title": "Limpar todos os dados",
+      "description": "Elimina permanentemente todos os seus registos (é obrigatório transferir primeiro uma cópia de segurança)",
+      "warning": "Isto elimina permanentemente TODAS as suas contas, transações, orçamentos, objetivos, investimentos e todos os restantes registos. Não pode ser desfeito, exceto restaurando uma cópia de segurança.",
+      "step1": "1. Transfira primeiro uma cópia de segurança",
+      "downloadBackup": "Transferir cópia de segurança",
+      "backupDone": "Cópia transferida (transferir novamente)",
+      "step2": "2. Escreva o seu nome de utilizador ({{username}}) para confirmar",
+      "confirm": "Eliminar tudo"
+    }
   },
   "transactions": {
     "transactions": "Transações",

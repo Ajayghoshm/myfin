@@ -1,4 +1,11 @@
 import {
+  CalculateOutlined,
+  CloudDownloadOutlined,
+  DeleteForeverOutlined,
+  Restore,
+  RocketLaunchOutlined,
+} from '@mui/icons-material';
+import {
   Divider,
   List,
   ListItem,
@@ -6,30 +13,25 @@ import {
   ListItemIcon,
   ListItemText,
 } from '@mui/material';
+import dayjs from 'dayjs';
+import { useEffect, useReducer, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import GenericConfirmationDialog from '../../components/GenericConfirmationDialog.tsx';
 import { useLoading } from '../../providers/LoadingProvider.tsx';
 import {
   AlertSeverity,
   useSnackbar,
 } from '../../providers/SnackbarProvider.tsx';
-import { useTranslation } from 'react-i18next';
-import { useEffect, useReducer } from 'react';
-import {
-  CalculateOutlined,
-  CloudDownloadOutlined,
-  Restore,
-  RocketLaunchOutlined,
-} from '@mui/icons-material';
+import { useUserData } from '../../providers/UserProvider.tsx';
 import {
   useAutoPopulateWithDemoData,
   useRecalculateAllBalances,
 } from '../../services/account/accountHooks.ts';
-import GenericConfirmationDialog from '../../components/GenericConfirmationDialog.tsx';
 import { useLogout } from '../../services/auth/authHooks.ts';
 import { useGetBackupData } from '../../services/user/userHooks.ts';
 import { downloadJsonFile } from '../../utils/fileUtils.ts';
-import dayjs from 'dayjs';
+import ClearDataDialog from './ClearDataDialog.tsx';
 import RestoreUserDialog from './RestoreUserDialog.tsx';
-import { useUserData } from '../../providers/UserProvider.tsx';
 
 type UiState = {
   isLoading: boolean;
@@ -118,6 +120,7 @@ const Utilities = () => {
   const { t } = useTranslation();
 
   const [state, dispatch] = useReducer(reduceState, null, createInitialState);
+  const [isClearDataOpen, setIsClearDataOpen] = useState(false);
 
   const recalculateAllBalancesRequest = useRecalculateAllBalances();
   const autoPopulateWithDemoData = useAutoPopulateWithDemoData();
@@ -186,6 +189,12 @@ const Utilities = () => {
 
   return (
     <>
+      {isClearDataOpen && (
+        <ClearDataDialog
+          isOpen={isClearDataOpen}
+          onClose={() => setIsClearDataOpen(false)}
+        />
+      )}
       {state.isRestoreUserDialogOpen && (
         <RestoreUserDialog
           isOpen={state.isRestoreUserDialogOpen}
@@ -296,6 +305,18 @@ const Utilities = () => {
             <ListItemText
               primary={t('profile.importDataTitle')}
               secondary={t('profile.importDataDescription')}
+            />
+          </ListItemButton>
+        </ListItem>
+        <Divider />
+        <ListItem disablePadding>
+          <ListItemButton onClick={() => setIsClearDataOpen(true)}>
+            <ListItemIcon>
+              <DeleteForeverOutlined color="error" />
+            </ListItemIcon>
+            <ListItemText
+              primary={t('profile.clearData.title')}
+              secondary={t('profile.clearData.description')}
             />
           </ListItemButton>
         </ListItem>

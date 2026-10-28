@@ -100,3 +100,12 @@ export function useRestoreUserData() {
     mutationFn: restoreUserData,
   });
 }
+
+export function useClearUserData() {
+  return useMutation({
+    mutationFn: async (confirmUsername: string) => {
+      const data = await UserServices.clearUserData(confirmUsername);
+      return data.data;
+    },
+  });
+}

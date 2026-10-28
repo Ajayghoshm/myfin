@@ -174,6 +174,25 @@ const backupUser = async (req: Request, res: Response, next: NextFunction) => {
   }
 };
 
+const clearUserDataSchema = joi.object({
+  confirm_username: joi.string().required(),
+});
+const clearUserData = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    const data = await clearUserDataSchema.validateAsync(req.body);
+    // Server-side guard so the endpoint cannot be hit by accident: the caller must name the account.
+    if (data.confirm_username !== sessionData.username) {
+      throw APIError.badRequest('Confirmation does not match the username');
+    }
+    await UserService.deleteAllUserData(sessionData.userId);
+    res.json('All data was cleared.');
+  } catch (err) {
+    Logger.addErrorLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
 const restoreUserSchema = joi.object({
   apiVersion: joi.string().required(),
   accounts: joi.array().items(joi.object().pattern(joi.string(), joi.any())).required(),
@@ -311,6 +330,7 @@ export default {
   changeCurrency,
   backupUser,
   restoreUser,
+  clearUserData,
   listFolderBackups,
   createFolderBackup,
   restoreFolderBackup,

@@ -313,7 +313,17 @@
     "importDataConfirmationTitle": "Attention !",
     "importDataConfirmationSubtitle": "Les données importées remplaceront les enregistrements associés à votre compte. Pour éviter toute perte accidentelle, nous recommandons d'exporter vos données avant de procéder à l'import.",
     "exportDataConfirmationTitle": "Attention !",
-    "exportDataConfirmationSubtitle": "Un fichier JSON non chiffré sera généré, contenant tous les enregistrements de votre compte."
+    "exportDataConfirmationSubtitle": "Un fichier JSON non chiffré sera généré, contenant tous les enregistrements de votre compte.",
+    "clearData": {
+      "title": "Effacer toutes les données",
+      "description": "Supprime définitivement tous vos enregistrements (une sauvegarde doit d'abord être téléchargée)",
+      "warning": "Cela supprime définitivement TOUS vos comptes, transactions, budgets, objectifs, investissements et autres enregistrements. Irréversible, sauf en restaurant une sauvegarde.",
+      "step1": "1. Téléchargez d'abord une sauvegarde",
+      "downloadBackup": "Télécharger la sauvegarde",
+      "backupDone": "Sauvegarde téléchargée (télécharger à nouveau)",
+      "step2": "2. Saisissez votre nom d'utilisateur ({{username}}) pour confirmer",
+      "confirm": "Tout supprimer"
+    }
   },
   "transactions": {
     "transactions": "Transactions",

@@ -318,7 +318,17 @@
     "importDataConfirmationTitle": "Beware!",
     "importDataConfirmationSubtitle": "The data you are about to import will overwrite the records currently associated with your user account. To avoid accidental data loss, we recommend exporting your current data before proceeding with the import.",
     "exportDataConfirmationTitle": "Beware!",
-    "exportDataConfirmationSubtitle": "An unencrypted JSON file will be generated containing all records associated with your user account."
+    "exportDataConfirmationSubtitle": "An unencrypted JSON file will be generated containing all records associated with your user account.",
+    "clearData": {
+      "title": "Clear all data",
+      "description": "Permanently delete all your records (a backup download is required first)",
+      "warning": "This permanently deletes ALL your accounts, transactions, budgets, goals, investments and every other record. It cannot be undone, except by restoring a backup.",
+      "step1": "1. Download a backup first",
+      "downloadBackup": "Download backup",
+      "backupDone": "Backup downloaded (download again)",
+      "step2": "2. Type your username ({{username}}) to confirm",
+      "confirm": "Delete everything"
+    }
   },
   "transactions": {
     "transactions": "Transactions",
