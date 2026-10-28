@@ -76,13 +76,18 @@ const LinkToEventDialog = (props: {
           snackbar.showSnackbar(t('events.linked'), AlertSeverity.SUCCESS);
           props.onClose();
         },
-        onError: (err) =>
+        onError: (err) => {
+          // A 400 explains why (already linked, wrong occurrence date, a debt row…): show it
+          const response = isAxiosError<{ message?: string }>(err)
+            ? err.response
+            : undefined;
           snackbar.showSnackbar(
-            isAxiosError(err) && err.response?.status === 400
-              ? t('events.alreadyLinked')
+            response?.status === 400
+              ? response.data?.message || t('events.alreadyLinked')
               : t('common.somethingWentWrongTryAgain'),
             AlertSeverity.ERROR,
-          ),
+          );
+        },
       },
     );
 

@@ -1,4 +1,4 @@
-import { LockOutlined } from '@mui/icons-material';
+import { HistoryOutlined, LockOutlined } from '@mui/icons-material';
 import { useTheme } from '@mui/material';
 import Box from '@mui/material/Box';
 import ButtonBase from '@mui/material/ButtonBase';
@@ -104,6 +104,13 @@ const Review = () => {
                       {t('review.frozenNote')}
                     </Typography>
                   </Stack>
+                ) : data.reconstructed ? (
+                  <Stack direction="row" alignItems="center" gap={0.5} mb={1}>
+                    <HistoryOutlined fontSize="small" color="disabled" />
+                    <Typography variant="caption" color="text.secondary">
+                      {t('review.reconstructedNote')}
+                    </Typography>
+                  </Stack>
                 ) : null}
                 <Stack divider={<Divider flexItem />}>
                   {data.steps.map((s) => (
@@ -160,6 +167,12 @@ const Review = () => {
                           sx={{ fontSize: 12, ml: 0.5 }}
                           color="disabled"
                           aria-label={t('review.frozen')}
+                        />
+                      ) : h.reconstructed ? (
+                        <HistoryOutlined
+                          sx={{ fontSize: 12, ml: 0.5 }}
+                          color="disabled"
+                          aria-label={t('review.reconstructed')}
                         />
                       ) : null}
                     </Typography>

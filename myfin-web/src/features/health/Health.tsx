@@ -1,4 +1,4 @@
-import { LockOutlined } from '@mui/icons-material';
+import { HistoryOutlined, LockOutlined } from '@mui/icons-material';
 import { useTheme } from '@mui/material';
 import Box from '@mui/material/Box';
 import ButtonBase from '@mui/material/ButtonBase';
@@ -44,7 +44,11 @@ type HistoryProps = {
   onSelect: (ym: string) => void;
 };
 
-/** One bar per month: the share of checks passed, labelled "N/M"; frozen months are marked. */
+/**
+ * One bar per month: the share of checks passed, labelled "N/M"; frozen months
+ * are marked, and reconstructed ones (computed from today's data) get a subtle
+ * marker too.
+ */
 const HistoryBars = ({ history, selected, onSelect }: HistoryProps) => {
   const theme = useTheme();
   const { t } = useTranslation();
@@ -62,7 +66,13 @@ const HistoryBars = ({ history, selected, onSelect }: HistoryProps) => {
           return (
             <Tooltip
               key={h.month}
-              title={h.frozen ? `${label} · ${t('health.frozen')}` : label}
+              title={
+                h.frozen
+                  ? `${label} · ${t('health.frozen')}`
+                  : h.reconstructed
+                    ? `${label} · ${t('health.reconstructed')}`
+                    : label
+              }
             >
               <ButtonBase
                 onClick={() => onSelect(h.month)}
@@ -114,6 +124,12 @@ const HistoryBars = ({ history, selected, onSelect }: HistoryProps) => {
                       sx={{ fontSize: 12 }}
                       color="disabled"
                       aria-label={t('health.frozen')}
+                    />
+                  ) : h.reconstructed ? (
+                    <HistoryOutlined
+                      sx={{ fontSize: 12 }}
+                      color="disabled"
+                      aria-label={t('health.reconstructed')}
                     />
                   ) : null}
                 </Stack>
@@ -198,6 +214,13 @@ const Health = () => {
                     <LockOutlined fontSize="small" color="disabled" />
                     <Typography variant="caption" color="text.secondary">
                       {t('health.frozenNote')}
+                    </Typography>
+                  </Stack>
+                ) : data.reconstructed ? (
+                  <Stack direction="row" alignItems="center" gap={0.5} mb={1}>
+                    <HistoryOutlined fontSize="small" color="disabled" />
+                    <Typography variant="caption" color="text.secondary">
+                      {t('health.reconstructedNote')}
                     </Typography>
                   </Stack>
                 ) : null}

@@ -10,7 +10,11 @@ import { useGetFinancialProfile } from '../../services/profile/financialProfileH
 import { PanelTitle } from '../../theme/styled.ts';
 import { currentYearMonth, formatYearMonth } from '../../utils/istMonth.ts';
 import SavingsRateSparkline from './SavingsRateSparkline.tsx';
-import { targetPercent, twelveMonthAverage } from './savingsRate.ts';
+import {
+  meetsSavingsTarget,
+  targetPercent,
+  twelveMonthAverage,
+} from './savingsRate.ts';
 
 const fmt = (pct: number) => `${Math.round(pct)}%`;
 
@@ -58,9 +62,7 @@ const SavingsRateCard = () => {
       : null;
 
   const onTarget =
-    rate != null && target != null
-      ? Math.round(rate) >= Math.round(target)
-      : null;
+    rate != null && target != null ? meetsSavingsTarget(rate, target) : null;
   const color =
     onTarget == null
       ? undefined

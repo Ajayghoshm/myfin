@@ -260,6 +260,8 @@ export type HealthScore = {
   checks: HealthCheck[];
   /** A past month's stored score, which never changes. */
   frozen: boolean;
+  /** A past month first read 3+ months later: computed from today's data, not stored. */
+  reconstructed: boolean;
 };
 
 /** `month` is 'YYYY-MM'; omitted = the current month. */
@@ -298,6 +300,8 @@ export type MonthReview = {
   steps: ReviewStep[];
   /** A past month's stored review, which never changes. */
   frozen: boolean;
+  /** A past month first read 3+ months later: computed from today's data, not stored. */
+  reconstructed: boolean;
   /** The month ends before the user's data starts. */
   before_data: boolean;
 };
@@ -308,6 +312,7 @@ export type ReviewHistoryEntry = {
   total: 6;
   complete: boolean;
   frozen: boolean;
+  reconstructed: boolean;
 };
 
 /** `month` is 'YYYY-MM'; omitted = the previous month. */

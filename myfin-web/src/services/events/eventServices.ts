@@ -79,7 +79,11 @@ export type UpcomingItem = {
   name: string;
   kind: string;
   date: string;
+  /** Negative for an overdue item. */
   days_until: number;
+  /** An unpaid money item (event or EMI) up to 7 days past its date. */
+  overdue: boolean;
+  /** A card due without an amount carries the card's current outstanding. */
   amount: number | null;
   status: 'pending' | 'done';
   gift_budget: number | null;

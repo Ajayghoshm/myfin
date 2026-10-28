@@ -16,6 +16,18 @@ export function targetPercent(
   return (value / base) * 100;
 }
 
+/**
+ * The one savings-target rule (same as the API's `meetsSavingsTarget`): the
+ * rate meets the target when the figures as displayed, rounded to whole
+ * percents, do. Both are percents: 19.6 meets 20.
+ */
+export function meetsSavingsTarget(
+  ratePct: number,
+  targetPct: number,
+): boolean {
+  return Math.round(ratePct) >= Math.round(targetPct);
+}
+
 /** (sum income - sum spending) / sum income x 100; null when income is 0. */
 export function twelveMonthAverage(
   trend: { income: number; spending: number }[],

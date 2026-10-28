@@ -343,10 +343,16 @@ const Transactions = () => {
     });
 
   // Expenses and transfers can be linked to an event occurrence (gift spend or a paid money event)
+  // Same rule as the API: expenses and transfers that count (no adjustments, no debt
+  // bookkeeping rows except an EMI's interest expense)
   const canLinkToEvent = (trx: Transaction) => {
     const type = inferTrxType(trx);
+    const counted =
+      trx.debt_role == null ||
+      (type === TransactionType.Expense && trx.debt_role === 'interest');
     return (
       !trx.is_adjustment &&
+      counted &&
       (type === TransactionType.Expense || type === TransactionType.Transfer)
     );
   };

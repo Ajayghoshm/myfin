@@ -16,7 +16,10 @@ import { useFormatNumberAsCurrency } from '../../utils/textHooks.ts';
 
 const UPCOMING_DAYS = 30;
 
-/** Dashboard list of events and loan EMIs due in the next 30 days. */
+/**
+ * Dashboard list of events and loan EMIs due in the next 30 days, plus unpaid
+ * money items up to 7 days overdue (listed first, flagged).
+ */
 const UpcomingCard = () => {
   const { t } = useTranslation();
   const formatCurrency = useFormatNumberAsCurrency();
@@ -32,7 +35,9 @@ const UpcomingCard = () => {
     const when =
       item.days_until === 0
         ? t('events.today')
-        : t('events.inDays', { count: item.days_until });
+        : item.days_until < 0
+          ? t('events.daysAgo', { count: -item.days_until })
+          : t('events.inDays', { count: item.days_until });
     const parts = [`${name} ${when}`];
     if (item.gift_budget != null)
       parts.push(
@@ -76,6 +81,11 @@ const UpcomingCard = () => {
             py={0.75}
           >
             <Typography variant="body2">{line(item)}</Typography>
+            {item.overdue && item.status !== 'done' && (
+              <Typography variant="body2" color="error.main" noWrap>
+                {t('events.overdueMark')}
+              </Typography>
+            )}
             {item.status === 'done' && (
               <Typography variant="body2" color="success.main" noWrap>
                 {isPeopleKind(item.kind)
