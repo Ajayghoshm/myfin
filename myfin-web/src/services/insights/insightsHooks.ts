@@ -17,6 +17,26 @@ export function useGetEmergencyFund() {
   });
 }
 
+export const QUERY_KEY_GET_HEALTH = 'QUERY_KEY_GET_HEALTH';
+
+/** `ym` is 'YYYY-MM'; omitted = the current month. */
+export function useGetHealth(ym?: string) {
+  return useQuery({
+    queryKey: [QUERY_KEY_GET_HEALTH, ym ?? 'current'],
+    queryFn: async () => (await insightsServices.getHealth(ym)).data,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export const QUERY_KEY_GET_HEALTH_HISTORY = 'QUERY_KEY_GET_HEALTH_HISTORY';
+
+export function useGetHealthHistory() {
+  return useQuery({
+    queryKey: [QUERY_KEY_GET_HEALTH_HISTORY],
+    queryFn: async () => (await insightsServices.getHealthHistory()).data,
+  });
+}
+
 export const QUERY_KEY_GET_SAFE_TO_SPEND = 'QUERY_KEY_GET_SAFE_TO_SPEND';
 
 export function useGetSafeToSpend() {

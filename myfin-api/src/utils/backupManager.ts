@@ -88,6 +88,13 @@ export interface BackupData {
     created_at: bigint | number;
     updated_at: bigint | number;
   }[];
+  /** Per-month records (health score, review); past months frozen. Absent in older backups. */
+  monthly_records?: {
+    month: number;
+    kind: string;
+    data: unknown;
+    frozen_at: bigint | number | string | null;
+  }[];
   /** Debts (lent, borrowed, loans). Absent in older backups. */
   debts?: {
     debt_id: bigint;
@@ -355,6 +362,11 @@ class BackupManager {
         where: { users_user_id: userId },
         orderBy: { entry_id: 'asc' },
       }),
+      monthly_records: await dbClient.monthly_records.findMany({
+        where: { users_user_id: userId },
+        select: { month: true, kind: true, data: true, frozen_at: true },
+        orderBy: [{ month: 'asc' }, { kind: 'asc' }],
+      }),
       financial_profile: await dbClient.user_financial_profile
         .findUnique({
           where: { users_user_id: userId },
@@ -525,6 +537,27 @@ class BackupManager {
           RestoreUserErrorCodes.MalformedBackup
         );
       }
+    }
+    const recordKeys = new Set<string>();
+    for (const r of data.monthly_records ?? []) {
+      const key = `${r?.month}:${r?.kind}`;
+      if (
+        !Number.isInteger(r?.month) ||
+        r.month < 190001 ||
+        r.month % 100 < 1 ||
+        r.month % 100 > 12 ||
+        (r.kind !== 'health' && r.kind !== 'review') ||
+        r.data === null ||
+        typeof r.data !== 'object' ||
+        (r.frozen_at != null && !/^\d+$/.test(String(r.frozen_at))) ||
+        recordKeys.has(key)
+      ) {
+        throw APIError.notAcceptable(
+          'Monthly record not recognized in backup',
+          RestoreUserErrorCodes.MalformedBackup
+        );
+      }
+      recordKeys.add(key);
     }
     const plannedRows = data.planned_transactions ?? [];
     for (const r of plannedRows) {
@@ -858,6 +891,20 @@ class BackupManager {
         },
       });
       debtIdMap.set(String(d.debt_id), created.debt_id);
+    }
+    // endregion
+
+    // region Monthly records (no ids to remap)
+    for (const r of data.monthly_records ?? []) {
+      await dbClient.monthly_records.create({
+        data: {
+          users_user_id: userId,
+          month: r.month,
+          kind: r.kind,
+          data: r.data as Prisma.InputJsonValue,
+          frozen_at: r.frozen_at != null ? BigInt(r.frozen_at) : null,
+        },
+      });
     }
     // endregion
 

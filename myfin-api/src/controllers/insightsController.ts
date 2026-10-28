@@ -14,6 +14,8 @@ import { smallSpends } from '../services/insights/smallSpendService.js';
 import { safeToSpend } from '../services/planning/safeToSpendService.js';
 import InsightsService from '../services/insights/insightsService.js';
 import { netWorthChange } from '../services/wealth/netWorthService.js';
+import { healthForMonth, healthHistory } from '../services/routines/healthScoreService.js';
+import { monthOfIST } from '../services/routines/monthlyRecordService.js';
 import Logger from '../utils/Logger.js';
 import CommonsController from './commonsController.js';
 
@@ -161,8 +163,37 @@ const setPayeeClassification = async (req: Request, res: Response, next: NextFun
   }
 };
 
+const healthQuerySchema = joi
+  .object({ month: joi.string().pattern(/^\d{4}-(0[1-9]|1[0-2])$/).optional() })
+  .unknown(true);
+
+const getHealth = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    const input = await healthQuerySchema.validateAsync(req.query);
+    const now = Math.floor(Date.now() / 1000);
+    const ym = input.month ? parseForecastMonth(input.month) : monthOfIST(now);
+    res.json(await healthForMonth(sessionData.userId, ym, now));
+  } catch (err) {
+    Logger.addErrorLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
+const getHealthHistory = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    res.json(await healthHistory(sessionData.userId));
+  } catch (err) {
+    Logger.addErrorLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
 export default {
   getMonthInsights,
+  getHealth,
+  getHealthHistory,
   getEmergencyFund,
   getSafeToSpend,
   getSmallSpends,
@@ -175,4 +206,11 @@ export default {
 };
 
 // Exported for tests
-export { dailySpendQuerySchema, forecastBudgetSchema, forecastQuerySchema, monthInsightsSchema, payeeClassificationSchema };
+export {
+  dailySpendQuerySchema,
+  forecastBudgetSchema,
+  forecastQuerySchema,
+  healthQuerySchema,
+  monthInsightsSchema,
+  payeeClassificationSchema,
+};

@@ -77,6 +77,7 @@
     "yearlyCosts": "Custos anuais",
     "debts": "Dívidas",
     "retirement": "Reforma",
+    "health": "Saúde",
     "tags": "Tags",
     "meta": "Meta"
   },
@@ -1279,6 +1280,39 @@
     "fillEmpty": "Preencher só vazias",
     "replaceAll": "Substituir tudo",
     "skipped": "Não alteradas (têm detalhamento ou estão inativas): {{names}}"
+  },
+  "health": {
+    "title": "Saúde financeira",
+    "subtitle": "Uma lista mensal do essencial. Os meses passados ficam como estavam.",
+    "month": "Mês",
+    "loading": "A carregar…",
+    "cardTitle": "Saúde {{passed}} de {{total}}",
+    "seeDetails": "Ver detalhes",
+    "allPassed": "Todas as verificações configuradas passam este mês.",
+    "setUpYourChecks": "Configurar as verificações de saúde financeira",
+    "noneSetUp": "Nenhuma verificação configurada",
+    "setUp": "Configurar",
+    "fix": "Corrigir",
+    "frozen": "Congelado",
+    "frozenNote": "Este mês está congelado: alterações posteriores não mudam a pontuação.",
+    "history": "Últimos 12 meses",
+    "barLabel": "{{month}}: {{passed}} de {{total}}",
+    "notSetUpHeading_one": "{{count}} verificação por configurar",
+    "notSetUpHeading_other": "{{count}} verificações por configurar",
+    "status": {
+      "pass": "Passou",
+      "fail": "Falhou",
+      "not_set_up": "Por configurar"
+    },
+    "checks": {
+      "savings_rate": "Taxa de poupança",
+      "emergency_fund": "Fundo de emergência",
+      "yearly_costs": "Custos anuais",
+      "fixed_costs": "Custos fixos",
+      "credit_cards": "Cartões de crédito",
+      "debt_emis": "Prestações de empréstimos",
+      "data": "Dados atualizados"
+    }
   },
   "emergencyFund": {
     "title": "Fundo de emergência",

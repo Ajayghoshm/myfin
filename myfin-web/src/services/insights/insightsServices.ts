@@ -225,6 +225,44 @@ const getSmallSpends = (month: string) =>
 
 const getSafeToSpend = () => axios.get<SafeToSpend>('/insights/safe-to-spend');
 
+export type HealthCheckStatus = 'pass' | 'fail' | 'not_set_up';
+
+export type HealthCheckKey =
+  | 'savings_rate'
+  | 'emergency_fund'
+  | 'yearly_costs'
+  | 'fixed_costs'
+  | 'credit_cards'
+  | 'debt_emis'
+  | 'data';
+
+export type HealthCheck = {
+  key: HealthCheckKey;
+  status: HealthCheckStatus;
+  value: string | null;
+  hint: string;
+  link: string;
+};
+
+/** 'N of M passed' for a month; `total` excludes not-set-up checks. */
+export type HealthScore = {
+  month: string;
+  passed: number;
+  total: number;
+  checks: HealthCheck[];
+  /** A past month's stored score, which never changes. */
+  frozen: boolean;
+};
+
+/** `month` is 'YYYY-MM'; omitted = the current month. */
+const getHealth = (month?: string) =>
+  axios.get<HealthScore>('/insights/health', {
+    params: month ? { month } : {},
+  });
+
+const getHealthHistory = () =>
+  axios.get<HealthScore[]>('/insights/health/history');
+
 const getEmergencyFund = () =>
   axios.get<EmergencyFund>('/insights/emergency-fund');
 
@@ -244,6 +282,8 @@ const setPayeeClassification = (payee_key: string, kind: PayeeKind | null) => {
 export default {
   getMonthInsights,
   getEmergencyFund,
+  getHealth,
+  getHealthHistory,
   getSafeToSpend,
   getSmallSpends,
   getNetWorth,

@@ -10,6 +10,7 @@ import {
   DonutLargeOutlined,
   EventRepeatOutlined,
   FolderSharedOutlined,
+  FavoriteBorderOutlined,
   HandshakeOutlined,
   BeachAccessOutlined,
   InsertChartOutlined,
@@ -29,6 +30,7 @@ import {
   ROUTE_DASHBOARD,
   ROUTE_ENTITIES,
   ROUTE_GOALS,
+  ROUTE_HEALTH,
   ROUTE_INSIGHTS,
   ROUTE_YEARLY_COSTS,
   ROUTE_DEBTS,
@@ -175,6 +177,13 @@ const MyFinSidebar = () => {
           >
             {' '}
             {t('sidebar.insights')}
+          </MenuItem>
+          <MenuItem
+            icon={<FavoriteBorderOutlined />}
+            component={<NavLink to={ROUTE_HEALTH} />}
+          >
+            {' '}
+            {t('sidebar.health')}
           </MenuItem>
           <MenuItem
             icon={<EventRepeatOutlined />}

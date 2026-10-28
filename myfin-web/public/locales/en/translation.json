@@ -77,6 +77,7 @@
     "yearlyCosts": "Yearly costs",
     "debts": "Debts",
     "retirement": "Retirement",
+    "health": "Health",
     "tags": "Tags",
     "meta": "Meta"
   },
@@ -1277,6 +1278,39 @@
     "fillEmpty": "Fill only empty",
     "replaceAll": "Replace all",
     "skipped": "Not changed (they have a breakdown or are inactive): {{names}}"
+  },
+  "health": {
+    "title": "Financial health",
+    "subtitle": "A monthly checklist of the basics. Past months are kept as they were.",
+    "month": "Month",
+    "loading": "Loading…",
+    "cardTitle": "Health {{passed}} of {{total}}",
+    "seeDetails": "See details",
+    "allPassed": "Every check you've set up passes this month.",
+    "setUpYourChecks": "Set up your financial health checks",
+    "noneSetUp": "No checks set up yet",
+    "setUp": "Set up",
+    "fix": "Fix",
+    "frozen": "Frozen",
+    "frozenNote": "This month is frozen: later changes don't alter its score.",
+    "history": "Last 12 months",
+    "barLabel": "{{month}}: {{passed}} of {{total}}",
+    "notSetUpHeading_one": "{{count}} check not set up",
+    "notSetUpHeading_other": "{{count}} checks not set up",
+    "status": {
+      "pass": "Passed",
+      "fail": "Failed",
+      "not_set_up": "Not set up"
+    },
+    "checks": {
+      "savings_rate": "Savings rate",
+      "emergency_fund": "Emergency fund",
+      "yearly_costs": "Yearly costs",
+      "fixed_costs": "Fixed costs",
+      "credit_cards": "Credit cards",
+      "debt_emis": "Loan EMIs",
+      "data": "Up-to-date data"
+    }
   },
   "emergencyFund": {
     "title": "Emergency fund",

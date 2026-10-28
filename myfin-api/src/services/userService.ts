@@ -545,6 +545,7 @@ const userService = {
         await prismaTx.debts.deleteMany({ where: { users_user_id: userId } });
 
         await prismaTx.legacy_entries.deleteMany({ where: { users_user_id: userId } });
+        await prismaTx.monthly_records.deleteMany({ where: { users_user_id: userId } });
 
         // Delete planned transactions (they reference accounts)
         await prismaTx.planned_transactions.deleteMany({ where: { users_user_id: userId } });

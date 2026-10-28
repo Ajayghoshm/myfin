@@ -79,3 +79,21 @@ export function effectiveMonthOf(
 
 export const formatYearMonth = (ym: YearMonth): string =>
   `${ym.year}-${String(ym.month).padStart(2, '0')}`;
+
+/**
+ * Savings target as a percent of income (same rule as the web `targetPercent`). 'percent' mode: the
+ * value itself (0 -> null). 'amount' mode: value / income x 100, using the month's income, or the
+ * typical income when the month has none; null when there is no base. Amounts are in currency.
+ */
+export function targetPercent(
+  mode: 'amount' | 'percent',
+  value: number,
+  monthIncome: number,
+  typicalIncome: number | null
+): number | null {
+  if (!value) return null;
+  if (mode === 'percent') return value;
+  const base = monthIncome > 0 ? monthIncome : typicalIncome;
+  if (!base || base <= 0) return null;
+  return (value / base) * 100;
+}

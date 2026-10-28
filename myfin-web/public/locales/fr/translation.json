@@ -76,6 +76,7 @@
     "yearlyCosts": "Coûts annuels",
     "debts": "Dettes",
     "retirement": "Retraite",
+    "health": "Santé",
     "tags": "Étiquettes",
     "meta": "Méta"
   },
@@ -1205,6 +1206,39 @@
     "fillEmpty": "Remplir seulement les vides",
     "replaceAll": "Tout remplacer",
     "skipped": "Non modifiées (détail ou catégorie inactive) : {{names}}"
+  },
+  "health": {
+    "title": "Santé financière",
+    "subtitle": "Une liste mensuelle des fondamentaux. Les mois passés restent tels quels.",
+    "month": "Mois",
+    "loading": "Chargement…",
+    "cardTitle": "Santé {{passed}} sur {{total}}",
+    "seeDetails": "Voir le détail",
+    "allPassed": "Tous les contrôles configurés sont réussis ce mois-ci.",
+    "setUpYourChecks": "Configurer vos contrôles de santé financière",
+    "noneSetUp": "Aucun contrôle configuré",
+    "setUp": "Configurer",
+    "fix": "Corriger",
+    "frozen": "Figé",
+    "frozenNote": "Ce mois est figé : les modifications ultérieures ne changent pas son score.",
+    "history": "12 derniers mois",
+    "barLabel": "{{month}} : {{passed}} sur {{total}}",
+    "notSetUpHeading_one": "{{count}} contrôle non configuré",
+    "notSetUpHeading_other": "{{count}} contrôles non configurés",
+    "status": {
+      "pass": "Réussi",
+      "fail": "Échoué",
+      "not_set_up": "Non configuré"
+    },
+    "checks": {
+      "savings_rate": "Taux d'épargne",
+      "emergency_fund": "Fonds d'urgence",
+      "yearly_costs": "Coûts annuels",
+      "fixed_costs": "Coûts fixes",
+      "credit_cards": "Cartes de crédit",
+      "debt_emis": "Mensualités de prêt",
+      "data": "Données à jour"
+    }
   },
   "emergencyFund": {
     "title": "Fonds d'urgence",

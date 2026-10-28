@@ -296,6 +296,7 @@ model users {
   salary_plans               salary_plans[]
   debts                      debts[]
   legacy_entries             legacy_entries[]
+  monthly_records            monthly_records[]
   currency                   String                       @default("EUR")
 }
 
@@ -563,4 +564,18 @@ model legacy_entries {
 
   @@index([users_user_id], map: "legacy_entries_user_idx")
   @@index([account_id], map: "legacy_entries_account_idx")
+}
+
+model monthly_records {
+  users_user_id BigInt
+  /// YYYYMM
+  month         Int
+  /// 'health' | 'review'
+  kind          String  @db.VarChar(12)
+  data          Json
+  /// Set once a past month is frozen; a frozen row never changes.
+  frozen_at     BigInt?
+  users         users   @relation(fields: [users_user_id], references: [user_id], onDelete: Cascade)
+
+  @@id([users_user_id, month, kind])
 }

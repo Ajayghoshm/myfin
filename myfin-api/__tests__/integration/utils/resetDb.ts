@@ -23,6 +23,7 @@ export default async () => {
     prisma.goals.deleteMany(),
     prisma.balance_checks.deleteMany(),
     prisma.legacy_entries.deleteMany(),
+    prisma.monthly_records.deleteMany(),
     prisma.accounts.deleteMany(),
     prisma.otp_codes.deleteMany(),
     prisma.payee_classifications.deleteMany(),
