@@ -323,6 +323,7 @@ export type SharePairingCode = {
   code: string;
   expires_at: number;
   url: string;
+  ip_url: string | null;
 };
 export type ShareDevice = { id: string; name: string; created_at: number };
 

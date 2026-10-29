@@ -454,6 +454,8 @@
     "pairPhone": "Pair phone",
     "pairPhoneText": "On your phone, scan this QR code with the camera, or open the MyFin Share app and type the code. It works once and expires in 5 minutes.",
     "pairedPhones": "Paired phones",
+    "pairUseIp": "Can't connect? Use IP address instead",
+    "pairUseName": "Use laptop name instead",
     "phonePeMappingLabel": "Match accounts",
     "phonePeMappingText": "Choose which MyFin account each PhonePe payment method belongs to. We'll remember it for next time.",
     "noNewTransactions": "No new transactions in this statement.",

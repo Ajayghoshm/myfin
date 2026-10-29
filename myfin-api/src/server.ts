@@ -1,7 +1,7 @@
 import 'dotenv/config.js';
-import { readFileSync } from 'node:fs';
 import https from 'node:https';
 import app from './app.js';
+import ShareTls from './share/shareTls.js';
 import DemoAccountScheduler from './utils/demoAccountScheduler.js';
 
 // Default to UTC only when the deployment did not choose a time zone (e.g. TZ=Asia/Kolkata)
@@ -15,18 +15,18 @@ app.listen(PORT, () => {
 });
 
 // Optional HTTPS listener so the phone can install the share PWA (Android requires HTTPS)
-if (process.env.SHARE_TLS_CERT && process.env.SHARE_TLS_KEY) {
+if (ShareTls.enabled()) {
   const HTTPS_PORT = process.env.SHARE_HTTPS_PORT || 3443;
-  https
-    .createServer(
-      {
-        cert: readFileSync(process.env.SHARE_TLS_CERT),
-        key: readFileSync(process.env.SHARE_TLS_KEY),
-      },
-      app
-    )
-    .listen(HTTPS_PORT, () => {
+  try {
+    await ShareTls.ensureCert();
+    const httpsServer = https.createServer(ShareTls.credentials(), app);
+    ShareTls.register(httpsServer);
+    httpsServer.listen(HTTPS_PORT, () => {
       // eslint-disable-next-line no-console
       console.log(`MyFin share (HTTPS) listening on port ${HTTPS_PORT}`);
     });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('Phone sharing disabled: could not set up the HTTPS certificate (is mkcert installed?)', err);
+  }
 }

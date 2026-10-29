@@ -13,6 +13,7 @@ import ConvertUtils from '../utils/convertUtils.js';
 import PhonePeImportService from '../services/phonePeImportService.js';
 import ShareInbox from '../share/shareInbox.js';
 import SharePairing from '../share/sharePairing.js';
+import ShareTls from '../share/shareTls.js';
 import CommonsController from './commonsController.js';
 
 // READ
@@ -427,6 +428,7 @@ const deleteShareInboxFile = async (req: Request, res: Response, next: NextFunct
 const createSharePairingCode = async (req: Request, res: Response, next: NextFunction) => {
   try {
     await CommonsController.checkAuthSessionValidity(req);
+    await ShareTls.refresh();
     res.json(SharePairing.createCode());
   } catch (err) {
     Logger.addLog(err);

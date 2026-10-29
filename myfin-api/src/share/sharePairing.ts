@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
+import ShareTls from './shareTls.js';
 
 export type Device = { id: string; name: string; token_hash: string; created_at: number };
 
@@ -34,15 +34,25 @@ const saveDevices = async (devices: Device[]) => {
 /** Address the phone should use; SHARE_PUBLIC_URL wins, else the Mac's stable .local name. */
 const publicUrl = () => {
   if (process.env.SHARE_PUBLIC_URL) return process.env.SHARE_PUBLIC_URL.replace(/\/$/, '');
-  const host = os.hostname();
-  return `https://${host.includes('.') ? host : `${host}.local`}:${process.env.SHARE_HTTPS_PORT || 3443}`;
+  return `https://${ShareTls.hostName()}:${process.env.SHARE_HTTPS_PORT || 3443}`;
+};
+
+const ipUrl = () => {
+  const ip = ShareTls.primaryIp();
+  return ip ? `https://${ip}:${process.env.SHARE_HTTPS_PORT || 3443}` : null;
 };
 
 const createCode = () => {
   const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
   activeCode = { code, expiresAt: Date.now() + CODE_TTL_MS };
   failures = 0;
-  return { code, expires_at: activeCode.expiresAt, url: `${publicUrl()}/share/?code=${code}` };
+  const ip = ipUrl();
+  return {
+    code,
+    expires_at: activeCode.expiresAt,
+    url: `${publicUrl()}/share/?code=${code}`,
+    ip_url: ip ? `${ip}/share/?code=${code}` : null,
+  };
 };
 
 /** Exchanges a valid one-time code for a per-phone token. Returns null if the code is wrong/expired/locked. */

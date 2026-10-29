@@ -22,6 +22,7 @@ type Props = { open: boolean; onClose: () => void };
 const PairPhoneDialog = ({ open, onClose }: Props) => {
   const { t } = useTranslation();
   const [pairing, setPairing] = useState<SharePairingCode | null>(null);
+  const [useIp, setUseIp] = useState(false);
   const [devices, setDevices] = useState<ShareDevice[]>([]);
 
   const loadDevices = useCallback(() => {
@@ -52,10 +53,20 @@ const PairPhoneDialog = ({ open, onClose }: Props) => {
         </Typography>
         {pairing && (
           <Box sx={{ textAlign: 'center', my: 2 }}>
-            <QRCodeSVG value={pairing.url} size={200} />
+            <QRCodeSVG
+              value={useIp && pairing.ip_url ? pairing.ip_url : pairing.url}
+              size={200}
+            />
             <Typography variant="h4" sx={{ letterSpacing: 6, mt: 1 }}>
               {pairing.code}
             </Typography>
+            {pairing.ip_url && (
+              <Button size="small" onClick={() => setUseIp((v) => !v)}>
+                {useIp
+                  ? t('importTransactions.pairUseName')
+                  : t('importTransactions.pairUseIp')}
+              </Button>
+            )}
           </Box>
         )}
         {devices.length > 0 && (

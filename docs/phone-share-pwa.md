@@ -7,20 +7,21 @@ a changing router IP does not matter. Find yours with `scutil --get LocalHostNam
 
 ## One-time laptop setup
 1. `brew install mkcert && mkcert -install`
-2. In `myfin-api/`: `mkdir certs && mkcert -cert-file certs/share.pem -key-file certs/share-key.pem <LocalHostName>.local localhost`
-3. Add to `myfin-api/.env`:
+2. Add to `myfin-api/.env`:
    ```
-   SHARE_TLS_CERT=./certs/share.pem
-   SHARE_TLS_KEY=./certs/share-key.pem
-   # optional: SHARE_HTTPS_PORT=3443, SHARE_INBOX_DIR=./share-inbox
-   # optional: SHARE_PUBLIC_URL=https://<name>.local:3443 (if the auto-detected name is wrong)
+   SHARE_HTTPS=true
+   # optional: SHARE_HTTPS_PORT=3443, SHARE_INBOX_DIR=./share-inbox, SHARE_PUBLIC_URL=https://<name>.local:3443
+   # optional: SHARE_TLS_CERT / SHARE_TLS_KEY to use your own certificate instead of the auto-managed one
    ```
-4. Restart the API (allow port 3443 through the macOS firewall).
+   The API creates `certs/` itself with mkcert, covering the laptop's `.local` name and its current IPs, and
+   renews it automatically when the IP changes (no restart needed; it happens when you open Pair phone).
+3. Restart the API (allow port 3443 through the macOS firewall).
 
 ## One-time phone setup
 1. Copy the mkcert root CA (`mkcert -CAROOT`, file `rootCA.pem`) to the phone and install it
    (Settings > Security > Encryption & credentials > Install a certificate > CA certificate).
-2. In MyFin on the laptop: Transactions > Import > **Pair phone**. Scan the QR code with the phone
+2. In MyFin on the laptop: Transactions > Import > **Pair phone** (if the phone can't connect, tap "Use IP address instead" for a QR with the current IP; an installed app is tied to its address, so after an IP change scan again and reinstall).
+    Scan the QR code with the phone
    camera (opens the app in Chrome and pairs automatically), then Chrome menu > Install app.
    Or open `https://<name>.local:3443/share/` yourself and type the 6-digit code.
 3. Paired phones are listed in the same dialog and can be removed there.
