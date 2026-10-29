@@ -17,7 +17,7 @@ services:
       test: [ "CMD", "mysqladmin", "ping", "--silent" ]
 
   myfin-api:
-    image: ghcr.io/afaneca/myfin-api:latest
+    build: ./myfin-api
     container_name: myfin-api
     restart: unless-stopped
     ports:
@@ -54,7 +54,7 @@ services:
         condition: service_healthy
 
   myfin-frontend:
-    image: ghcr.io/afaneca/myfin:latest
+    build: ./myfin-web
     container_name: myfin-frontend
     restart: unless-stopped
     ports:
@@ -63,7 +63,8 @@ services:
       myfin-api:
         condition: service_healthy
     environment:
-      - VITE_MYFIN_BASE_API_URL=https://myfin.domain.tld:3001
+      # Must be reachable from your browser, not from inside Docker
+      - VITE_MYFIN_BASE_API_URL=http://localhost:3001
 
 volumes:
   db_data:
