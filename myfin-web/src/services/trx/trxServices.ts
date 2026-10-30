@@ -243,7 +243,12 @@ export type ImportTransactionsStep1Response = {
   accounts: Account[];
   categories: Category[];
   entities: Entity[];
-  fillData: (RuleInstructions & { external_id?: string })[];
+  fillData: (RuleInstructions & {
+    external_id?: string;
+    // PhonePe only: the row's counterparty, and the text a remembered rule should match on
+    payee?: string | null;
+    payee_match?: string | null;
+  })[];
 };
 
 const importTransactionsStep1 = (request: ImportTransactionsStep1Request) => {
@@ -259,9 +264,22 @@ export type ImportTransactionsStep2Response = {
   created_ids?: Array<string | number>;
 };
 
-const importTransactionsStep2 = (list: AddTransactionRequest[]) => {
+// A remembered "payee -> category/entity/essential" choice, saved as an auto-categorize rule
+export type PayeeRule = {
+  match_text: string;
+  type: TransactionType.Expense | TransactionType.Income;
+  category_id?: bigint;
+  entity_id?: bigint;
+  is_essential?: boolean;
+};
+
+const importTransactionsStep2 = (
+  list: AddTransactionRequest[],
+  payeeRules: PayeeRule[] = [],
+) => {
   return axios.post<ImportTransactionsStep2Response>('/trxs/import/step2', {
     trx_list: JSON.stringify(list),
+    ...(payeeRules.length > 0 && { payee_rules: JSON.stringify(payeeRules) }),
   });
 };
 
@@ -284,7 +302,11 @@ export type PhonePeCategorizeRequest = {
 };
 
 export type PhonePeCategorizeResponse = ImportTransactionsStep1Response & {
-  fillData: (RuleInstructions & { external_id: string })[];
+  fillData: (RuleInstructions & {
+    external_id: string;
+    payee: string | null;
+    payee_match: string | null;
+  })[];
   duplicate_rows: number;
 };
 

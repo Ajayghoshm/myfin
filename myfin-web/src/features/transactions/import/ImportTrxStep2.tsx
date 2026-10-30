@@ -705,8 +705,8 @@ const ImportTrxStep2 = (props: Props) => {
 
   const importTransactions = () => {
     setConfirmationDialogOpen(false);
-    importTrxStep2Request.mutate(
-      filteredTransactions.map((trx) => ({
+    importTrxStep2Request.mutate({
+      list: filteredTransactions.map((trx) => ({
         category_id: trx.category?.id,
         entity_id: trx.entity?.id,
         amount: trx.value,
@@ -720,7 +720,7 @@ const ImportTrxStep2 = (props: Props) => {
         account_to_id: trx.accountTo?.id,
         external_id: trx.externalId,
       })),
-    );
+    });
   };
 
   return (

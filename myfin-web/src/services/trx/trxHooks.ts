@@ -3,6 +3,7 @@ import { queryClient } from '../../data/react-query.ts';
 import { QUERY_KEY_GET_BUDGET_MATRIX } from '../budget/budgetHooks.ts';
 import TrxServices, {
   AddTransactionRequest,
+  PayeeRule,
   AutoCategorizeTransactionRequest,
   BulkUpdateTransactionsRequest,
   EditTransactionRequest,
@@ -253,8 +254,14 @@ export function useImportTransactionsStep1() {
 }
 
 export function useImportTransactionsStep2() {
-  async function importTransactionsStep2(list: AddTransactionRequest[]) {
-    const data = await TrxServices.importTransactionsStep2(list);
+  async function importTransactionsStep2(request: {
+    list: AddTransactionRequest[];
+    payeeRules?: PayeeRule[];
+  }) {
+    const data = await TrxServices.importTransactionsStep2(
+      request.list,
+      request.payeeRules,
+    );
     void queryClient.invalidateQueries({
       queryKey: [QUERY_KEY_GET_TRANSACTIONS],
     });
