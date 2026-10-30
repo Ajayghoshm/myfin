@@ -5,6 +5,7 @@ import ConvertUtils from '../utils/convertUtils.js';
 import AccountService from './accountService.js';
 import CategoryService from './categoryService.js';
 import EntityService from './entityService.js';
+import APIError from '../errorHandling/apiError.js';
 import { getBestFuzzyMatch } from './fuzzyMatchingService.js';
 
 interface Rule {
@@ -507,9 +508,94 @@ const getRuleForTransaction = async (
   return undefined;
 };
 
+export interface PayeeRuleInput {
+  match_text: string;
+  type: 'E' | 'I';
+  category_id?: bigint | number | null;
+  entity_id?: bigint | number | null;
+  is_essential?: boolean;
+}
+
+const isEmptyOperator = (operator?: string | null) => !operator || operator === MYFIN.RULES.OPERATOR.IGNORE;
+
+/**
+ * Creates or updates one rule per payee ("description contains <payee>" and type equals E/I).
+ * An existing rule counts as the payee's rule only when it has no other matchers. Only the fields
+ * present in the input are written, so a rule never loses a value the caller did not mention.
+ * Returns how many rules were created or updated.
+ */
+const savePayeeRules = async (userId: bigint, payeeRules: PayeeRuleInput[], dbClient = prisma): Promise<number> => {
+  // One entry per payee+type; later entries add to earlier ones.
+  const merged = new Map<string, PayeeRuleInput>();
+  for (const input of payeeRules) {
+    const key = `${input.type}:${input.match_text.toLowerCase()}`;
+    const entry = merged.get(key) ?? { match_text: input.match_text, type: input.type };
+    if (input.category_id != null) entry.category_id = input.category_id;
+    if (input.entity_id != null) entry.entity_id = input.entity_id;
+    if (input.is_essential !== undefined) entry.is_essential = input.is_essential;
+    merged.set(key, entry);
+  }
+  if (merged.size === 0) return 0;
+
+  for (const input of merged.values()) {
+    if (input.category_id != null) {
+      const owned = await dbClient.categories.count({
+        where: { category_id: input.category_id, users_user_id: userId },
+      });
+      if (!owned) throw APIError.badRequest('Invalid category');
+    }
+    if (input.entity_id != null) {
+      const owned = await dbClient.entities.count({
+        where: { entity_id: input.entity_id, users_user_id: userId },
+      });
+      if (!owned) throw APIError.badRequest('Invalid entity');
+    }
+  }
+
+  const userRules = await dbClient.rules.findMany({ where: { users_user_id: userId } });
+  for (const input of merged.values()) {
+    const existing = userRules.find(
+      (rule) =>
+        rule.matcher_description_operator === MYFIN.RULES.OPERATOR.CONTAINS &&
+        rule.matcher_description_value?.toLowerCase() === input.match_text.toLowerCase() &&
+        rule.matcher_type_operator === MYFIN.RULES.OPERATOR.EQUALS &&
+        rule.matcher_type_value === input.type &&
+        isEmptyOperator(rule.matcher_amount_operator) &&
+        isEmptyOperator(rule.matcher_account_to_id_operator) &&
+        isEmptyOperator(rule.matcher_account_from_id_operator)
+    );
+    if (existing) {
+      await dbClient.rules.update({
+        where: { rule_id_users_user_id: { rule_id: existing.rule_id, users_user_id: userId } },
+        data: {
+          ...(input.category_id != null && { assign_category_id: input.category_id }),
+          ...(input.entity_id != null && { assign_entity_id: input.entity_id }),
+          ...(input.is_essential !== undefined && { assign_is_essential: input.is_essential }),
+        },
+      });
+    } else {
+      await createRule(
+        userId,
+        {
+          matcher_description_operator: MYFIN.RULES.OPERATOR.CONTAINS,
+          matcher_description_value: input.match_text,
+          matcher_type_operator: MYFIN.RULES.OPERATOR.EQUALS,
+          matcher_type_value: input.type,
+          assign_category_id: input.category_id,
+          assign_entity_id: input.entity_id,
+          assign_is_essential: input.is_essential,
+        },
+        dbClient
+      );
+    }
+  }
+  return merged.size;
+};
+
 export default {
   getAllRulesForUser,
   createRule,
+  savePayeeRules,
   deleteRule,
   updatedRule,
   getCountOfUserRules,
