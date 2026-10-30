@@ -248,6 +248,7 @@ export type ImportTransactionsStep1Response = {
     // PhonePe only: the row's counterparty, and the text a remembered rule should match on
     payee?: string | null;
     payee_match?: string | null;
+    payee_match_exact?: boolean;
   })[];
 };
 
@@ -268,9 +269,13 @@ export type ImportTransactionsStep2Response = {
 export type PayeeRule = {
   match_text: string;
   type: TransactionType.Expense | TransactionType.Income;
+  // Match the whole description instead of any description containing match_text
+  exact?: boolean;
   category_id?: bigint;
   entity_id?: bigint;
   is_essential?: boolean;
+  // Used only if the rule is new, for fields the user did not pick
+  defaults?: { category_id?: bigint; entity_id?: bigint; is_essential?: boolean };
 };
 
 const importTransactionsStep2 = (
@@ -306,6 +311,7 @@ export type PhonePeCategorizeResponse = ImportTransactionsStep1Response & {
     external_id: string;
     payee: string | null;
     payee_match: string | null;
+    payee_match_exact: boolean;
   })[];
   duplicate_rows: number;
 };

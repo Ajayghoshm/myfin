@@ -31,6 +31,7 @@ export type PhonePeFillItem = RuleInstructions & {
   external_id: string;
   payee: string | null; // null for transfers
   payee_match: string | null; // text a payee rule should match on; null when the row has no payee prefix
+  payee_match_exact: boolean; // true: the rule must match the whole description
 };
 
 export type PhonePeCategorizeResult = {
@@ -201,6 +202,7 @@ export async function categorizePhonePeImport(
           external_id: row.externalId,
           payee: payee?.payee ?? null,
           payee_match: payee?.matchText ?? null,
+          payee_match_exact: payee?.exact ?? false,
         };
       })
     );

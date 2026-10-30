@@ -105,6 +105,64 @@ describe("savePayeeRules", () => {
     expect(await prisma.rules.count({ where: { users_user_id: user.user_id } })).toBe(2);
   });
 
+  test("a typeless rule for the same text is kept; the new typed rule inherits its values", async () => {
+    await RuleService.createRule(
+      user.user_id,
+      {
+        matcher_description_operator: MYFIN.RULES.OPERATOR.CONTAINS,
+        matcher_description_value: "SWIGGY",
+        assign_category_id: food.category_id,
+        assign_is_essential: true,
+      },
+      prisma
+    );
+    await RuleService.savePayeeRules(user.user_id, [{ match_text: "SWIGGY", type: "E", entity_id: entity.entity_id }], prisma);
+
+    const rules = await prisma.rules.findMany({ where: { users_user_id: user.user_id }, orderBy: { rule_id: "asc" } });
+    expect(rules).toHaveLength(2);
+    expect(rules[0]).toMatchObject({ assign_category_id: food.category_id, assign_entity_id: null, assign_is_essential: true });
+    expect(rules[1]).toMatchObject({
+      matcher_type_value: "E",
+      assign_category_id: food.category_id,
+      assign_entity_id: entity.entity_id,
+      assign_is_essential: true,
+    });
+  });
+
+  test("an exact rule matches the whole description, not payees that merely contain it", async () => {
+    await RuleService.savePayeeRules(
+      user.user_id,
+      [{ match_text: "Paid to AB", type: "E", exact: true, category_id: food.category_id }],
+      prisma
+    );
+    const [rule] = await prisma.rules.findMany({ where: { users_user_id: user.user_id } });
+    expect(rule).toMatchObject({ matcher_description_operator: MYFIN.RULES.OPERATOR.EQUALS, matcher_description_value: "Paid to AB" });
+    expect((await matchFor(user.user_id, "Paid to AB", "E"))?.assign_category_id).toBe(food.category_id);
+    expect((await matchFor(user.user_id, "Paid to ABHISHEK KUMAR", "E"))?.assign_category_id).toBeUndefined();
+  });
+
+  test("defaults fill fields on a new rule only", async () => {
+    await RuleService.savePayeeRules(
+      user.user_id,
+      [{ match_text: "NETFLIX", type: "E", category_id: food.category_id, defaults: { entity_id: entity.entity_id, is_essential: true } }],
+      prisma
+    );
+    let [rule] = await prisma.rules.findMany({ where: { users_user_id: user.user_id } });
+    expect(rule).toMatchObject({ assign_category_id: food.category_id, assign_entity_id: entity.entity_id, assign_is_essential: true });
+
+    await prisma.rules.update({
+      where: { rule_id_users_user_id: { rule_id: rule.rule_id, users_user_id: user.user_id } },
+      data: { assign_entity_id: null },
+    });
+    await RuleService.savePayeeRules(
+      user.user_id,
+      [{ match_text: "NETFLIX", type: "E", category_id: food.category_id, defaults: { entity_id: entity.entity_id } }],
+      prisma
+    );
+    [rule] = await prisma.rules.findMany({ where: { users_user_id: user.user_id } });
+    expect(rule.assign_entity_id).toBeNull();
+  });
+
   test("rejects a category that belongs to another user and creates nothing", async () => {
     const other = await UserService.createUser({ username: "other", password: "123", email: "other@afaneca.com" });
     const foreign = await makeCategory(other.user_id, "Theirs");

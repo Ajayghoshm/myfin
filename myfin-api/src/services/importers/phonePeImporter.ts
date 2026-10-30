@@ -151,14 +151,18 @@ const MIN_PAYEE_RULE_LENGTH = 4;
 
 /**
  * The counterparty of a row. `matchText` is what an auto-categorize rule should look for in future
- * descriptions: the payee, or the whole description when the payee is too short to match safely.
- * It is null when the description has no payee prefix (e.g. "Electricity bill paid 1234567").
+ * descriptions: the payee, or the whole description when the payee is too short to match safely
+ * (`exact` then tells the rule to match the whole description, since a short name would otherwise
+ * also match longer payees that contain it). It is null when the description has no payee prefix
+ * (e.g. "Electricity bill paid 1234567").
  */
-export function extractPayee(description: string): { payee: string; matchText: string | null } {
+export function extractPayee(description: string): { payee: string; matchText: string | null; exact: boolean } {
   const cleaned = description.replace(/\s+/g, " ").trim();
   const payee = cleaned.replace(PAYEE_PREFIX, "").trim();
-  if (payee === cleaned || payee === "") return { payee: cleaned, matchText: null };
-  return { payee, matchText: payee.length >= MIN_PAYEE_RULE_LENGTH ? payee : cleaned };
+  if (payee === cleaned || payee === "") return { payee: cleaned, matchText: null, exact: false };
+  return payee.length >= MIN_PAYEE_RULE_LENGTH
+    ? { payee, matchText: payee, exact: false }
+    : { payee, matchText: cleaned, exact: true };
 }
 
 export function instrumentKeysOf(rows: ClassifiedPhonePeRow[]): string[] {

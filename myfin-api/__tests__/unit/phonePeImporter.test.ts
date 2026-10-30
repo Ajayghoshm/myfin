@@ -203,7 +203,7 @@ describe("instrumentKeysOf", () => {
 
 describe("extractPayee", () => {
   test("strips the Paid to prefix", () => {
-    expect(extractPayee("Paid to SWIGGY")).toEqual({ payee: "SWIGGY", matchText: "SWIGGY" });
+    expect(extractPayee("Paid to SWIGGY")).toEqual({ payee: "SWIGGY", matchText: "SWIGGY", exact: false });
   });
 
   test("normalises case and whitespace across prefixes", () => {
@@ -219,13 +219,14 @@ describe("extractPayee", () => {
   });
 
   test("uses the full description as match text when the payee is shorter than 4 characters", () => {
-    expect(extractPayee("Paid to AB")).toEqual({ payee: "AB", matchText: "Paid to AB" });
+    expect(extractPayee("Paid to AB")).toEqual({ payee: "AB", matchText: "Paid to AB", exact: true });
   });
 
   test("a description without a payee prefix is its own payee and has no match text", () => {
     expect(extractPayee("Electricity bill paid 1234567")).toEqual({
       payee: "Electricity bill paid 1234567",
       matchText: null,
+      exact: false,
     });
   });
 });

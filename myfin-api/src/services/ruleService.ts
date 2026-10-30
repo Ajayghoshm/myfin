@@ -511,17 +511,27 @@ const getRuleForTransaction = async (
 export interface PayeeRuleInput {
   match_text: string;
   type: 'E' | 'I';
+  /** Match the whole description (EQUALS) instead of any description containing the text. */
+  exact?: boolean;
   category_id?: bigint | number | null;
   entity_id?: bigint | number | null;
   is_essential?: boolean;
+  /** Values used only when a new rule is created, so a rule does not lose fields that used to be auto-filled. */
+  defaults?: { category_id?: bigint | number | null; entity_id?: bigint | number | null; is_essential?: boolean };
 }
 
 const isEmptyOperator = (operator?: string | null) => !operator || operator === MYFIN.RULES.OPERATOR.IGNORE;
 
+const hasOnlyDescriptionMatcher = (rule: Rule) =>
+  isEmptyOperator(rule.matcher_amount_operator) &&
+  isEmptyOperator(rule.matcher_account_to_id_operator) &&
+  isEmptyOperator(rule.matcher_account_from_id_operator);
+
 /**
- * Creates or updates one rule per payee ("description contains <payee>" and type equals E/I).
- * An existing rule counts as the payee's rule only when it has no other matchers. Only the fields
- * present in the input are written, so a rule never loses a value the caller did not mention.
+ * Creates or updates one rule per payee ("description contains/equals <text>" and type equals E/I).
+ * An existing typed rule for the text is updated, writing only the fields present in the input.
+ * A rule of the user's own with the same text but no type condition is left alone: the new typed
+ * rule would outrank it, so it inherits that rule's values for anything the input does not set.
  * Returns how many rules were created or updated.
  */
 const savePayeeRules = async (userId: bigint, payeeRules: PayeeRuleInput[], dbClient = prisma): Promise<number> => {
@@ -530,14 +540,16 @@ const savePayeeRules = async (userId: bigint, payeeRules: PayeeRuleInput[], dbCl
   for (const input of payeeRules) {
     const key = `${input.type}:${input.match_text.toLowerCase()}`;
     const entry = merged.get(key) ?? { match_text: input.match_text, type: input.type };
+    if (input.exact) entry.exact = true;
     if (input.category_id != null) entry.category_id = input.category_id;
     if (input.entity_id != null) entry.entity_id = input.entity_id;
     if (input.is_essential !== undefined) entry.is_essential = input.is_essential;
+    if (input.defaults) entry.defaults = { ...entry.defaults, ...input.defaults };
     merged.set(key, entry);
   }
   if (merged.size === 0) return 0;
 
-  for (const input of merged.values()) {
+  const checkOwnership = async (input: PayeeRuleInput['defaults'] & object) => {
     if (input.category_id != null) {
       const owned = await dbClient.categories.count({
         where: { category_id: input.category_id, users_user_id: userId },
@@ -550,19 +562,25 @@ const savePayeeRules = async (userId: bigint, payeeRules: PayeeRuleInput[], dbCl
       });
       if (!owned) throw APIError.badRequest('Invalid entity');
     }
+  };
+  for (const input of merged.values()) {
+    await checkOwnership(input);
+    if (input.defaults) await checkOwnership(input.defaults);
   }
 
   const userRules = await dbClient.rules.findMany({ where: { users_user_id: userId } });
+  const sameText = (rule: Rule, input: PayeeRuleInput) =>
+    rule.matcher_description_operator ===
+      (input.exact ? MYFIN.RULES.OPERATOR.EQUALS : MYFIN.RULES.OPERATOR.CONTAINS) &&
+    rule.matcher_description_value?.toLowerCase() === input.match_text.toLowerCase();
+
   for (const input of merged.values()) {
     const existing = userRules.find(
       (rule) =>
-        rule.matcher_description_operator === MYFIN.RULES.OPERATOR.CONTAINS &&
-        rule.matcher_description_value?.toLowerCase() === input.match_text.toLowerCase() &&
+        sameText(rule, input) &&
         rule.matcher_type_operator === MYFIN.RULES.OPERATOR.EQUALS &&
         rule.matcher_type_value === input.type &&
-        isEmptyOperator(rule.matcher_amount_operator) &&
-        isEmptyOperator(rule.matcher_account_to_id_operator) &&
-        isEmptyOperator(rule.matcher_account_from_id_operator)
+        hasOnlyDescriptionMatcher(rule)
     );
     if (existing) {
       await dbClient.rules.update({
@@ -573,21 +591,25 @@ const savePayeeRules = async (userId: bigint, payeeRules: PayeeRuleInput[], dbCl
           ...(input.is_essential !== undefined && { assign_is_essential: input.is_essential }),
         },
       });
-    } else {
-      await createRule(
-        userId,
-        {
-          matcher_description_operator: MYFIN.RULES.OPERATOR.CONTAINS,
-          matcher_description_value: input.match_text,
-          matcher_type_operator: MYFIN.RULES.OPERATOR.EQUALS,
-          matcher_type_value: input.type,
-          assign_category_id: input.category_id,
-          assign_entity_id: input.entity_id,
-          assign_is_essential: input.is_essential,
-        },
-        dbClient
-      );
+      continue;
     }
+
+    const typeless = userRules.find(
+      (rule) => sameText(rule, input) && isEmptyOperator(rule.matcher_type_operator) && hasOnlyDescriptionMatcher(rule)
+    );
+    await createRule(
+      userId,
+      {
+        matcher_description_operator: input.exact ? MYFIN.RULES.OPERATOR.EQUALS : MYFIN.RULES.OPERATOR.CONTAINS,
+        matcher_description_value: input.match_text,
+        matcher_type_operator: MYFIN.RULES.OPERATOR.EQUALS,
+        matcher_type_value: input.type,
+        assign_category_id: input.category_id ?? typeless?.assign_category_id ?? input.defaults?.category_id,
+        assign_entity_id: input.entity_id ?? typeless?.assign_entity_id ?? input.defaults?.entity_id,
+        assign_is_essential: input.is_essential ?? typeless?.assign_is_essential ?? input.defaults?.is_essential,
+      },
+      dbClient
+    );
   }
   return merged.size;
 };

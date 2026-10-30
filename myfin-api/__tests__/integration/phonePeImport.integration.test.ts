@@ -100,6 +100,7 @@ describe("PhonePe import (preview / categorize)", () => {
     expect(swiggy.amount).toBe(121);
     expect(swiggy.payee).toBe("SWIGGY");
     expect(swiggy.payee_match).toBe("SWIGGY");
+    expect(swiggy.payee_match_exact).toBe(false);
     expect(topUp.payee).toBeNull();
     expect(topUp.payee_match).toBeNull();
     expect(cardBill.payee).toBeNull();

@@ -44,7 +44,6 @@ import {
   GroupPatch,
   PayeeGroup,
   toPayeeRules,
-  TouchedFields,
 } from './payeeGroups.ts';
 import ImportTrxStep2AccountsCell from './ImportTrxStep2AccountsCell.tsx';
 import { useFormatNumberAsCurrency } from '../../../utils/textHooks.ts';
@@ -70,6 +69,7 @@ type ImportedTrx = {
   type?: TransactionType;
   payee?: string | null;
   payeeMatch?: string | null;
+  payeeMatchExact?: boolean;
 };
 
 export type ImportTrxStep2Result = {
@@ -308,11 +308,7 @@ const ImportTrxStep2 = (props: Props) => {
   const [isConfirmationDialogOpen, setConfirmationDialogOpen] = useState(false);
   const [transactions, setTransactions] = useState<ImportedTrx[]>([]);
   const [groupByPayee, setGroupByPayee] = useState(false);
-  // Group fields the user changed on a group line (these become remembered rules)
-  const [touchedGroups, setTouchedGroups] = useState<
-    Record<string, TouchedFields>
-  >({});
-  // Last choice made per group, so "Apply to all rows" knows what to copy
+  // What the user picked on each group line: copied by "Apply to all rows", and remembered as a rule
   const [lastGroupPatches, setLastGroupPatches] = useState<
     Record<string, GroupPatch>
   >({});
@@ -426,6 +422,7 @@ const ImportTrxStep2 = (props: Props) => {
       type: item.type,
       payee: item.payee,
       payeeMatch: item.payee_match,
+      payeeMatchExact: item.payee_match_exact,
     }));
 
     setTransactions(trx);
@@ -582,13 +579,6 @@ const ImportTrxStep2 = (props: Props) => {
             : trx,
         ),
       );
-      const touchedFields = Object.fromEntries(
-        Object.keys(patch).map((field) => [field, true]),
-      );
-      setTouchedGroups((prev) => ({
-        ...prev,
-        [group.key]: { ...prev[group.key], ...touchedFields },
-      }));
       setLastGroupPatches((prev) => ({
         ...prev,
         [group.key]: { ...prev[group.key], ...patch },
@@ -828,7 +818,7 @@ const ImportTrxStep2 = (props: Props) => {
         account_to_id: trx.accountTo?.id,
         external_id: trx.externalId,
       })),
-      payeeRules: toPayeeRules(transactions, payeeGroups, touchedGroups),
+      payeeRules: toPayeeRules(transactions, payeeGroups, lastGroupPatches),
     });
   };
 

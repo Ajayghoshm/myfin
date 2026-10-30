@@ -377,9 +377,15 @@ const payeeRulesSchema = joi
     joi.object({
       match_text: joi.string().trim().min(1).max(255).required(),
       type: joi.string().valid(MYFIN.TRX_TYPES.EXPENSE, MYFIN.TRX_TYPES.INCOME).required(),
+      exact: joi.boolean(),
       category_id: joi.number().integer().positive(),
       entity_id: joi.number().integer().positive(),
       is_essential: joi.boolean(),
+      defaults: joi.object({
+        category_id: joi.number().integer().positive(),
+        entity_id: joi.number().integer().positive(),
+        is_essential: joi.boolean(),
+      }),
     })
   )
   .max(500);

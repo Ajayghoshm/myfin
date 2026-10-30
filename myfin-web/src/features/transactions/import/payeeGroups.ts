@@ -1,5 +1,13 @@
-import { PayeeRule, TransactionType } from '../../../services/trx/trxServices.ts';
-import { IdLabelPair } from '../AddEditTransactionDialog.tsx';
+// Type-only imports keep this module free of app runtime code, so it can be unit-tested with plain Node
+import type {
+  PayeeRule,
+  TransactionType,
+} from '../../../services/trx/trxServices.ts';
+import type { IdLabelPair } from '../AddEditTransactionDialog.tsx';
+
+// Same values as TransactionType.Expense / .Income
+const EXPENSE = 'E' as TransactionType.Expense;
+const INCOME = 'I' as TransactionType.Income;
 
 export type GroupableTrx = {
   tempId: number;
@@ -7,6 +15,7 @@ export type GroupableTrx = {
   type?: TransactionType;
   payee?: string | null;
   payeeMatch?: string | null;
+  payeeMatchExact?: boolean;
   value: number;
   category?: IdLabelPair;
   entity?: IdLabelPair;
@@ -18,6 +27,7 @@ export type PayeeGroup = {
   payee: string;
   type: TransactionType.Expense | TransactionType.Income;
   matchText: string | null;
+  matchExact: boolean;
   rowIds: number[];
   count: number;
 };
@@ -31,9 +41,6 @@ export type GroupPatch = Partial<
   Pick<GroupableTrx, 'category' | 'entity' | 'essential'>
 >;
 
-/** Fields of a group the user changed on its line; only these become a remembered rule. */
-export type TouchedFields = { category?: boolean; entity?: boolean; essential?: boolean };
-
 const isGroupable = (
   row: GroupableTrx,
 ): row is GroupableTrx & {
@@ -41,7 +48,7 @@ const isGroupable = (
   type: TransactionType.Expense | TransactionType.Income;
 } =>
   !!row.payee &&
-  (row.type === TransactionType.Expense || row.type === TransactionType.Income);
+  (row.type === EXPENSE || row.type === INCOME);
 
 /** Groups rows by direction and payee (case-insensitive), most transactions first. */
 export const buildPayeeGroups = (rows: GroupableTrx[]): PayeeGroup[] => {
@@ -53,13 +60,17 @@ export const buildPayeeGroups = (rows: GroupableTrx[]): PayeeGroup[] => {
     if (group) {
       group.rowIds.push(row.tempId);
       group.count++;
-      group.matchText ??= row.payeeMatch ?? null;
+      if (group.matchText == null && row.payeeMatch != null) {
+        group.matchText = row.payeeMatch;
+        group.matchExact = row.payeeMatchExact ?? false;
+      }
     } else {
       groups.set(key, {
         key,
         payee: row.payee,
         type: row.type,
         matchText: row.payeeMatch ?? null,
+        matchExact: row.payeeMatchExact ?? false,
         rowIds: [row.tempId],
         count: 1,
       });
@@ -126,40 +137,53 @@ export const fillBlankRows = <T extends GroupableTrx>(
 };
 
 /**
- * One rule per group the user touched, using only the touched fields that have a single shared
- * value. Groups without match text (no payee prefix) or with no selected row create nothing.
+ * One rule per group the user made a choice on (`chosen`: the last value picked per field).
+ * The rule stores what the user picked, not what the rows happen to carry, so a guessed value the
+ * user replaced is never remembered. Fields the user did not pick are sent as `defaults` (the
+ * value all selected rows share) and are used only when the rule is new, so a new rule does not
+ * lose fields that used to be auto-filled. Groups without match text or without a selected row
+ * create nothing.
  */
 export const toPayeeRules = (
   rows: GroupableTrx[],
   groups: PayeeGroup[],
-  touched: Record<string, TouchedFields>,
+  chosen: Record<string, GroupPatch>,
 ): PayeeRule[] => {
   const rules: PayeeRule[] = [];
   for (const group of groups) {
-    const fields = touched[group.key];
-    if (!fields || !group.matchText) continue;
-    if (!rowsOf(rows, group).some((row) => row.selected)) continue;
+    const patch = chosen[group.key];
+    if (!patch || !group.matchText) continue;
+    const selected = rowsOf(rows, group).filter((row) => row.selected);
+    if (selected.length === 0) continue;
+    const selectedGroupRows = { ...group, rowIds: selected.map((r) => r.tempId) };
 
     const rule: PayeeRule = { match_text: group.matchText, type: group.type };
-    if (fields.category) {
-      const v = groupCategory(rows, group);
-      if (v.kind === 'single') rule.category_id = v.value.id;
+    if (group.matchExact) rule.exact = true;
+    const defaults: NonNullable<PayeeRule['defaults']> = {};
+
+    if (patch.category) rule.category_id = patch.category.id;
+    else if (!('category' in patch)) {
+      const v = groupCategory(selected, selectedGroupRows);
+      if (v.kind === 'single') defaults.category_id = v.value.id;
     }
-    if (fields.entity) {
-      const v = groupEntity(rows, group);
-      if (v.kind === 'single') rule.entity_id = v.value.id;
+    if (patch.entity) rule.entity_id = patch.entity.id;
+    else if (!('entity' in patch)) {
+      const v = groupEntity(selected, selectedGroupRows);
+      if (v.kind === 'single') defaults.entity_id = v.value.id;
     }
-    if (fields.essential) {
-      const v = groupEssential(rows, group);
-      if (v.kind === 'single') rule.is_essential = v.value;
+    if (patch.essential !== undefined) rule.is_essential = patch.essential;
+    else {
+      const v = groupEssential(selected, selectedGroupRows);
+      if (v.kind === 'single' && v.value) defaults.is_essential = true;
     }
-    if (
+
+    const hasChoice =
       rule.category_id !== undefined ||
       rule.entity_id !== undefined ||
-      rule.is_essential !== undefined
-    ) {
-      rules.push(rule);
-    }
+      rule.is_essential !== undefined;
+    if (!hasChoice) continue;
+    if (Object.keys(defaults).length > 0) rule.defaults = defaults;
+    rules.push(rule);
   }
   return rules;
 };
