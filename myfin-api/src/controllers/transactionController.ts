@@ -371,8 +371,22 @@ const importTransactionsStep1 = async (req: Request, res: Response, next: NextFu
   }
 };
 
+const payeeRulesSchema = joi
+  .array()
+  .items(
+    joi.object({
+      match_text: joi.string().trim().min(1).max(255).required(),
+      type: joi.string().valid(MYFIN.TRX_TYPES.EXPENSE, MYFIN.TRX_TYPES.INCOME).required(),
+      category_id: joi.number().integer().positive(),
+      entity_id: joi.number().integer().positive(),
+      is_essential: joi.boolean(),
+    })
+  )
+  .max(500);
+
 const importTrxStep2Schema = joi.object({
   trx_list: joi.any(),
+  payee_rules: joi.string(),
 });
 
 const importTransactionsStep2 = async (req: Request, res: Response, next: NextFunction) => {
@@ -380,9 +394,13 @@ const importTransactionsStep2 = async (req: Request, res: Response, next: NextFu
     const sessionData = await CommonsController.checkAuthSessionValidity(req);
     const input = await importTrxStep2Schema.validateAsync(req.body);
 
-    const { imported, skipped, created_ids } = await TransactionService.createTransactionsInBulk(
+    const payeeRules = input.payee_rules
+      ? await payeeRulesSchema.validateAsync(JSON.parse(input.payee_rules))
+      : [];
+    const { imported, skipped, created_ids } = await TransactionService.importTransactionsWithPayeeRules(
       sessionData.userId,
-      JSON.parse(input.trx_list)
+      JSON.parse(input.trx_list),
+      payeeRules
     );
     res.json({ imported, skipped, created_ids });
   } catch (err) {

@@ -8,7 +8,7 @@ import ConvertUtils from '../utils/convertUtils.js';
 import AccountService from './accountService.js';
 import CategoryService from './categoryService.js';
 import EntityService from './entityService.js';
-import RuleService from './ruleService.js';
+import RuleService, { type PayeeRuleInput } from './ruleService.js';
 import TagService, { Tag } from './tagService.js';
 import { getExistingExternalIds } from './phonePeImportService.js';
 import UserService from './userService.js';
@@ -556,6 +556,22 @@ const createTransactionsInBulk = async (
 
     return { imported: importedCnt, skipped: skippedCnt, created_ids: createdIds };
   }, dbClient, { timeout: 60_000, maxWait: 10_000 });
+
+/** Imports the transactions and saves the payee rules chosen during review as one all-or-nothing unit. */
+const importTransactionsWithPayeeRules = async (
+  userId: bigint,
+  trxList: Array<CreateTransactionType>,
+  payeeRules: Array<PayeeRuleInput>
+) =>
+  performDatabaseRequest(
+    async (prismaTx) => {
+      const result = await createTransactionsInBulk(userId, trxList, prismaTx);
+      await RuleService.savePayeeRules(userId, payeeRules, prismaTx);
+      return result;
+    },
+    undefined,
+    { timeout: 60_000, maxWait: 10_000 }
+  );
 
 const deleteTransaction = async (userId: bigint, transactionId: number, dbClient = undefined) => {
   await performDatabaseRequest(async (prismaTx) => {
@@ -1168,6 +1184,7 @@ export default {
   autoCategorizeTransaction,
   autoCategorizeTransactionList,
   createTransactionsInBulk,
+  importTransactionsWithPayeeRules,
   getYearOfFirstTransactionForUser,
   getDateTimestampOfFirstTransactionForUser,
   deleteAllTransactionsFromUser,

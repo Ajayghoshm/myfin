@@ -300,6 +300,39 @@ describe("PhonePe import (preview / categorize)", () => {
       expect(await prisma.transactions.count()).toBe(FIXTURE_ROWS);
     });
 
+    test("importTransactionsWithPayeeRules saves the rules together with the transactions", async () => {
+      const list = await toCreateList();
+      const res = await TransactionService.importTransactionsWithPayeeRules(
+        user.user_id,
+        list,
+        [{ match_text: "SWIGGY", type: "E", is_essential: true }]
+      );
+      expect(res).toMatchObject({ imported: FIXTURE_ROWS, skipped: 0 });
+      const rules = await prisma.rules.findMany({ where: { users_user_id: user.user_id } });
+      expect(rules).toHaveLength(1);
+      expect(rules[0]).toMatchObject({ matcher_description_value: "SWIGGY", assign_is_essential: true });
+    });
+
+    test("importTransactionsWithPayeeRules with no rules behaves like createTransactionsInBulk", async () => {
+      const list = await toCreateList();
+      const res = await TransactionService.importTransactionsWithPayeeRules(user.user_id, list, []);
+      expect(res).toMatchObject({ imported: FIXTURE_ROWS, skipped: 0 });
+      expect(await prisma.rules.count()).toBe(0);
+    });
+
+    test("an invalid rule rolls back the imported transactions", async () => {
+      const list = await toCreateList();
+      await expectThrowErrorCode(
+        () =>
+          TransactionService.importTransactionsWithPayeeRules(user.user_id, list, [
+            { match_text: "SWIGGY", type: "E", category_id: 999999n },
+          ]),
+        400
+      );
+      expect(await prisma.transactions.count()).toBe(0);
+      expect(await prisma.rules.count()).toBe(0);
+    });
+
     test("top-up transfer moves 4998 from bank3300 to upiLite", async () => {
       const list = await toCreateList();
       const topUp = list.filter((t) => t.external_id === LITE_TOPUP_ID);
