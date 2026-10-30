@@ -45,6 +45,8 @@ export interface BackupData {
   transactions?: Prisma.transactionsGetPayload<object>[];
   /** Balance checks. Absent in backups made before balance check. */
   balance_checks?: Prisma.balance_checksGetPayload<object>[];
+  /** Import instrument to account mappings. Absent in older backups. */
+  import_instrument_mappings?: { source: string; instrument_key: string; accounts_account_id: bigint }[];
   /** Person/merchant corrections. Absent in backups made before insights. */
   payee_classifications?: { payee_key: string; kind: string }[];
   /** Yearly (sinking fund) costs and dismissed suggestions. Absent in older backups. */
@@ -372,6 +374,11 @@ class BackupManager {
       balance_checks: await dbClient.balance_checks.findMany({
         where: { accounts: { users_user_id: userId } },
         orderBy: { check_id: 'asc' },
+      }),
+      import_instrument_mappings: await dbClient.import_instrument_mappings.findMany({
+        where: { users_user_id: userId },
+        select: { source: true, instrument_key: true, accounts_account_id: true },
+        orderBy: { mapping_id: 'asc' },
       }),
       payee_classifications: await dbClient.payee_classifications.findMany({
         where: { users_user_id: userId },
@@ -1521,6 +1528,29 @@ class BackupManager {
         ];
       });
       await dbClient.milestones.createMany({ data: restored, skipDuplicates: true });
+    }
+    // endregion
+
+    // region Import instrument mappings
+    for (const m of data.import_instrument_mappings ?? []) {
+      const accountId = accountIdMap.get(m.accounts_account_id);
+      if (accountId == null) continue;
+      await dbClient.import_instrument_mappings.upsert({
+        where: {
+          users_user_id_source_instrument_key: {
+            users_user_id: userId,
+            source: m.source,
+            instrument_key: m.instrument_key,
+          },
+        },
+        create: {
+          users_user_id: userId,
+          source: m.source,
+          instrument_key: m.instrument_key,
+          accounts_account_id: accountId,
+        },
+        update: { accounts_account_id: accountId },
+      });
     }
     // endregion
 

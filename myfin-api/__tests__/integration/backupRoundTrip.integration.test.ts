@@ -71,6 +71,14 @@ describe('Backup JSON round trip', () => {
     } as never);
     await BalanceCheckService.writeOff(uid, bank.account_id, 90);
     await BalanceCheckService.recordCheck(uid, bank.account_id, 90);
+    await prisma.import_instrument_mappings.create({
+      data: {
+        users_user_id: uid,
+        source: 'phonepe',
+        instrument_key: 'hdfc-1234',
+        accounts_account_id: bank.account_id,
+      },
+    });
   };
 
   const assertIntact = async () => {
@@ -91,6 +99,10 @@ describe('Backup JSON round trip', () => {
     expect(
       await prisma.balance_checks.count({ where: { accounts_account_id: account.account_id } })
     ).toBe(2);
+    const mapping = await prisma.import_instrument_mappings.findFirstOrThrow({
+      where: { users_user_id: uid, source: 'phonepe', instrument_key: 'hdfc-1234' },
+    });
+    expect(mapping.accounts_account_id).toBe(account.account_id);
   };
 
   test('restoreUser from a JSON round-tripped backup keeps profile and Phase A fields', async () => {
