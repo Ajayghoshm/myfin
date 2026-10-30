@@ -105,12 +105,12 @@ export const groupEssential = (rows: GroupableTrx[], group: PayeeGroup) =>
  * Applies a group edit. Without `overwrite` a field is only set on rows where it is blank
  * (`essential` counts as blank when false), so values from rules or earlier edits survive.
  */
-export const fillBlankRows = (
-  rows: GroupableTrx[],
+export const fillBlankRows = <T extends GroupableTrx>(
+  rows: T[],
   group: PayeeGroup,
   patch: GroupPatch,
   overwrite: boolean,
-): GroupableTrx[] => {
+): T[] => {
   const ids = new Set(group.rowIds);
   return rows.map((row) => {
     if (!ids.has(row.tempId)) return row;

@@ -15,7 +15,9 @@ import {
   Autocomplete,
   Checkbox,
   FilterOptionsState,
+  FormControlLabel,
   Stack,
+  Switch,
   TextField,
   Typography,
   useTheme,
@@ -35,6 +37,15 @@ import GenericConfirmationDialog from '../../../components/GenericConfirmationDi
 import { useImportTransactionsStep2 } from '../../../services/trx/trxHooks.ts';
 import { inferTrxTypeByAttributes } from '../../../utils/transactionUtils.ts';
 import { TransactionType } from '../../../services/trx/trxServices.ts';
+import ImportTrxStep2PayeeGroups from './ImportTrxStep2PayeeGroups.tsx';
+import {
+  buildPayeeGroups,
+  fillBlankRows,
+  GroupPatch,
+  PayeeGroup,
+  toPayeeRules,
+  TouchedFields,
+} from './payeeGroups.ts';
 import ImportTrxStep2AccountsCell from './ImportTrxStep2AccountsCell.tsx';
 import { useFormatNumberAsCurrency } from '../../../utils/textHooks.ts';
 
@@ -55,6 +66,10 @@ type ImportedTrx = {
   accountTo?: IdLabelPair;
   essential: boolean;
   externalId?: string;
+  // PhonePe only: set when the row has a payee that rows can be grouped by
+  type?: TransactionType;
+  payee?: string | null;
+  payeeMatch?: string | null;
 };
 
 export type ImportTrxStep2Result = {
@@ -292,6 +307,15 @@ const ImportTrxStep2 = (props: Props) => {
   const formatNumberAsCurrency = useFormatNumberAsCurrency();
   const [isConfirmationDialogOpen, setConfirmationDialogOpen] = useState(false);
   const [transactions, setTransactions] = useState<ImportedTrx[]>([]);
+  const [groupByPayee, setGroupByPayee] = useState(false);
+  // Group fields the user changed on a group line (these become remembered rules)
+  const [touchedGroups, setTouchedGroups] = useState<
+    Record<string, TouchedFields>
+  >({});
+  // Last choice made per group, so "Apply to all rows" knows what to copy
+  const [lastGroupPatches, setLastGroupPatches] = useState<
+    Record<string, GroupPatch>
+  >({});
 
   const filteredTransactions = useMemo(
     () => transactions.filter((trx) => trx.selected),
@@ -399,6 +423,9 @@ const ImportTrxStep2 = (props: Props) => {
           ),
         }),
       externalId: item.external_id,
+      type: item.type,
+      payee: item.payee,
+      payeeMatch: item.payee_match,
     }));
 
     setTransactions(trx);
@@ -541,6 +568,82 @@ const ImportTrxStep2 = (props: Props) => {
     });
   }, [transactions]);
 
+  const payeeGroups = useMemo(
+    () => buildPayeeGroups(transactions),
+    [transactions],
+  );
+
+  const applyGroupPatch = useCallback(
+    (group: PayeeGroup, patch: GroupPatch, overwrite: boolean) => {
+      setTransactions((prev) =>
+        fillBlankRows(prev, group, patch, overwrite).map((trx) =>
+          group.rowIds.includes(trx.tempId)
+            ? { ...trx, essential: trx.essential && canMarkAsEssential(trx) }
+            : trx,
+        ),
+      );
+      const touchedFields = Object.fromEntries(
+        Object.keys(patch).map((field) => [field, true]),
+      );
+      setTouchedGroups((prev) => ({
+        ...prev,
+        [group.key]: { ...prev[group.key], ...touchedFields },
+      }));
+      setLastGroupPatches((prev) => ({
+        ...prev,
+        [group.key]: { ...prev[group.key], ...patch },
+      }));
+    },
+    [],
+  );
+
+  // Picking a value fills the blank rows only; clearing the picker clears the whole group
+  const handleGroupCategoryChange = useCallback(
+    async (group: PayeeGroup, value: CreatableOption | null) => {
+      const resolved = await categoryCreateRef.current.resolve(
+        value,
+        categories,
+      );
+      if (resolved === undefined) return;
+      applyGroupPatch(
+        group,
+        { category: resolved ?? undefined },
+        resolved == null,
+      );
+    },
+    [categories, applyGroupPatch],
+  );
+
+  const handleGroupEntityChange = useCallback(
+    async (group: PayeeGroup, value: CreatableOption | null) => {
+      const resolved = await entityCreateRef.current.resolve(value, entities);
+      if (resolved === undefined) return;
+      applyGroupPatch(group, { entity: resolved ?? undefined }, resolved == null);
+    },
+    [entities, applyGroupPatch],
+  );
+
+  const handleGroupEssentialChange = useCallback(
+    (group: PayeeGroup, checked: boolean) =>
+      applyGroupPatch(group, { essential: checked }, !checked),
+    [applyGroupPatch],
+  );
+
+  const groupRows = (group: PayeeGroup) =>
+    transactions.filter((trx) => group.rowIds.includes(trx.tempId));
+
+  const canApplyGroupToAll = (group: PayeeGroup) => {
+    const patch = lastGroupPatches[group.key];
+    if (!patch) return false;
+    return groupRows(group).some(
+      (trx) =>
+        ('category' in patch && trx.category?.id !== patch.category?.id) ||
+        ('entity' in patch && trx.entity?.id !== patch.entity?.id) ||
+        ('essential' in patch &&
+          trx.essential !== (patch.essential && canMarkAsEssential(trx))),
+    );
+  };
+
   const rows = useMemo(
     () =>
       transactions.map((item) => ({
@@ -565,6 +668,11 @@ const ImportTrxStep2 = (props: Props) => {
       })),
     [transactions],
   );
+
+  const ungroupedRows = useMemo(() => {
+    const grouped = new Set(payeeGroups.flatMap((group) => group.rowIds));
+    return rows.filter((row) => !grouped.has(row.id));
+  }, [rows, payeeGroups]);
 
   const columns: GridColDef[] = useMemo(
     () => [
@@ -720,6 +828,7 @@ const ImportTrxStep2 = (props: Props) => {
         account_to_id: trx.accountTo?.id,
         external_id: trx.externalId,
       })),
+      payeeRules: toPayeeRules(transactions, payeeGroups, touchedGroups),
     });
   };
 
@@ -763,16 +872,74 @@ const ImportTrxStep2 = (props: Props) => {
             </Typography>
           </Grid>
         )}
-        <Grid size={12}>
-          <MyFinStaticTable
-            isRefetching={false}
-            rows={rows}
-            columns={columns}
-            paginationModel={{
-              pageSize: 50,
-            }}
-          />
-        </Grid>
+        {payeeGroups.length > 0 && (
+          <Grid>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={groupByPayee}
+                  onChange={(_event, checked) => setGroupByPayee(checked)}
+                />
+              }
+              label={t('importTransactions.groupByPayee')}
+            />
+          </Grid>
+        )}
+        {groupByPayee && payeeGroups.length > 0 ? (
+          <>
+            <Grid size={12}>
+              <ImportTrxStep2PayeeGroups
+                groups={payeeGroups}
+                transactions={transactions}
+                categoryOptions={categoryOptions}
+                entityOptions={entityOptions}
+                filterCategoryOptions={filterCategoryOptions}
+                filterEntityOptions={filterEntityOptions}
+                onCategoryChange={(group, value) =>
+                  void handleGroupCategoryChange(group, value)
+                }
+                onEntityChange={(group, value) =>
+                  void handleGroupEntityChange(group, value)
+                }
+                onEssentialChange={handleGroupEssentialChange}
+                onApplyToAll={(group) =>
+                  applyGroupPatch(group, lastGroupPatches[group.key], true)
+                }
+                canApplyToAll={canApplyGroupToAll}
+                renderRows={(group) => (
+                  <MyFinStaticTable
+                    isRefetching={false}
+                    rows={rows.filter((row) => group.rowIds.includes(row.id))}
+                    columns={columns}
+                    paginationModel={{ pageSize: 50 }}
+                  />
+                )}
+              />
+            </Grid>
+            {/* Rows with no group (e.g. transfers) stay editable one by one */}
+            {ungroupedRows.length > 0 && (
+              <Grid size={12}>
+                <MyFinStaticTable
+                  isRefetching={false}
+                  rows={ungroupedRows}
+                  columns={columns}
+                  paginationModel={{ pageSize: 50 }}
+                />
+              </Grid>
+            )}
+          </>
+        ) : (
+          <Grid size={12}>
+            <MyFinStaticTable
+              isRefetching={false}
+              rows={rows}
+              columns={columns}
+              paginationModel={{
+                pageSize: 50,
+              }}
+            />
+          </Grid>
+        )}
         <Grid sx={{ display: 'flex', justifyContent: 'center' }}>
           <Button
             variant="contained"

@@ -470,7 +470,14 @@
     "dateFormatAmbiguousChip": "Ambiguous date format — click to select",
     "dateFormatSampleDate": "Sample date from your data: {{date}}",
     "dateFormatNoValidFormat": "No valid date format could be detected for your data.",
-    "dateFormatSelectAction": "Select"
+    "dateFormatSelectAction": "Select",
+    "phonePePayee": "Payee",
+    "groupByPayee": "Group by payee",
+    "groupMixed": "Mixed",
+    "applyToAllRows": "Apply to all rows",
+    "groupTransactionsCount_one": "{{count}} transaction",
+    "groupTransactionsCount_other": "{{count}} transactions",
+    "payeeGroupsHint": "Setting a value fills the blank rows of the group and is remembered for future imports. Rows that already have a value keep it."
   },
   "login": {
     "fillAllFields": "Fill all fields and try again.",

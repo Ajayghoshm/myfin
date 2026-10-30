@@ -466,7 +466,14 @@
     "dateFormatAmbiguousChip": "Formato de data ambíguo — clique para selecionar",
     "dateFormatSampleDate": "Data exemplo dos seus dados: {{date}}",
     "dateFormatNoValidFormat": "Não foi possível detetar um formato de data válido para os seus dados.",
-    "dateFormatSelectAction": "Selecionar"
+    "dateFormatSelectAction": "Selecionar",
+    "phonePePayee": "Beneficiário",
+    "groupByPayee": "Agrupar por beneficiário",
+    "groupMixed": "Misto",
+    "applyToAllRows": "Aplicar a todas as linhas",
+    "groupTransactionsCount_one": "{{count}} transação",
+    "groupTransactionsCount_other": "{{count}} transações",
+    "payeeGroupsHint": "Definir um valor preenche as linhas em branco do grupo e fica guardado para futuras importações. As linhas que já têm valor mantêm-no."
   },
   "login": {
     "fillAllFields": "Não deixe campos em branco",
