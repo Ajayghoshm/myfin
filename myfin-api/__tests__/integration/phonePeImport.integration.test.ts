@@ -98,6 +98,11 @@ describe("PhonePe import (preview / categorize)", () => {
     expect(swiggy.type).toBe(MYFIN.TRX_TYPES.EXPENSE);
     expect(swiggy.selectedAccountFromID).toBe(bank3300.account_id);
     expect(swiggy.amount).toBe(121);
+    expect(swiggy.payee).toBe("SWIGGY");
+    expect(swiggy.payee_match).toBe("SWIGGY");
+    expect(topUp.payee).toBeNull();
+    expect(topUp.payee_match).toBeNull();
+    expect(cardBill.payee).toBeNull();
 
     const credit = byId(CREDIT_ID);
     expect(credit.type).toBe(MYFIN.TRX_TYPES.INCOME);

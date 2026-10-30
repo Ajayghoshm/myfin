@@ -146,6 +146,21 @@ export function classifyPhonePeRow(row: PhonePeRow): ClassifiedPhonePeRow {
   return { ...row, type: MYFIN.TRX_TYPES.INCOME as ClassifiedPhonePeRow["type"], fromKey: null, toKey: row.instrumentKey };
 }
 
+const PAYEE_PREFIX = /^(?:Paid to|Received from|Requested by|Payment to)\s+/i;
+const MIN_PAYEE_RULE_LENGTH = 4;
+
+/**
+ * The counterparty of a row. `matchText` is what an auto-categorize rule should look for in future
+ * descriptions: the payee, or the whole description when the payee is too short to match safely.
+ * It is null when the description has no payee prefix (e.g. "Electricity bill paid 1234567").
+ */
+export function extractPayee(description: string): { payee: string; matchText: string | null } {
+  const cleaned = description.replace(/\s+/g, " ").trim();
+  const payee = cleaned.replace(PAYEE_PREFIX, "").trim();
+  if (payee === cleaned || payee === "") return { payee: cleaned, matchText: null };
+  return { payee, matchText: payee.length >= MIN_PAYEE_RULE_LENGTH ? payee : cleaned };
+}
+
 export function instrumentKeysOf(rows: ClassifiedPhonePeRow[]): string[] {
   const seen = new Set<string>();
   for (const r of rows) {

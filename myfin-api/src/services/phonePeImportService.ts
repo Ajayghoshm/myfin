@@ -1,5 +1,6 @@
 import type { Prisma } from "../generated/prisma/client.js";
 import { performDatabaseRequest, prisma } from "../config/prisma.js";
+import { MYFIN } from "../consts.js";
 import APIError from "../errorHandling/apiError.js";
 import ConvertUtils from "../utils/convertUtils.js";
 import AccountService from "./accountService.js";
@@ -9,6 +10,7 @@ import TransactionService, { RuleInstructions } from "./transactionService.js";
 import {
   ClassifiedPhonePeRow,
   classifyPhonePeRow,
+  extractPayee,
   instrumentKeysOf,
   parsePhonePeCsv,
 } from "./importers/phonePeImporter.js";
@@ -25,8 +27,14 @@ export type PhonePePreview = {
   new_rows: number;
 };
 
+export type PhonePeFillItem = RuleInstructions & {
+  external_id: string;
+  payee: string | null; // null for transfers
+  payee_match: string | null; // text a payee rule should match on; null when the row has no payee prefix
+};
+
 export type PhonePeCategorizeResult = {
-  fillData: Array<RuleInstructions & { external_id: string }>;
+  fillData: Array<PhonePeFillItem>;
   categories: Array<{ category_id: bigint; name: string }>;
   entities: Array<{ entity_id: bigint; name: string }>;
   accounts: Array<{ account_id: bigint; name: string; balance: number }>;
@@ -170,7 +178,7 @@ export async function categorizePhonePeImport(
   // Bounded concurrency so a large statement cannot exhaust the connection pool.
   // Passing the plain `prisma` client makes autoCategorizeTransaction run its (read-only) rule
   // lookup directly instead of opening an interactive transaction per row.
-  const fillData: Array<RuleInstructions & { external_id: string }> = [];
+  const fillData: PhonePeFillItem[] = [];
   for (let i = 0; i < newRows.length; i += CATEGORIZE_CONCURRENCY) {
     const chunk = newRows.slice(i, i + CATEGORIZE_CONCURRENCY);
     const results = await Promise.all(
@@ -187,7 +195,13 @@ export async function categorizePhonePeImport(
           categories,
           prisma
         );
-        return { ...instructions, external_id: row.externalId };
+        const payee = row.type === MYFIN.TRX_TYPES.TRANSFER ? null : extractPayee(row.description);
+        return {
+          ...instructions,
+          external_id: row.externalId,
+          payee: payee?.payee ?? null,
+          payee_match: payee?.matchText ?? null,
+        };
       })
     );
     fillData.push(...results);

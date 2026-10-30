@@ -8,6 +8,7 @@ import utc from "dayjs/plugin/utc.js";
 import { describe, expect, test } from "vitest";
 import {
   classifyPhonePeRow,
+  extractPayee,
   instrumentKeysOf,
   parsePhonePeCsv,
   type PhonePeRow,
@@ -197,5 +198,34 @@ describe("instrumentKeysOf", () => {
       classifyPhonePeRow({ ...base, direction: "CREDIT", instrumentKey: "XXXXXX6759" }),
     ];
     expect(instrumentKeysOf(rows)).toEqual(["XXXXXXXXXXX3300", "UPI Lite", "XXXXXXXXXXXX2001", "XXXXXX6759"]);
+  });
+});
+
+describe("extractPayee", () => {
+  test("strips the Paid to prefix", () => {
+    expect(extractPayee("Paid to SWIGGY")).toEqual({ payee: "SWIGGY", matchText: "SWIGGY" });
+  });
+
+  test("normalises case and whitespace across prefixes", () => {
+    const a = extractPayee("Paid to VEG BASKET ");
+    const b = extractPayee("Payment to veg  basket");
+    expect(a.payee).toBe("VEG BASKET");
+    expect(b.payee.toLowerCase()).toBe(a.payee.toLowerCase());
+  });
+
+  test("handles Received from and Requested by", () => {
+    expect(extractPayee("Received from PERSON E").payee).toBe("PERSON E");
+    expect(extractPayee("Requested by PERSON A").payee).toBe("PERSON A");
+  });
+
+  test("uses the full description as match text when the payee is shorter than 4 characters", () => {
+    expect(extractPayee("Paid to AB")).toEqual({ payee: "AB", matchText: "Paid to AB" });
+  });
+
+  test("a description without a payee prefix is its own payee and has no match text", () => {
+    expect(extractPayee("Electricity bill paid 1234567")).toEqual({
+      payee: "Electricity bill paid 1234567",
+      matchText: null,
+    });
   });
 });
