@@ -179,10 +179,23 @@ export async function applyRuleChanges(
     });
   }
 
+  // Rows getting identical values are written together; a long history can still take a while
+  const groups = new Map<string, { ids: bigint[]; data: ReturnType<typeof diffOf> }>();
+  for (const { id, data } of updates) {
+    const key = JSON.stringify(data, (_k, v) => (typeof v === 'bigint' ? String(v) : v));
+    const group = groups.get(key) ?? { ids: [], data };
+    group.ids.push(id);
+    groups.set(key, group);
+  }
   // No balance recalculation: accounts, type and amount are untouched
-  await performDatabaseRequest(async (tx) => {
-    for (const { id, data } of updates) await tx.transactions.update({ where: { transaction_id: id }, data });
-  });
+  await performDatabaseRequest(
+    async (tx) => {
+      for (const { ids: groupIds, data } of groups.values())
+        await tx.transactions.updateMany({ where: { transaction_id: { in: groupIds } }, data });
+    },
+    undefined,
+    { timeout: 60_000, maxWait: 10_000 }
+  );
   return { updated: updates.length, skipped: ids.length - updates.length };
 }
 

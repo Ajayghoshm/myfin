@@ -185,4 +185,21 @@ describe('apply rules to existing transactions', () => {
     expect(after.entities_entity_id).toBe(shopId);
     expect(after.categories_category_id).toBe(foodId);
   });
+
+  test('apply handles a few hundred ids in one call', async () => {
+    await rule(userId, 'swiggy', { assign_category_id: foodId });
+    const count = 300;
+    await prisma.transactions.createMany({
+      data: Array.from({ length: count }, (_, n) => ({
+        date_timestamp: BigInt(JUNE_10 + n),
+        amount: 5000n,
+        type: E,
+        description: `Swiggy ${n}`,
+        accounts_account_from_id: bankId,
+      })),
+    });
+    const ids = (await prisma.transactions.findMany({ select: { transaction_id: true } })).map((r) => r.transaction_id);
+    expect(await applyRuleChanges(userId, ids)).toEqual({ updated: count, skipped: 0 });
+    expect(await prisma.transactions.count({ where: { categories_category_id: foodId } })).toBe(count);
+  });
 });
