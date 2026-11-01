@@ -1,6 +1,7 @@
 import joi from 'joi';
 import APIError from '../errorHandling/apiError.js';
 import RuleService from '../services/ruleService.js';
+import { applyRuleChanges, previewRuleApplication } from '../services/ruleApplyService.js';
 import Logger from '../utils/Logger.js';
 import CommonsController from './commonsController.js';
 
@@ -105,9 +106,37 @@ const updateRule = async (req, res, next) => {
   }
 };
 
+// APPLY TO EXISTING TRANSACTIONS
+const previewApplyRules = async (req, res, next) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    res.json(await previewRuleApplication(sessionData.userId));
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
+const applyRulesSchema = joi.object({
+  transaction_ids: joi.array().items(joi.string().pattern(/^\d+$/)).max(2000).required(),
+});
+
+const applyRules = async (req, res, next) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    const input = await applyRulesSchema.validateAsync(req.body);
+    res.json(await applyRuleChanges(sessionData.userId, input.transaction_ids.map((id: string) => BigInt(id))));
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
 export default {
   getAllRulesForUser,
   createRule,
   deleteRule,
   updateRule,
+  previewApplyRules,
+  applyRules,
 };

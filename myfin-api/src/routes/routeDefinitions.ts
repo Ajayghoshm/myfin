@@ -378,6 +378,8 @@ export const routeGroups: RouteGroup[] = [
       { method: 'post', path: '/', handlerName: 'createRule' },
       { method: 'delete', path: '/', handlerName: 'deleteRule' },
       { method: 'put', path: '/', handlerName: 'updateRule' },
+      { method: 'post', path: '/apply-preview', handlerName: 'previewApplyRules' },
+      { method: 'post', path: '/apply', handlerName: 'applyRules' },
     ],
   },
   {
