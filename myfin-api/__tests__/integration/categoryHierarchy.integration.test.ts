@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test } from 'vitest';
 import { prisma } from '../../src/config/prisma.js';
 import CategoryService from '../../src/services/categoryService.js';
 import UserService from '../../src/services/userService.js';
+import BackupManager from '../../src/utils/backupManager.js';
 
 describe('Category hierarchy', () => {
   let user: { user_id: bigint; username: string };
@@ -143,15 +144,22 @@ describe('Category hierarchy', () => {
         },
       });
 
-    const mkItem = (budgetId: bigint, categoryId: bigint, label: string, sortOrder: number) =>
+    const mkItem = (
+      budgetId: bigint,
+      categoryId: bigint,
+      label: string,
+      sortOrder: number,
+      amount = 100,
+      direction: 'EXPENSE' | 'INCOME' = 'EXPENSE'
+    ) =>
       prisma.budget_category_items.create({
         data: {
           budgets_budget_id: budgetId,
           budgets_users_user_id: user.user_id,
           categories_category_id: categoryId,
-          direction: 'EXPENSE',
+          direction,
           label,
-          amount: 100,
+          amount,
           sort_order: sortOrder,
         },
       });
@@ -287,16 +295,109 @@ describe('Category hierarchy', () => {
       const tgt = await mk('Tgt');
       const b1 = await mkBudget(1);
       const b2 = await mkBudget(2);
-      await mkRow(b1.budget_id, src.category_id, 10, 20, 30);
-      await mkRow(b1.budget_id, tgt.category_id, 1, 2, 3);
+      await mkRow(b1.budget_id, src.category_id, 10, 100, 30);
+      await mkRow(b1.budget_id, tgt.category_id, 1, 50, 3);
       await mkRow(b2.budget_id, src.category_id, 5, 5, 5);
-      await mkItem(b1.budget_id, src.category_id, 'a', 1);
-      await mkItem(b1.budget_id, tgt.category_id, 'b', 1);
-      await mkItem(b2.budget_id, src.category_id, 'c', 1);
+      await mkItem(b1.budget_id, src.category_id, 'a', 1, 100);
+      await mkItem(b1.budget_id, tgt.category_id, 'b', 1, 50);
+      await mkItem(b2.budget_id, src.category_id, 'c', 1, 5);
       await CategoryService.mergeCategories(user.user_id, src.category_id, tgt.category_id);
       const items = await prisma.budget_category_items.findMany({ orderBy: { label: 'asc' } });
       expect(items.map((i) => i.label)).toEqual(['a', 'b', 'c']);
       expect(items.every((i) => i.categories_category_id === tgt.category_id)).toBe(true);
+    });
+
+    const checkInvariant = async (budgetId: bigint, categoryId: bigint) => {
+      const row = await prisma.budgets_has_categories.findFirstOrThrow({
+        where: { budgets_budget_id: budgetId, categories_category_id: categoryId },
+      });
+      const items = await prisma.budget_category_items.findMany({
+        where: { budgets_budget_id: budgetId, categories_category_id: categoryId },
+        orderBy: { sort_order: 'asc' },
+      });
+      const sum = (d: 'EXPENSE' | 'INCOME') =>
+        items.filter((i) => i.direction === d).reduce((a, i) => a + i.amount, 0n);
+      return { row, items, debit: sum('EXPENSE'), credit: sum('INCOME') };
+    };
+
+    test('merge keeps planned == item sum when only the source has items', async () => {
+      const src = await mk('Src');
+      const tgt = await mk('Tgt');
+      const b = await mkBudget(1);
+      await mkRow(b.budget_id, src.category_id, 0, 100, 0);
+      await mkRow(b.budget_id, tgt.category_id, 0, 500, 0);
+      await mkItem(b.budget_id, src.category_id, 'Lunch', 0, 100);
+      await CategoryService.mergeCategories(user.user_id, src.category_id, tgt.category_id);
+      const r = await checkInvariant(b.budget_id, tgt.category_id);
+      expect(r.row.planned_amount_debit).toBe(600n);
+      expect(r.debit).toBe(600n);
+      expect(r.items.map((i) => i.label)).toEqual(['Lunch', 'Tgt']);
+      expect(r.items[1].amount).toBe(500n);
+      expect(r.items[1].sort_order).toBeGreaterThan(r.items[0].sort_order);
+    });
+
+    test('merge keeps planned == item sum when only the target has items', async () => {
+      const src = await mk('Src');
+      const tgt = await mk('Tgt');
+      const b = await mkBudget(1);
+      await mkRow(b.budget_id, src.category_id, 40, 300, 0);
+      await mkRow(b.budget_id, tgt.category_id, 0, 100, 0);
+      await mkItem(b.budget_id, tgt.category_id, 'Rent', 0, 100);
+      await CategoryService.mergeCategories(user.user_id, src.category_id, tgt.category_id);
+      const r = await checkInvariant(b.budget_id, tgt.category_id);
+      expect(r.row.planned_amount_debit).toBe(400n);
+      expect(r.debit).toBe(400n);
+      // credit side had no items on either side: no items created
+      expect(r.row.planned_amount_credit).toBe(40n);
+      expect(r.items.filter((i) => i.direction === 'INCOME')).toHaveLength(0);
+      expect(r.items.find((i) => i.label === 'Src')?.amount).toBe(300n);
+    });
+
+    test('merge keeps the sum when both sides have items', async () => {
+      const src = await mk('Src');
+      const tgt = await mk('Tgt');
+      const b = await mkBudget(1);
+      await mkRow(b.budget_id, src.category_id, 0, 100, 0);
+      await mkRow(b.budget_id, tgt.category_id, 0, 70, 0);
+      await mkItem(b.budget_id, src.category_id, 'a', 0, 100);
+      await mkItem(b.budget_id, tgt.category_id, 'b', 0, 70);
+      await CategoryService.mergeCategories(user.user_id, src.category_id, tgt.category_id);
+      const r = await checkInvariant(b.budget_id, tgt.category_id);
+      expect(r.row.planned_amount_debit).toBe(170n);
+      expect(r.debit).toBe(170n);
+      expect(r.items).toHaveLength(2);
+      expect(new Set(r.items.map((i) => i.sort_order)).size).toBe(2);
+    });
+
+    test('merge creates no items when neither side has items', async () => {
+      const src = await mk('Src');
+      const tgt = await mk('Tgt');
+      const b = await mkBudget(1);
+      await mkRow(b.budget_id, src.category_id, 5, 100, 0);
+      await mkRow(b.budget_id, tgt.category_id, 5, 70, 0);
+      await CategoryService.mergeCategories(user.user_id, src.category_id, tgt.category_id);
+      expect(await prisma.budget_category_items.count()).toBe(0);
+    });
+
+    test('backup then restore succeeds after a mixed merge', async () => {
+      const src = await mk('Src');
+      const tgt = await mk('Tgt');
+      const b = await mkBudget(1);
+      await mkRow(b.budget_id, src.category_id, 0, 100, 0);
+      await mkRow(b.budget_id, tgt.category_id, 20, 500, 0);
+      await mkItem(b.budget_id, src.category_id, 'Lunch', 0, 100);
+      await CategoryService.mergeCategories(user.user_id, src.category_id, tgt.category_id);
+      await prisma.categories.updateMany({
+        where: { users_user_id: user.user_id },
+        data: { status: 'Ativa' },
+      });
+      const backup = JSON.parse(JSON.stringify(await BackupManager.createBackup(user.user_id)));
+      await UserService.restoreUser(user.user_id, backup);
+      const row = await prisma.budgets_has_categories.findFirstOrThrow({
+        where: { budgets_users_user_id: user.user_id },
+      });
+      expect(row.planned_amount_debit).toBe(600n);
+      expect(await prisma.budget_category_items.count()).toBe(2);
     });
 
     test('source category no longer exists after merge', async () => {

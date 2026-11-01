@@ -113,11 +113,11 @@ class CategoryService {
       const [source, target] = await Promise.all([
         tx.categories.findFirst({
           where: { category_id: sourceId, users_user_id: userId },
-          select: { category_id: true },
+          select: { category_id: true, name: true },
         }),
         tx.categories.findFirst({
           where: { category_id: targetId, users_user_id: userId },
-          select: { parent_category_id: true },
+          select: { parent_category_id: true, name: true },
         }),
       ]);
       if (!source || !target) {
@@ -185,7 +185,49 @@ class CategoryService {
             },
           },
         });
+        let movedItemsOffset = 0;
         if (targetRow) {
+          const [srcItems, tgtItems] = await Promise.all([
+            tx.budget_category_items.findMany({
+              where: { ...key, categories_category_id: sourceId },
+            }),
+            tx.budget_category_items.findMany({
+              where: { ...key, categories_category_id: targetId },
+            }),
+          ]);
+          const maxTargetOrder = tgtItems.reduce((m, i) => Math.max(m, i.sort_order), -1);
+          movedItemsOffset = maxTargetOrder + 1;
+          let nextOrder = movedItemsOffset + srcItems.length;
+          const leftovers = [
+            {
+              direction: 'INCOME' as const,
+              srcAmount: row.planned_amount_credit,
+              tgtAmount: targetRow.planned_amount_credit,
+            },
+            {
+              direction: 'EXPENSE' as const,
+              srcAmount: row.planned_amount_debit,
+              tgtAmount: targetRow.planned_amount_debit,
+            },
+          ];
+          // Keep "planned amount == sum of breakdown items" wherever items exist.
+          for (const { direction, srcAmount, tgtAmount } of leftovers) {
+            const srcHas = srcItems.some((i) => i.direction === direction);
+            const tgtHas = tgtItems.some((i) => i.direction === direction);
+            if (srcHas === tgtHas) continue;
+            const [amount, name] = srcHas ? [tgtAmount, target.name] : [srcAmount, source.name];
+            if (amount === 0n) continue;
+            await tx.budget_category_items.create({
+              data: {
+                ...key,
+                categories_category_id: targetId,
+                direction,
+                label: name,
+                amount,
+                sort_order: nextOrder++,
+              },
+            });
+          }
           await tx.budgets_has_categories.update({
             where: {
               budgets_budget_id_budgets_users_user_id_categories_category_id: {
@@ -212,7 +254,10 @@ class CategoryService {
         }
         await tx.budget_category_items.updateMany({
           where: { ...key, categories_category_id: sourceId },
-          data: { categories_category_id: targetId },
+          data: {
+            categories_category_id: targetId,
+            ...(movedItemsOffset > 0 ? { sort_order: { increment: movedItemsOffset } } : {}),
+          },
         });
         await tx.budgets_has_categories.delete({
           where: {
