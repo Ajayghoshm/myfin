@@ -15,6 +15,7 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
 import { Category } from '../../services/category/categoryServices.ts';
+import { Entity } from '../../services/trx/trxServices.ts';
 import {
   useApplyRules,
   useRuleApplyPreview,
@@ -27,6 +28,7 @@ type Props = {
   isOpen: boolean;
   onClose: () => void;
   categories: Category[];
+  entities: Entity[];
 };
 
 const ApplyRulesDialog = (props: Props) => {
@@ -50,6 +52,14 @@ const ApplyRulesDialog = (props: Props) => {
   );
   const categoryName = (id: string | null) =>
     id == null ? '-' : (categoryNames.get(String(id)) ?? '-');
+
+  const entityNames = useMemo(
+    () =>
+      new Map(props.entities.map((ent) => [String(ent.entity_id), ent.name])),
+    [props.entities],
+  );
+  const entityName = (id: string | null) =>
+    id == null ? '-' : (entityNames.get(String(id)) ?? '-');
 
   const toggle = (id: string) => {
     setExcluded((prev) => {
@@ -103,6 +113,8 @@ const ApplyRulesDialog = (props: Props) => {
                     <TableCell align="right">{t('common.amount')}</TableCell>
                     <TableCell>{t('rules.applyCurrentCategory')}</TableCell>
                     <TableCell>{t('rules.applyNewCategory')}</TableCell>
+                    <TableCell>{t('rules.applyCurrentEntity')}</TableCell>
+                    <TableCell>{t('rules.applyNewEntity')}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -130,6 +142,10 @@ const ApplyRulesDialog = (props: Props) => {
                       <TableCell>
                         {categoryName(change.new_category_id)}
                       </TableCell>
+                      <TableCell>
+                        {entityName(change.current_entity_id)}
+                      </TableCell>
+                      <TableCell>{entityName(change.new_entity_id)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

@@ -15,7 +15,7 @@ import CategoryServices, {
   EditCategoryRequest,
 } from './categoryServices.ts';
 
-const QUERY_KEY_GET_CATEGORIES = 'QUERY_KEY_GET_CATEGORIES';
+export const QUERY_KEY_GET_CATEGORIES = 'QUERY_KEY_GET_CATEGORIES';
 
 export function useGetCategories() {
   async function getCategories() {

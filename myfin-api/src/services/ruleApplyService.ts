@@ -87,22 +87,19 @@ const matchRow = (userId: bigint, row: Row, caches: Caches) =>
     prisma
   );
 
-// The category/entity/essential values the rule would write that differ from the stored ones
+// The category/entity values the rule would write that differ from the stored ones
 const diffOf = (
   row: Row,
   rule: {
     assign_category_id?: bigint | number | null;
     assign_entity_id?: bigint | number | null;
-    assign_is_essential?: boolean | null;
   }
 ) => {
-  const data: { categories_category_id?: bigint; entities_entity_id?: bigint; is_essential?: boolean } = {};
+  const data: { categories_category_id?: bigint; entities_entity_id?: bigint } = {};
   if (rule.assign_category_id != null && BigInt(rule.assign_category_id) !== row.categories_category_id)
     data.categories_category_id = BigInt(rule.assign_category_id);
   if (rule.assign_entity_id != null && BigInt(rule.assign_entity_id) !== row.entities_entity_id)
     data.entities_entity_id = BigInt(rule.assign_entity_id);
-  // A rule's essential flag defaults to false, so only an explicit true is treated as an assignment
-  if (rule.assign_is_essential === true && !row.is_essential) data.is_essential = true;
   return data;
 };
 
@@ -132,7 +129,8 @@ export async function previewRuleApplication(userId: bigint): Promise<{ changes:
       for (let j = 0; j < chunk.length; j++) {
         const row = chunk[j];
         const rule = rules[j];
-        if (!rule) continue;
+        // rule_id -1 is the name-based guess used at import time, not a rule the user has
+        if (!rule || Number(rule.rule_id) < 0) continue;
         const diff = diffOf(row, rule);
         if (diff.categories_category_id === undefined && diff.entities_entity_id === undefined) continue;
         if (changes.length >= MAX_CHANGES) return { changes, truncated: true };
@@ -174,7 +172,8 @@ export async function applyRuleChanges(
     const chunk = rows.slice(i, i + MATCH_CONCURRENCY);
     const rules = await Promise.all(chunk.map((row) => matchRow(userId, row, caches)));
     chunk.forEach((row, j) => {
-      const diff = rules[j] ? diffOf(row, rules[j]) : {};
+      const rule = rules[j];
+      const diff = rule && Number(rule.rule_id) >= 0 ? diffOf(row, rule) : {};
       if (Object.keys(diff).length > 0) updates.push({ id: row.transaction_id, data: diff });
     });
   }

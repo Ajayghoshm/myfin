@@ -1,4 +1,8 @@
-import { Flag, FlagOutlined, KeyboardDoubleArrowRight } from '@mui/icons-material';
+import {
+  Flag,
+  FlagOutlined,
+  KeyboardDoubleArrowRight,
+} from '@mui/icons-material';
 import { categoryPickerItems } from '../../../services/category/categoryTree.ts';
 import {
   CreatableOption,
@@ -58,10 +62,16 @@ import { AccountType } from '../../../services/auth/authServices.ts';
 import TransactionFlagsControl from '../flags/TransactionFlagsControl.tsx';
 import {
   applyInvestment,
+  clearInvestmentFields,
   FlagChoice,
   NO_FLAGS,
 } from '../flags/flagsModel.ts';
-import { effectiveChoice, flagItemsForCreated } from './importFlags.ts';
+import {
+  effectiveChoice,
+  flagItemsForCreated,
+  SkippedFlag,
+  skippedFlagsFor,
+} from './importFlags.ts';
 
 export type Props = {
   data: ImportTrxStep1Result;
@@ -91,11 +101,14 @@ type ImportedTrx = {
 export type ImportTrxStep2Result = {
   nrOfTrxImported: number;
   accountName: string;
+  // Loan/event marks the server refused, and whether the marks call itself failed
+  skippedFlags: SkippedFlag[];
+  flagsRequestFailed: boolean;
 };
 
 const DescriptionCell = memo(
   ({
-     id,
+    id,
     description,
     onInputChange,
     onBlur,
@@ -138,10 +151,10 @@ DescriptionCell.displayName = 'DescriptionCell';
 
 const DateCell = memo(
   ({
-     id,
-     value,
-     onChange,
-   }: {
+    id,
+    value,
+    onChange,
+  }: {
     id: number;
     value: number;
     onChange: (id: number, timestamp: number) => void;
@@ -172,10 +185,10 @@ DateCell.displayName = 'DateCell';
 
 const ValueCell = memo(
   ({
-     id,
-     value,
-     onDebouncedChange,
-   }: {
+    id,
+    value,
+    onDebouncedChange,
+  }: {
     id: number;
     value: number;
     onDebouncedChange: (id: number, value: number) => void;
@@ -218,16 +231,16 @@ type CreatableOptionsFilter = (
 
 const CategoryCell = memo(
   ({
-     id,
-     category,
-     entity,
-     categories,
-     entities,
-     filterCategoryOptions,
-     filterEntityOptions,
-     onCategoryChange,
-     onEntityChange,
-   }: {
+    id,
+    category,
+    entity,
+    categories,
+    entities,
+    filterCategoryOptions,
+    filterEntityOptions,
+    onCategoryChange,
+    onEntityChange,
+  }: {
     id: number;
     category: IdLabelPair | undefined;
     entity: IdLabelPair | undefined;
@@ -310,6 +323,7 @@ const FlagsCell = memo(
     trxType,
     description,
     investingAccounts,
+    fromAccountId,
     onChange,
   }: {
     id: number;
@@ -317,11 +331,13 @@ const FlagsCell = memo(
     trxType: TransactionType;
     description: string;
     investingAccounts: IdLabelPair[];
+    fromAccountId?: bigint;
     onChange: (id: number, choice: FlagChoice) => void;
   }) => {
     const { t } = useTranslation();
     const [anchor, setAnchor] = useState<HTMLElement | null>(null);
-    const flagged = effectiveChoice(choice, trxType).kind !== 'none' || !!choice.event;
+    const flagged =
+      effectiveChoice(choice, trxType).kind !== 'none' || !!choice.event;
     return (
       <>
         <Tooltip title={t('transactions.flags.title')}>
@@ -347,6 +363,7 @@ const FlagsCell = memo(
               description={description}
               investingAccounts={investingAccounts}
               showInvestment
+              fromAccountId={fromAccountId}
             />
           </Stack>
         </Popover>
@@ -360,8 +377,9 @@ const rowTrxType = (trx: Pick<ImportedTrx, 'accountFrom' | 'accountTo'>) =>
   inferTrxTypeByAttributes(trx.accountFrom?.id, trx.accountTo?.id) ||
   TransactionType.Transfer;
 
-const canMarkAsEssential = (trx: Pick<ImportedTrx, 'accountFrom' | 'accountTo'>) =>
-  !!trx.accountFrom && !trx.accountTo;
+const canMarkAsEssential = (
+  trx: Pick<ImportedTrx, 'accountFrom' | 'accountTo'>,
+) => !!trx.accountFrom && !trx.accountTo;
 
 const toFiniteNumber = (value: unknown): number => {
   const numericValue = Number(value);
@@ -375,9 +393,11 @@ const ImportTrxStep2 = (props: Props) => {
   const snackbar = useSnackbar();
 
   const importTrxStep2Request = useImportTransactionsStep2();
-  const applyFlagsRequest = useApplyTransactionFlags();
+  const applyFlagsRequest = useApplyTransactionFlags({ silent: true });
   // The rows as submitted: the server's created_by_index counts positions in this list
-  const submittedRowsRef = useRef<Array<{ choice: FlagChoice }>>([]);
+  const submittedRowsRef = useRef<
+    Array<{ choice: FlagChoice; description: string }>
+  >([]);
   const categoryCreate = useCreatableOptions('category');
   const entityCreate = useCreatableOptions('entity');
   const formatNumberAsCurrency = useFormatNumberAsCurrency();
@@ -404,12 +424,10 @@ const ImportTrxStep2 = (props: Props) => {
   );
   const categories: IdLabelPair[] | undefined = useMemo(
     () =>
-      categoryPickerItems(props.data.categories).map(
-        ({ category, label }) => ({
-          id: category.category_id,
-          label,
-        }),
-      ),
+      categoryPickerItems(props.data.categories).map(({ category, label }) => ({
+        id: category.category_id,
+        label,
+      })),
     [props.data.categories],
   );
   const accounts: IdLabelPair[] | undefined = useMemo(
@@ -449,12 +467,12 @@ const ImportTrxStep2 = (props: Props) => {
   ]);
 
   useEffect(() => {
-    if (importTrxStep2Request.isPending) {
+    if (importTrxStep2Request.isPending || applyFlagsRequest.isPending) {
       loader.showLoading();
     } else {
       loader.hideLoading();
     }
-  }, [importTrxStep2Request.isPending]);
+  }, [importTrxStep2Request.isPending, applyFlagsRequest.isPending]);
 
   useEffect(() => {
     if (importTrxStep2Request.isError) {
@@ -466,20 +484,38 @@ const ImportTrxStep2 = (props: Props) => {
   }, [importTrxStep2Request.isError]);
 
   useEffect(() => {
-    if (importTrxStep2Request.data) {
-      // Loan and event marks need the new ids; the hook reports a failure without undoing the import
-      const flagItems = flagItemsForCreated(
-        submittedRowsRef.current,
-        importTrxStep2Request.data.created_by_index ?? [],
-      );
-      if (flagItems.length > 0) applyFlagsRequest.mutate({ items: flagItems });
+    const imported = importTrxStep2Request.data;
+    if (!imported) return;
+    const createdByIndex = imported.created_by_index ?? [];
+    const accountName =
+      accounts.find((acc) => acc.id == props.data.selectedAccountId)?.label ||
+      '';
+    const finish = (skippedFlags: SkippedFlag[], flagsRequestFailed: boolean) =>
       props.onNext({
-        nrOfTrxImported: importTrxStep2Request.data.imported,
-        accountName:
-          accounts.find((acc) => acc.id == props.data.selectedAccountId)
-            ?.label || '',
+        nrOfTrxImported: imported.imported,
+        accountName,
+        skippedFlags,
+        flagsRequestFailed,
       });
-    }
+    // Loan and event marks need the new ids; a failure here never undoes the import
+    const flagItems = flagItemsForCreated(
+      submittedRowsRef.current,
+      createdByIndex,
+    );
+    if (flagItems.length === 0) return finish([], false);
+    applyFlagsRequest
+      .mutateAsync({ items: flagItems })
+      .then((result) =>
+        finish(
+          skippedFlagsFor(
+            result.failed,
+            submittedRowsRef.current,
+            createdByIndex,
+          ),
+          false,
+        ),
+      )
+      .catch(() => finish([], true));
   }, [importTrxStep2Request.data]);
 
   useEffect(() => {
@@ -557,17 +593,26 @@ const ImportTrxStep2 = (props: Props) => {
     updateTransactionRef.current(id, { date: timestamp });
   }, []);
 
-  const handleValueChange = useCallback((id: number, value: number) => {
-    debouncedUpdateTransaction(id, { value });
-  }, [debouncedUpdateTransaction]);
+  const handleValueChange = useCallback(
+    (id: number, value: number) => {
+      debouncedUpdateTransaction(id, { value });
+    },
+    [debouncedUpdateTransaction],
+  );
 
-  const handleDescriptionChange = useCallback((id: number, description: string) => {
-    debouncedUpdateTransaction(id, { description });
-  }, [debouncedUpdateTransaction]);
+  const handleDescriptionChange = useCallback(
+    (id: number, description: string) => {
+      debouncedUpdateTransaction(id, { description });
+    },
+    [debouncedUpdateTransaction],
+  );
 
-  const handleDescriptionBlur = useCallback((id: number, description: string) => {
-    updateTransactionRef.current(id, { description });
-  }, []);
+  const handleDescriptionBlur = useCallback(
+    (id: number, description: string) => {
+      updateTransactionRef.current(id, { description });
+    },
+    [],
+  );
 
   // Category/entity pickers can create missing items; refs keep the callbacks stable
   const categoryCreateRef = useRef(categoryCreate);
@@ -654,13 +699,18 @@ const ImportTrxStep2 = (props: Props) => {
     updateTransactionRef.current(id, { flags });
   }, []);
 
-  const handleEssentialChange = useCallback((id: number, essential: boolean) => {
-    const currentTransaction = transactions.find((trx) => trx.tempId === id);
-    updateTransactionRef.current(id, {
-      essential:
-        essential && !!currentTransaction && canMarkAsEssential(currentTransaction),
-    });
-  }, [transactions]);
+  const handleEssentialChange = useCallback(
+    (id: number, essential: boolean) => {
+      const currentTransaction = transactions.find((trx) => trx.tempId === id);
+      updateTransactionRef.current(id, {
+        essential:
+          essential &&
+          !!currentTransaction &&
+          canMarkAsEssential(currentTransaction),
+      });
+    },
+    [transactions],
+  );
 
   const payeeGroups = useMemo(
     () => buildPayeeGroups(transactions),
@@ -705,7 +755,11 @@ const ImportTrxStep2 = (props: Props) => {
     async (group: PayeeGroup, value: CreatableOption | null) => {
       const resolved = await entityCreateRef.current.resolve(value, entities);
       if (resolved === undefined) return;
-      applyGroupPatch(group, { entity: resolved ?? undefined }, resolved == null);
+      applyGroupPatch(
+        group,
+        { entity: resolved ?? undefined },
+        resolved == null,
+      );
     },
     [entities, applyGroupPatch],
   );
@@ -756,6 +810,7 @@ const ImportTrxStep2 = (props: Props) => {
           choice: item.flags,
           trxType: rowTrxType(item),
           description: item.description,
+          fromAccountId: item.accountFrom?.id,
         },
       })),
     [transactions],
@@ -891,6 +946,7 @@ const ImportTrxStep2 = (props: Props) => {
             trxType={params.value.trxType}
             description={params.value.description}
             investingAccounts={investingAccounts}
+            fromAccountId={params.value.fromAccountId}
             onChange={handleFlagsChange}
           />
         ),
@@ -941,27 +997,28 @@ const ImportTrxStep2 = (props: Props) => {
       const type = rowTrxType(trx);
       const choice = effectiveChoice(trx.flags, type);
       // An investment goes out as a transfer into the chosen investing account
-      const asSaved = applyInvestment(
-        { type },
-        choice,
-      );
+      const asSaved = applyInvestment({ type }, choice);
       return {
         choice,
-        request: {
-          category_id: trx.category?.id,
-          entity_id: trx.entity?.id,
-          amount: trx.value,
-          date_timestamp: trx.date,
-          description: trx.description,
-          is_essential: trx.essential && canMarkAsEssential(trx),
-          type: asSaved.type as TransactionType,
-          account_from_id: trx.accountFrom?.id,
-          account_to_id:
-            asSaved.account_to_id != null
-              ? BigInt(asSaved.account_to_id)
-              : trx.accountTo?.id,
-          external_id: trx.externalId,
-        },
+        description: trx.description,
+        request: clearInvestmentFields(
+          {
+            category_id: trx.category?.id,
+            entity_id: trx.entity?.id,
+            amount: trx.value,
+            date_timestamp: trx.date,
+            description: trx.description,
+            is_essential: trx.essential && canMarkAsEssential(trx),
+            type: asSaved.type as TransactionType,
+            account_from_id: trx.accountFrom?.id,
+            account_to_id:
+              asSaved.account_to_id != null
+                ? BigInt(asSaved.account_to_id)
+                : trx.accountTo?.id,
+            external_id: trx.externalId,
+          },
+          choice,
+        ),
       };
     });
     submittedRowsRef.current = submitted;

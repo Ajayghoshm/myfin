@@ -1,6 +1,14 @@
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query';
 import { queryClient } from '../../data/react-query.ts';
 import { QUERY_KEY_GET_TRANSACTIONS } from '../trx/trxHooks.ts';
+import {
+  QUERY_KEY_GET_BUDGET,
+  QUERY_KEY_GET_BUDGET_LIST_SUMMARY,
+  QUERY_KEY_GET_BUDGET_MATRIX,
+  QUERY_KEY_GET_BUDGETS,
+} from '../budget/budgetHooks.ts';
+import { QUERY_KEY_GET_CATEGORIES } from '../category/CategoryHooks.tsx';
+import { invalidateStatQueries } from '../stats/statHooks.ts';
 import ruleServices, { Rule } from './ruleServices.tsx';
 
 export const QUERY_KEY_GET_RULES = 'QUERY_KEY_GET_RULES';
@@ -89,9 +97,17 @@ export function useApplyRules() {
   return useMutation({
     mutationFn: applyRules,
     onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: [QUERY_KEY_GET_TRANSACTIONS],
-      });
+      // Category changes move spending between budgets and stats
+      for (const key of [
+        QUERY_KEY_GET_TRANSACTIONS,
+        QUERY_KEY_GET_BUDGET_MATRIX,
+        QUERY_KEY_GET_BUDGETS,
+        QUERY_KEY_GET_BUDGET,
+        QUERY_KEY_GET_BUDGET_LIST_SUMMARY,
+        QUERY_KEY_GET_CATEGORIES,
+      ])
+        void queryClient.invalidateQueries({ queryKey: [key] });
+      invalidateStatQueries();
     },
   });
 }

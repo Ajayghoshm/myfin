@@ -3,6 +3,7 @@ import statServices, {
   NamedAccountSnapshot,
 } from './statServices.ts';
 import { useQuery } from '@tanstack/react-query';
+import { queryClient } from '../../data/react-query.ts';
 import { Account, AccountType } from '../auth/authServices.ts';
 import { useUserData } from '../../providers/UserProvider.tsx';
 import { calculateGrowthPercentage } from '../../utils/mathUtils.ts';
@@ -27,6 +28,31 @@ const QUERY_KEY_GET_ENTITY_INCOME_EVOLUTION =
 const QUERY_KEY_GET_TAG_INCOME_EVOLUTION = 'QUERY_KEY_GET_TAG_INCOME_EVOLUTION';
 const QUERY_KEY_GET_YEAR_BY_YEAR_DATA = 'QUERY_KEY_GET_YEAR_BY_YEAR_DATA';
 const QUERY_KEY_GET_USER_STATS = 'QUERY_KEY_GET_USER_STATS';
+
+const statQueryKeys: string[] = [
+  QUERY_KEY_GET_MONTH_BY_MONTH_EXPENSES_INCOME_DIST,
+  QUERY_KEY_GET_MONTH_BY_MONTH_DATA,
+  QUERY_KEY_GET_BALANCE_SNAPSHOTS,
+  QUERY_KEY_GET_PROJECTION_STATS,
+  QUERY_KEY_GET_CATEGORIES_ENTITIES_TAGS,
+  QUERY_KEY_GET_CATEGORY_EXPENSES_EVOLUTION,
+  QUERY_KEY_GET_ENTITY_EXPENSES_EVOLUTION,
+  QUERY_KEY_GET_TAG_EXPENSES_EVOLUTION,
+  QUERY_KEY_GET_CATEGORY_INCOME_EVOLUTION,
+  QUERY_KEY_GET_ENTITY_INCOME_EVOLUTION,
+  QUERY_KEY_GET_TAG_INCOME_EVOLUTION,
+  QUERY_KEY_GET_YEAR_BY_YEAR_DATA,
+  QUERY_KEY_GET_USER_STATS,
+];
+
+/** Category/entity edits move spending between the stats, so every stats query is refetched. */
+export function invalidateStatQueries() {
+  void queryClient.invalidateQueries({
+    predicate: (query) =>
+      typeof query.queryKey[0] === 'string' &&
+      statQueryKeys.includes(query.queryKey[0]),
+  });
+}
 
 export function useGetMonthExpensesIncomeDistributionData(
   month: number,

@@ -11,7 +11,12 @@ import {
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useGetEvents } from '../../../services/events/eventHooks.ts';
-import { canMarkInvestment, canMarkLoan, FlagChoice } from './flagsModel.ts';
+import {
+  canLinkEvent,
+  canMarkInvestment,
+  canMarkLoan,
+  FlagChoice,
+} from './flagsModel.ts';
 
 const NEW_EVENT = 'new';
 
@@ -23,6 +28,8 @@ type Props = {
   description: string;
   /** Investing accounts only. */
   investingAccounts: { id: bigint; label: string }[];
+  /** An investment cannot go into the account it is paid from. */
+  fromAccountId?: bigint | null;
   /** An existing transaction changes type through the dialog's own fields. */
   showInvestment: boolean;
 };
@@ -32,7 +39,8 @@ const TransactionFlagsControl = ({
   onChange,
   trxType,
   description,
-  investingAccounts,
+  investingAccounts: allInvestingAccounts,
+  fromAccountId,
   showInvestment,
 }: Props) => {
   const { t } = useTranslation();
@@ -41,6 +49,9 @@ const TransactionFlagsControl = ({
     value.kind !== 'none' || value.event != null,
   );
 
+  const investingAccounts = allInvestingAccounts.filter(
+    (account) => account.id !== fromAccountId,
+  );
   const loanAllowed = canMarkLoan(trxType);
   const investmentAllowed =
     showInvestment &&
@@ -142,53 +153,61 @@ const TransactionFlagsControl = ({
               ))}
             </TextField>
           )}
-          <TextField
-            select
-            size="small"
-            label={t('transactions.flags.event')}
-            value={eventSelect}
-            onChange={(e) => {
-              const next = e.target.value;
-              onChange({
-                ...value,
-                event:
-                  next === ''
-                    ? null
-                    : next === NEW_EVENT
-                      ? { new_event: { name: '' } }
-                      : { event_id: next },
-              });
-            }}
-          >
-            <MenuItem value="">{t('transactions.flags.noEvent')}</MenuItem>
-            {(events.data ?? []).map((event) => (
-              <MenuItem key={event.event_id} value={event.event_id}>
-                {event.name}
-              </MenuItem>
-            ))}
-            <MenuItem value={NEW_EVENT}>
-              {t('transactions.flags.createEvent')}
-            </MenuItem>
-          </TextField>
-          {value.event && 'new_event' in value.event && (
-            <TextField
-              size="small"
-              label={t('transactions.flags.newEventName')}
-              required
-              error={!value.event.new_event.name.trim()}
-              helperText={
-                value.event.new_event.name.trim()
-                  ? undefined
-                  : t('transactions.flags.newEventNameRequired')
-              }
-              value={value.event.new_event.name}
-              onChange={(e) =>
-                onChange({
-                  ...value,
-                  event: { new_event: { name: e.target.value } },
-                })
-              }
-            />
+          {!canLinkEvent(trxType) ? (
+            <Typography variant="caption" color="text.secondary">
+              {t('transactions.flags.eventNotForIncome')}
+            </Typography>
+          ) : (
+            <>
+              <TextField
+                select
+                size="small"
+                label={t('transactions.flags.event')}
+                value={eventSelect}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  onChange({
+                    ...value,
+                    event:
+                      next === ''
+                        ? null
+                        : next === NEW_EVENT
+                          ? { new_event: { name: '' } }
+                          : { event_id: next },
+                  });
+                }}
+              >
+                <MenuItem value="">{t('transactions.flags.noEvent')}</MenuItem>
+                {(events.data ?? []).map((event) => (
+                  <MenuItem key={event.event_id} value={event.event_id}>
+                    {event.name}
+                  </MenuItem>
+                ))}
+                <MenuItem value={NEW_EVENT}>
+                  {t('transactions.flags.createEvent')}
+                </MenuItem>
+              </TextField>
+              {value.event && 'new_event' in value.event && (
+                <TextField
+                  size="small"
+                  label={t('transactions.flags.newEventName')}
+                  required
+                  error={!value.event.new_event.name.trim()}
+                  helperText={
+                    value.event.new_event.name.trim()
+                      ? undefined
+                      : t('transactions.flags.newEventNameRequired')
+                  }
+                  value={value.event.new_event.name}
+                  onChange={(e) =>
+                    onChange({
+                      ...value,
+                      event: { new_event: { name: e.target.value } },
+                    })
+                  }
+                />
+              )}
+            </>
           )}
         </Box>
       </Collapse>

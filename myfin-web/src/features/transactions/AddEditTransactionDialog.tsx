@@ -72,6 +72,8 @@ import AccountIconBadge from '../../services/account/AccountIconBadge.tsx';
 import TransactionFlagsControl from './flags/TransactionFlagsControl.tsx';
 import {
   applyInvestment,
+  canLinkEvent,
+  clearInvestmentFields,
   canMarkInvestment,
   canMarkLoan,
   FlagChoice,
@@ -621,7 +623,11 @@ const AddEditTransactionDialog = (props: Props) => {
               );
               return;
             }
-            const choice: FlagChoice = flagChoice;
+            const choice: FlagChoice = canLinkEvent(
+              transactionType ?? TransactionType.Expense,
+            )
+              ? flagChoice
+              : { ...flagChoice, event: null };
             const apiFlags = toApiFlags(choice);
             const applyFlags = (transactionId: string | number | bigint) => {
               if (!apiFlags.loan && !apiFlags.event) return;
@@ -681,23 +687,26 @@ const AddEditTransactionDialog = (props: Props) => {
                 choice,
               );
               addTransactionStep1Request.mutate(
-                {
-                  amount: amountValue as number,
-                  type: saved.type as TransactionType,
-                  description: formJson.description,
-                  account_from_id: accountFrom?.id,
-                  account_to_id:
-                    saved.account_to_id == null
-                      ? undefined
-                      : BigInt(saved.account_to_id),
-                  category_id: category?.id,
-                  entity_id: entity?.id,
-                  tags: JSON.stringify(selectedTags),
-                  date_timestamp: convertDateStringToUnixTimestamp(
-                    formJson.date,
-                  ),
-                  is_essential: isEssential,
-                },
+                clearInvestmentFields(
+                  {
+                    amount: amountValue as number,
+                    type: saved.type as TransactionType,
+                    description: formJson.description,
+                    account_from_id: accountFrom?.id,
+                    account_to_id:
+                      saved.account_to_id == null
+                        ? undefined
+                        : BigInt(saved.account_to_id),
+                    category_id: category?.id,
+                    entity_id: entity?.id,
+                    tags: JSON.stringify(selectedTags),
+                    date_timestamp: convertDateStringToUnixTimestamp(
+                      formJson.date,
+                    ),
+                    is_essential: isEssential,
+                  },
+                  choice,
+                ),
                 {
                   onSuccess: (response) => {
                     const id = response.data?.transaction_id;
@@ -1102,6 +1111,7 @@ const AddEditTransactionDialog = (props: Props) => {
                 (account) => account.accountType === AccountType.Investing,
               )}
               showInvestment={!isEditForm}
+              fromAccountId={accountFromValue?.id}
             />
           </Grid>
           <Grid marginTop={4} size={12}>

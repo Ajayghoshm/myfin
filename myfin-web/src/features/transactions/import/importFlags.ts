@@ -1,4 +1,5 @@
 import {
+  canLinkEvent,
   canMarkInvestment,
   canMarkLoan,
   type FlagChoice,
@@ -13,7 +14,8 @@ export function effectiveChoice(
   const allowed =
     (choice.kind === 'loan' && canMarkLoan(trxType)) ||
     (choice.kind === 'investment' && canMarkInvestment(trxType));
-  return allowed ? choice : { ...choice, kind: 'none' };
+  const event = canLinkEvent(trxType) ? choice.event : null;
+  return allowed ? { ...choice, event } : { ...choice, kind: 'none', event };
 }
 
 /**
@@ -37,4 +39,34 @@ export function flagItemsForCreated(
     items.push({ transaction_id: String(transaction_id), flags });
   }
   return items;
+}
+
+export type SkippedFlag = {
+  description: string;
+  flag: 'loan' | 'event';
+  message: string;
+};
+
+/** Names each failed flag by the row it belongs to, via the created id back to the submitted position. */
+export function skippedFlagsFor(
+  failed: Array<{
+    transaction_id: string;
+    flag: 'loan' | 'event';
+    message: string;
+  }>,
+  rows: Array<{ description: string }>,
+  createdByIndex: Array<{ index: number; transaction_id: string }>,
+): SkippedFlag[] {
+  const indexById = new Map(
+    createdByIndex.map((created) => [
+      String(created.transaction_id),
+      created.index,
+    ]),
+  );
+  return failed.map((item) => ({
+    description:
+      rows[indexById.get(String(item.transaction_id)) ?? -1]?.description ?? '',
+    flag: item.flag,
+    message: item.message,
+  }));
 }

@@ -330,7 +330,8 @@ export function useBulkUpdateTransactions() {
  * Reports failures itself: the add/edit dialog unmounts once the transaction is saved,
  * so per-call mutate callbacks would never run. Hook-level options still do.
  */
-export function useApplyTransactionFlags() {
+/** `silent`: the caller reports failures itself (the import review lists them on its last step). */
+export function useApplyTransactionFlags(options?: { silent?: boolean }) {
   const { t } = useTranslation();
   const snackbar = useSnackbar();
 
@@ -352,8 +353,10 @@ export function useApplyTransactionFlags() {
   return useMutation({
     mutationFn: applyTransactionFlags,
     onSuccess: (result) => {
-      if (result.failed.length > 0) warn();
+      if (result.failed.length > 0 && !options?.silent) warn();
     },
-    onError: warn,
+    onError: () => {
+      if (!options?.silent) warn();
+    },
   });
 }

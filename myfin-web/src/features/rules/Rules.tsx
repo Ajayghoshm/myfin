@@ -427,6 +427,7 @@ const Rules = () => {
           isOpen={isApplyDialogOpen}
           onClose={() => setApplyDialogOpen(false)}
           categories={categories}
+          entities={entities}
         />
       )}
       {isRemoveDialogOpen && (

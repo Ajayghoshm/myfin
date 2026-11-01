@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 import {
   effectiveChoice,
   flagItemsForCreated,
+  skippedFlagsFor,
 } from '../src/features/transactions/import/importFlags.ts';
 import { NO_FLAGS } from '../src/features/transactions/flags/flagsModel.ts';
 
@@ -72,5 +73,35 @@ describe('effectiveChoice', () => {
     };
     assert.equal(effectiveChoice(investment, 'I').kind, 'none');
     assert.equal(effectiveChoice(investment, 'E').kind, 'investment');
+  });
+});
+
+describe('skippedFlagsFor', () => {
+  test('names each failure by its submitted row', () => {
+    const skipped = skippedFlagsFor(
+      [{ transaction_id: '51', flag: 'event', message: 'Event not found' }],
+      [{ description: 'Dup' }, { description: 'Trip dinner' }],
+      [{ index: 1, transaction_id: '51' }],
+    );
+    assert.deepEqual(skipped, [
+      { description: 'Trip dinner', flag: 'event', message: 'Event not found' },
+    ]);
+  });
+
+  test('an unknown id keeps the message with a blank description', () => {
+    const skipped = skippedFlagsFor(
+      [{ transaction_id: '99', flag: 'loan', message: 'x' }],
+      [{ description: 'A' }],
+      [],
+    );
+    assert.equal(skipped[0].description, '');
+  });
+});
+
+describe('effectiveChoice events', () => {
+  test('drops an event on an income row', () => {
+    const choice = { kind: 'none' as const, event: { event_id: 'e1' } };
+    assert.equal(effectiveChoice(choice, 'I').event, null);
+    assert.deepEqual(effectiveChoice(choice, 'E').event, { event_id: 'e1' });
   });
 });

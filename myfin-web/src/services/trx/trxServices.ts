@@ -406,7 +406,11 @@ export type ApplyTransactionFlagsRequest = {
 
 export type ApplyTransactionFlagsResponse = {
   applied: number;
-  failed: Array<{ transaction_id: string; flag: string; message: string }>;
+  failed: Array<{
+    transaction_id: string;
+    flag: 'loan' | 'event';
+    message: string;
+  }>;
 };
 
 const applyTransactionFlags = (request: ApplyTransactionFlagsRequest) => {

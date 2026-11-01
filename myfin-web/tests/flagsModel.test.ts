@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
   applyInvestment,
+  clearInvestmentFields,
   canMarkInvestment,
   canMarkLoan,
   NO_FLAGS,
@@ -72,5 +73,24 @@ describe('flagsModel', () => {
   test('applyInvestment leaves the transaction unchanged without an account id', () => {
     const trx = { type: 'E' as const, account_to_id: 4 };
     assert.deepEqual(applyInvestment(trx, { kind: 'investment' }), trx);
+  });
+
+  test('clearInvestmentFields drops category and essential for an investment', () => {
+    const trx = { category_id: 7n, is_essential: true, amount: 5 };
+    const choice = { kind: 'investment' as const, investmentAccountId: 3, event: null };
+    assert.deepEqual(clearInvestmentFields(trx, choice), {
+      category_id: undefined,
+      is_essential: false,
+      amount: 5,
+    });
+  });
+
+  test('clearInvestmentFields leaves other rows untouched', () => {
+    const trx = { category_id: 7n, is_essential: true };
+    assert.equal(clearInvestmentFields(trx, NO_FLAGS), trx);
+    assert.equal(
+      clearInvestmentFields(trx, { kind: 'investment', event: null }),
+      trx,
+    );
   });
 });

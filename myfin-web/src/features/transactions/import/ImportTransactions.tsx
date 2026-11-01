@@ -211,6 +211,8 @@ const ImportTransactions = () => {
                 setStep2Result({
                   nrOfTrxImported: result.nrOfTrxImported,
                   accountName: result.accountName,
+                  skippedFlags: result.skippedFlags,
+                  flagsRequestFailed: result.flagsRequestFailed,
                 });
                 setCurrentStep(3);
               }}
@@ -223,6 +225,8 @@ const ImportTransactions = () => {
           <ImportTrxStep3
             nrOfTrxImported={step2Result?.nrOfTrxImported || 0}
             accountName={step2Result?.accountName || ''}
+            skippedFlags={step2Result?.skippedFlags ?? []}
+            flagsRequestFailed={step2Result?.flagsRequestFailed ?? false}
           />
         );
       default:

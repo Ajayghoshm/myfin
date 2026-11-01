@@ -131,6 +131,38 @@ describe('apply rules to existing transactions', () => {
     expect(await previewRuleApplication(userId)).toEqual({ changes: [], truncated: false });
   });
 
+  test('name-based guesses are not rules: no preview, no change on apply', async () => {
+    const housingId = (
+      await CategoryService.createCategory({
+        name: 'Housing',
+        type: E,
+        status: MYFIN.CATEGORY_STATUS.ACTIVE,
+        users_user_id: userId,
+      })
+    ).category_id;
+    await CategoryService.createCategory({
+      name: 'Rent',
+      type: E,
+      status: MYFIN.CATEGORY_STATUS.ACTIVE,
+      users_user_id: userId,
+    });
+    await EntityService.createEntity({ name: 'Amazon', users_user_id: userId });
+    const id = await add(userId, bankId, 'Rent paid to owner', { category_id: housingId });
+
+    expect(await previewRuleApplication(userId)).toEqual({ changes: [], truncated: false });
+    const res = await applyRuleChanges(userId, [id]);
+    expect(res).toEqual({ updated: 0, skipped: 1 });
+    expect((await trx(id)).categories_category_id).toBe(housingId);
+  });
+
+  test('a rule that only sets essential changes nothing', async () => {
+    await rule(userId, 'swiggy', { assign_is_essential: true });
+    const id = await add(userId, bankId, 'Swiggy order');
+    expect((await previewRuleApplication(userId)).changes).toEqual([]);
+    expect(await applyRuleChanges(userId, [id])).toEqual({ updated: 0, skipped: 1 });
+    expect((await trx(id)).is_essential).toBe(false);
+  });
+
   test('apply overwrites a hand-set category', async () => {
     await rule(userId, 'swiggy', { assign_category_id: foodId });
     const id = await add(userId, bankId, 'Swiggy order', { category_id: travelId });
