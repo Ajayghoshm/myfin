@@ -663,7 +663,22 @@
     "deleteRuleModalTitle": "Remover regra {{id}}?",
     "deleteRuleModalSubtitle": "Tem a certeza de que pretende remover esta regra?",
     "deleteRuleModalAlert": "Esta ação é irreversível!",
-    "operator": "Operador"
+    "operator": "Operador",
+    "applyRules": "Aplicar regras às transações existentes",
+    "applyTitle": "Aplicar regras às transações existentes",
+    "applyDescription": "Reveja as alterações abaixo. Nada é atualizado até confirmar.",
+    "applyEmpty": "Nenhuma transação existente seria alterada.",
+    "applyTruncated": "Apenas as primeiras alterações são mostradas. Aplique-as e execute novamente para o resto.",
+    "applyCurrentCategory": "Categoria atual",
+    "applyNewCategory": "Nova categoria",
+    "applyExclude": "Excluir",
+    "applyConfirm": "Atualizar {{count}} transações",
+    "applyResult": "{{updated}} atualizadas, {{skipped}} ignoradas",
+    "applyNowTitle": "Aplicar esta regra agora?",
+    "applyNowDescription": "Quer aplicar as suas regras às transações existentes? Vai rever as alterações primeiro.",
+    "applyNowAlert": "Nada muda até confirmar a pré-visualização.",
+    "applyNow": "Aplicar agora",
+    "applyLater": "Agora não"
   },
   "budgets": {
     "newMonthFromTemplate": "Novo mês a partir do modelo",

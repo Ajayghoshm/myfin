@@ -37,6 +37,28 @@ export type GetRulesResponse = {
   entities: Entity[];
   categories: Category[];
 };
+export type RuleChange = {
+  transaction_id: string;
+  date: number;
+  description: string;
+  amount: number;
+  rule_id: string;
+  current_category_id: string | null;
+  new_category_id: string | null;
+  current_entity_id: string | null;
+  new_entity_id: string | null;
+};
+
+export type RuleApplyPreview = {
+  changes: RuleChange[];
+  truncated: boolean;
+};
+
+export type RuleApplyResult = {
+  updated: number;
+  skipped: number;
+};
+
 const getRules = () => {
   return axios.get<GetRulesResponse>(`/rules`);
 };
@@ -75,9 +97,21 @@ const editRule = (request: Rule) => {
   return axios.put(`/rules`, cleanedRequest);
 };
 
+const previewApplyRules = () => {
+  return axios.post<RuleApplyPreview>(`/rules/apply-preview`);
+};
+
+const applyRules = (transactionIds: string[]) => {
+  return axios.post<RuleApplyResult>(`/rules/apply`, {
+    transaction_ids: transactionIds,
+  });
+};
+
 export default {
   getRules,
   addRule,
   removeRule,
   editRule,
+  previewApplyRules,
+  applyRules,
 };
