@@ -57,6 +57,7 @@ import {
 import {
   useAddTransactionStep0,
   useAddTransactionStep1,
+  useApplyTransactionFlags,
   useAutoCategorizeTransaction,
   useEditTransaction,
 } from '../../services/trx/trxHooks.ts';
@@ -68,6 +69,15 @@ import { convertDateStringToUnixTimestamp } from '../../utils/dateUtils.ts';
 import CategoryIconBadge from '../../services/category/CategoryIconBadge.tsx';
 import { categoryPickerItems } from '../../services/category/categoryTree.ts';
 import AccountIconBadge from '../../services/account/AccountIconBadge.tsx';
+import TransactionFlagsControl from './flags/TransactionFlagsControl.tsx';
+import {
+  applyInvestment,
+  canMarkInvestment,
+  canMarkLoan,
+  FlagChoice,
+  NO_FLAGS,
+  toApiFlags,
+} from './flags/flagsModel.ts';
 import {
   inferTrxType,
   inferTrxTypeByAttributes,
@@ -161,6 +171,8 @@ const AddEditTransactionDialog = (props: Props) => {
   const addTransactionStep1Request = useAddTransactionStep1();
   const autoCategorizeTransactionRequest = useAutoCategorizeTransaction();
   const editTransactionRequest = useEditTransaction();
+  const applyFlagsRequest = useApplyTransactionFlags();
+  const [flagChoice, setFlagChoice] = useState<FlagChoice>(NO_FLAGS);
   const [transactionType, setTransactionType] =
     useState<TransactionType | null>(null);
   const [essentialValue, setEssentialValue] = useState<boolean>(false);
@@ -229,13 +241,19 @@ const AddEditTransactionDialog = (props: Props) => {
       getInitialIdLabelPair(
         props.transaction?.accounts_account_from_id,
         props.transaction?.account_from_name,
-      ) ?? (props.prefill?.type === TransactionType.Expense ? prefillAccount : null),
+      ) ??
+        (props.prefill?.type === TransactionType.Expense
+          ? prefillAccount
+          : null),
     );
     setAccountToValue(
       getInitialIdLabelPair(
         props.transaction?.accounts_account_to_id,
         props.transaction?.account_to_name,
-      ) ?? (props.prefill?.type === TransactionType.Income ? prefillAccount : null),
+      ) ??
+        (props.prefill?.type === TransactionType.Income
+          ? prefillAccount
+          : null),
     );
     setCategoryValue(
       getInitialIdLabelPair(
@@ -250,6 +268,7 @@ const AddEditTransactionDialog = (props: Props) => {
       ),
     );
     setSelectedTags(props.transaction?.tags?.map((tag) => tag.name) || []);
+    setFlagChoice(NO_FLAGS);
   }, [props.transaction, props.prefill]);
 
   useEffect(() => {
@@ -327,6 +346,16 @@ const AddEditTransactionDialog = (props: Props) => {
     if (transactionType != TransactionType.Expense) {
       setEssentialValue(false);
     }
+  }, [transactionType]);
+
+  useEffect(() => {
+    if (!transactionType) return;
+    setFlagChoice((current) =>
+      (current.kind === 'loan' && !canMarkLoan(transactionType)) ||
+      (current.kind === 'investment' && !canMarkInvestment(transactionType))
+        ? { ...current, kind: 'none' }
+        : current,
+    );
   }, [transactionType]);
 
   useEffect(() => {
@@ -581,50 +610,112 @@ const AddEditTransactionDialog = (props: Props) => {
               ? JSON.stringify(splitTransactionFormState?.tags)
               : undefined;
 
+            const choice: FlagChoice = {
+              ...flagChoice,
+              event:
+                flagChoice.event &&
+                'new_event' in flagChoice.event &&
+                !flagChoice.event.new_event.name.trim()
+                  ? null
+                  : flagChoice.event,
+            };
+            const apiFlags = toApiFlags(choice);
+            const applyFlags = (transactionId: string | number | bigint) => {
+              if (!apiFlags.loan && !apiFlags.event) return;
+              applyFlagsRequest.mutate(
+                {
+                  items: [
+                    {
+                      transaction_id: String(transactionId),
+                      flags: apiFlags,
+                    },
+                  ],
+                },
+                {
+                  onSuccess: (result) => {
+                    if (result.failed.length > 0)
+                      snackbar.showSnackbar(
+                        t('transactions.flags.failed'),
+                        AlertSeverity.WARNING,
+                      );
+                  },
+                },
+              );
+            };
+
             // Process the form data as needed
             if (isEditForm) {
-              editTransactionRequest.mutate({
-                transaction_id: props.transaction?.transaction_id ?? -1n,
-                new_amount: amountValue as number,
-                new_type: transactionType ?? TransactionType.Expense,
-                new_description: formJson.description,
-                new_account_from_id:
-                  typeof accountFrom === 'string' ? undefined : accountFrom?.id,
-                new_account_to_id:
-                  typeof accountTo === 'string' ? undefined : accountTo?.id,
-                new_category_id:
-                  typeof category === 'string' ? undefined : category?.id,
-                new_entity_id:
-                  typeof entity === 'string' ? undefined : entity?.id,
-                tags: JSON.stringify(selectedTags),
-                new_date_timestamp: convertDateStringToUnixTimestamp(
-                  formJson.date,
-                ),
-                new_is_essential: isEssential,
-                is_split: isSplitTransactionFormOpen,
-                split_amount: splitAmount,
-                split_category: splitCategory?.id,
-                split_entity: splitEntity?.id,
-                split_type: splitType ?? TransactionType.Expense,
-                split_account_from: splitAccountFrom,
-                split_account_to: splitAccountTo,
-                split_description: splitDescription,
-                split_is_essential: splitEssential,
-                split_tags: splitTags,
-              });
+              editTransactionRequest.mutate(
+                {
+                  transaction_id: props.transaction?.transaction_id ?? -1n,
+                  new_amount: amountValue as number,
+                  new_type: transactionType ?? TransactionType.Expense,
+                  new_description: formJson.description,
+                  new_account_from_id:
+                    typeof accountFrom === 'string'
+                      ? undefined
+                      : accountFrom?.id,
+                  new_account_to_id:
+                    typeof accountTo === 'string' ? undefined : accountTo?.id,
+                  new_category_id:
+                    typeof category === 'string' ? undefined : category?.id,
+                  new_entity_id:
+                    typeof entity === 'string' ? undefined : entity?.id,
+                  tags: JSON.stringify(selectedTags),
+                  new_date_timestamp: convertDateStringToUnixTimestamp(
+                    formJson.date,
+                  ),
+                  new_is_essential: isEssential,
+                  is_split: isSplitTransactionFormOpen,
+                  split_amount: splitAmount,
+                  split_category: splitCategory?.id,
+                  split_entity: splitEntity?.id,
+                  split_type: splitType ?? TransactionType.Expense,
+                  split_account_from: splitAccountFrom,
+                  split_account_to: splitAccountTo,
+                  split_description: splitDescription,
+                  split_is_essential: splitEssential,
+                  split_tags: splitTags,
+                },
+                {
+                  onSuccess: () =>
+                    applyFlags(props.transaction?.transaction_id ?? -1n),
+                },
+              );
             } else {
-              addTransactionStep1Request.mutate({
-                amount: amountValue as number,
-                type: transactionType ?? TransactionType.Expense,
-                description: formJson.description,
-                account_from_id: accountFrom?.id,
-                account_to_id: accountTo?.id,
-                category_id: category?.id,
-                entity_id: entity?.id,
-                tags: JSON.stringify(selectedTags),
-                date_timestamp: convertDateStringToUnixTimestamp(formJson.date),
-                is_essential: isEssential,
-              });
+              const saved = applyInvestment(
+                {
+                  type: transactionType ?? TransactionType.Expense,
+                  account_to_id:
+                    accountTo?.id == null ? undefined : Number(accountTo.id),
+                },
+                choice,
+              );
+              addTransactionStep1Request.mutate(
+                {
+                  amount: amountValue as number,
+                  type: saved.type as TransactionType,
+                  description: formJson.description,
+                  account_from_id: accountFrom?.id,
+                  account_to_id:
+                    saved.account_to_id == null
+                      ? undefined
+                      : BigInt(saved.account_to_id),
+                  category_id: category?.id,
+                  entity_id: entity?.id,
+                  tags: JSON.stringify(selectedTags),
+                  date_timestamp: convertDateStringToUnixTimestamp(
+                    formJson.date,
+                  ),
+                  is_essential: isEssential,
+                },
+                {
+                  onSuccess: (response) => {
+                    const id = response.data?.transaction_id;
+                    if (id != null) applyFlags(id);
+                  },
+                },
+              );
             }
           },
         },
@@ -921,7 +1012,8 @@ const AddEditTransactionDialog = (props: Props) => {
                     value,
                     categoryOptionsValue,
                   );
-                  if (resolved !== undefined) setCategoryValue(resolved as IdLabelPair);
+                  if (resolved !== undefined)
+                    setCategoryValue(resolved as IdLabelPair);
                 }}
                 options={categoryCreate.withCreated(categoryOptionsValue)}
                 filterOptions={categoryCreate.filterOptions}
@@ -968,7 +1060,8 @@ const AddEditTransactionDialog = (props: Props) => {
                     value,
                     entityOptionsValue,
                   );
-                  if (resolved !== undefined) setEntityValue(resolved as IdLabelPair);
+                  if (resolved !== undefined)
+                    setEntityValue(resolved as IdLabelPair);
                 }}
                 options={entityCreate.withCreated(entityOptionsValue)}
                 filterOptions={entityCreate.filterOptions}
@@ -1008,6 +1101,18 @@ const AddEditTransactionDialog = (props: Props) => {
                   placeholder={t('transactions.addAnotherTagPlaceholder')}
                 />
               )}
+            />
+          </Grid>
+          <Grid size={12}>
+            <TransactionFlagsControl
+              value={flagChoice}
+              onChange={setFlagChoice}
+              trxType={transactionType ?? TransactionType.Expense}
+              description={descriptionValue}
+              investingAccounts={accountOptionsValue.filter(
+                (account) => account.accountType === AccountType.Investing,
+              )}
+              showInvestment={!isEditForm}
             />
           </Grid>
           <Grid marginTop={4} size={12}>
@@ -1420,7 +1525,8 @@ const SplitTransactionForm = ({
                   value,
                   state?.categoryOptions ?? [],
                 );
-                if (resolved !== undefined) handleCategoryChange(resolved as IdLabelPair);
+                if (resolved !== undefined)
+                  handleCategoryChange(resolved as IdLabelPair);
               }}
               options={categoryCreate.withCreated(state?.categoryOptions ?? [])}
               filterOptions={categoryCreate.filterOptions}
@@ -1467,7 +1573,8 @@ const SplitTransactionForm = ({
                   value,
                   state?.entityOptions ?? [],
                 );
-                if (resolved !== undefined) handleEntityChange(resolved as IdLabelPair);
+                if (resolved !== undefined)
+                  handleEntityChange(resolved as IdLabelPair);
               }}
               options={entityCreate.withCreated(state?.entityOptions ?? [])}
               filterOptions={entityCreate.filterOptions}

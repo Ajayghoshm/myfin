@@ -434,7 +434,21 @@
     "bulkEditConfirmTitle_one": "Update 1 transaction?",
     "bulkEditSuccess_one": "1 transaction updated",
     "allMatchingSelected_one": "The 1 matching transaction is selected",
-    "selectAllMatching_one": "Select the 1 matching transaction"
+    "selectAllMatching_one": "Select the 1 matching transaction",
+    "flags": {
+      "title": "Mark as...",
+      "loan": "Loan",
+      "loanName": "Loan name",
+      "investment": "Investment",
+      "investmentAccount": "Investing account",
+      "noInvestingAccount": "Add an investing account to mark investments",
+      "investmentExpenseOnly": "Only expenses can be marked as investments",
+      "event": "Link to event",
+      "noEvent": "None",
+      "createEvent": "Create new event",
+      "newEventName": "New event name",
+      "failed": "Saved, but some marks could not be applied"
+    }
   },
   "importTransactions": {
     "createNewAccount": "+ Create new account…",

@@ -436,7 +436,21 @@
     "allMatchingSelected_one": "A 1 transação correspondente está selecionada",
     "selectAllMatching_one": "Selecionar a 1 transação correspondente",
     "editSelected_one": "Editar 1 selecionada",
-    "selectedCount_one": "1 selecionada"
+    "selectedCount_one": "1 selecionada",
+    "flags": {
+      "title": "Marcar como...",
+      "loan": "Empréstimo",
+      "loanName": "Nome do empréstimo",
+      "investment": "Investimento",
+      "investmentAccount": "Conta de investimento",
+      "noInvestingAccount": "Adicione uma conta de investimento para marcar investimentos",
+      "investmentExpenseOnly": "Só despesas podem ser marcadas como investimentos",
+      "event": "Associar a evento",
+      "noEvent": "Nenhum",
+      "createEvent": "Criar novo evento",
+      "newEventName": "Nome do novo evento",
+      "failed": "Guardado, mas algumas marcações não puderam ser aplicadas"
+    }
   },
   "importTransactions": {
     "createNewAccount": "+ Criar nova conta…",

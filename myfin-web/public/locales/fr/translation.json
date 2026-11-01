@@ -409,7 +409,21 @@
       "interest": "Intérêts de l’échéance",
       "principal": "Capital de l’échéance"
     },
-    "countedInMonth": "compté en {{month}}"
+    "countedInMonth": "compté en {{month}}",
+    "flags": {
+      "title": "Marquer comme...",
+      "loan": "Prêt",
+      "loanName": "Nom du prêt",
+      "investment": "Investissement",
+      "investmentAccount": "Compte d’investissement",
+      "noInvestingAccount": "Ajoutez un compte d’investissement pour marquer des investissements",
+      "investmentExpenseOnly": "Seules les dépenses peuvent être marquées comme investissements",
+      "event": "Lier à un événement",
+      "noEvent": "Aucun",
+      "createEvent": "Créer un nouvel événement",
+      "newEventName": "Nom du nouvel événement",
+      "failed": "Enregistré, mais certaines marques n’ont pas pu être appliquées"
+    }
   },
   "importTransactions": {
     "createNewAccount": "+ Créer un nouveau compte…",

@@ -2,6 +2,7 @@ import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query';
 import { queryClient } from '../../data/react-query.ts';
 import { QUERY_KEY_GET_BUDGET_MATRIX } from '../budget/budgetHooks.ts';
 import TrxServices, {
+  ApplyTransactionFlagsRequest,
   AddTransactionRequest,
   PayeeRule,
   AutoCategorizeTransactionRequest,
@@ -317,5 +318,20 @@ export function useBulkUpdateTransactions() {
 
   return useMutation({
     mutationFn: bulkUpdateTransactions,
+  });
+}
+
+export function useApplyTransactionFlags() {
+  async function applyTransactionFlags(request: ApplyTransactionFlagsRequest) {
+    const data = await TrxServices.applyTransactionFlags(request);
+    void queryClient.invalidateQueries({
+      queryKey: [QUERY_KEY_GET_TRANSACTIONS],
+    });
+    invalidatePlanningFigures();
+    return data.data;
+  }
+
+  return useMutation({
+    mutationFn: applyTransactionFlags,
   });
 }

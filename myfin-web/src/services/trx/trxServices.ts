@@ -2,6 +2,7 @@ import { axios } from '../../data/axios.ts';
 import { CachedTransaction } from '../../data/localStore.ts';
 import { Account } from '../auth/authServices.ts';
 import { Category } from '../category/categoryServices.ts';
+import type { ApiTransactionFlags } from '../../features/transactions/flags/flagsModel.ts';
 
 export type TransactionsPageResponse = {
   filtered_count: number;
@@ -275,7 +276,11 @@ export type PayeeRule = {
   entity_id?: bigint;
   is_essential?: boolean;
   // Used only if the rule is new, for fields the user did not pick
-  defaults?: { category_id?: bigint; entity_id?: bigint; is_essential?: boolean };
+  defaults?: {
+    category_id?: bigint;
+    entity_id?: bigint;
+    is_essential?: boolean;
+  };
 };
 
 const importTransactionsStep2 = (
@@ -390,7 +395,24 @@ const bulkUpdateTransactions = (request: BulkUpdateTransactionsRequest) => {
   return axios.put<{ updated: number }>('/trxs/bulk', request);
 };
 
+export type ApplyTransactionFlagsRequest = {
+  items: Array<{
+    transaction_id: string;
+    flags: ApiTransactionFlags;
+  }>;
+};
+
+export type ApplyTransactionFlagsResponse = {
+  applied: number;
+  failed: Array<{ transaction_id: string; flag: string; message: string }>;
+};
+
+const applyTransactionFlags = (request: ApplyTransactionFlagsRequest) => {
+  return axios.post<ApplyTransactionFlagsResponse>('/trxs/flags', request);
+};
+
 export default {
+  applyTransactionFlags,
   bulkUpdateTransactions,
   getTransactions,
   removeTransaction,
