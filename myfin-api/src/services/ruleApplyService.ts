@@ -93,12 +93,22 @@ const diffOf = (
   rule: {
     assign_category_id?: bigint | number | null;
     assign_entity_id?: bigint | number | null;
-  }
+  },
+  caches: Caches
 ) => {
   const data: { categories_category_id?: bigint; entities_entity_id?: bigint } = {};
-  if (rule.assign_category_id != null && BigInt(rule.assign_category_id) !== row.categories_category_id)
+  // Rules have no foreign keys, so one can point at a deleted category/entity; those are ignored
+  if (
+    rule.assign_category_id != null &&
+    BigInt(rule.assign_category_id) !== row.categories_category_id &&
+    caches.categories.some((c) => c.category_id === BigInt(rule.assign_category_id!))
+  )
     data.categories_category_id = BigInt(rule.assign_category_id);
-  if (rule.assign_entity_id != null && BigInt(rule.assign_entity_id) !== row.entities_entity_id)
+  if (
+    rule.assign_entity_id != null &&
+    BigInt(rule.assign_entity_id) !== row.entities_entity_id &&
+    caches.entities.some((e) => e.entity_id === BigInt(rule.assign_entity_id!))
+  )
     data.entities_entity_id = BigInt(rule.assign_entity_id);
   return data;
 };
@@ -131,7 +141,7 @@ export async function previewRuleApplication(userId: bigint): Promise<{ changes:
         const rule = rules[j];
         // rule_id -1 is the name-based guess used at import time, not a rule the user has
         if (!rule || Number(rule.rule_id) < 0) continue;
-        const diff = diffOf(row, rule);
+        const diff = diffOf(row, rule, caches);
         if (diff.categories_category_id === undefined && diff.entities_entity_id === undefined) continue;
         if (changes.length >= MAX_CHANGES) return { changes, truncated: true };
         changes.push({
@@ -173,7 +183,7 @@ export async function applyRuleChanges(
     const rules = await Promise.all(chunk.map((row) => matchRow(userId, row, caches)));
     chunk.forEach((row, j) => {
       const rule = rules[j];
-      const diff = rule && Number(rule.rule_id) >= 0 ? diffOf(row, rule) : {};
+      const diff = rule && Number(rule.rule_id) >= 0 ? diffOf(row, rule, caches) : {};
       if (Object.keys(diff).length > 0) updates.push({ id: row.transaction_id, data: diff });
     });
   }

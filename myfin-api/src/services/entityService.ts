@@ -30,13 +30,20 @@ const createEntity = async (entity: Entity, dbClient = prisma) => {
   });
 };
 
-const deleteEntity = async (userId: bigint, entityId: number, dbClient = prisma) =>
-  dbClient.entities.delete({
+const deleteEntity = async (userId: bigint, entityId: number, dbClient = prisma) => {
+  const deleted = await dbClient.entities.delete({
     where: {
       users_user_id: userId,
       entity_id: entityId,
     },
   });
+  // Rules have no foreign key to entities; drop the reference so it cannot dangle
+  await dbClient.rules.updateMany({
+    where: { users_user_id: userId, assign_entity_id: entityId },
+    data: { assign_entity_id: null },
+  });
+  return deleted;
+};
 
 const updateEntity = async (
   userId: bigint,
