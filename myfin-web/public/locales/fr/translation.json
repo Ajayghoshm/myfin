@@ -768,6 +768,9 @@
     "itemsNote": "Total de la ventilation. Modifiez-la dans le détail du budget."
   },
   "budgetTemplate": {
+    "allTemplates": "Tous les modèles (cliquez pour ouvrir)",
+    "categories": "Catégories",
+    "updated": "Mis à jour",
     "template": "Modèle",
     "newTemplate": "Nouveau modèle",
     "rename": "Renommer",

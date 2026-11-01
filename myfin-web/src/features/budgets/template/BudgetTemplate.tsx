@@ -20,9 +20,15 @@ import {
   MenuItem,
   Paper,
   Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
   TextField,
   Typography,
 } from '@mui/material';
+import dayjs from 'dayjs';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NumericFormat } from 'react-number-format';
@@ -580,6 +586,54 @@ const BudgetTemplate = () => {
           <DeleteOutline fontSize="small" />
         </IconButton>
       </Stack>
+
+      {(templates?.length ?? 0) > 1 && (
+        <Box sx={{ mb: 2, overflowX: 'auto' }}>
+          <Typography sx={{ fontSize: 13, color: 'text.secondary', mb: 0.5 }}>
+            {t('budgetTemplate.allTemplates')}
+          </Typography>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>{t('budgetTemplate.template')}</TableCell>
+                <TableCell align="right">
+                  {t('budgetTemplate.categories')}
+                </TableCell>
+                <TableCell align="right">{t('budgetTemplate.debit')}</TableCell>
+                <TableCell align="right">
+                  {t('budgetTemplate.credit')}
+                </TableCell>
+                <TableCell align="right">
+                  {t('budgetTemplate.updated')}
+                </TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {templates?.map((tpl) => (
+                <TableRow
+                  key={String(tpl.template_id)}
+                  hover
+                  selected={String(tpl.template_id) === selectedId}
+                  onClick={() => selectTemplate(String(tpl.template_id))}
+                  sx={{ cursor: 'pointer' }}
+                >
+                  <TableCell sx={{ fontWeight: 600 }}>{tpl.name}</TableCell>
+                  <TableCell align="right">{tpl.row_count}</TableCell>
+                  <TableCell align="right">
+                    {format.invoke(tpl.total_debit)}
+                  </TableCell>
+                  <TableCell align="right">
+                    {format.invoke(tpl.total_credit)}
+                  </TableCell>
+                  <TableCell align="right">
+                    {dayjs.unix(tpl.updated_at).format('YYYY-MM-DD')}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Box>
+      )}
 
       <Stack
         direction={{ xs: 'column', sm: 'row' }}

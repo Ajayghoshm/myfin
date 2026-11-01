@@ -812,6 +812,9 @@
     "itemsNote": "Total do detalhe. Edite-o nos detalhes do orçamento."
   },
   "budgetTemplate": {
+    "allTemplates": "Todos os modelos (clique para abrir)",
+    "categories": "Categorias",
+    "updated": "Atualizado",
     "template": "Modelo",
     "newTemplate": "Novo modelo",
     "rename": "Mudar o nome",

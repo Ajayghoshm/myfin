@@ -815,6 +815,9 @@
     "itemsNote": "Total of the breakdown. Edit it in the budget details."
   },
   "budgetTemplate": {
+    "allTemplates": "All templates (click one to open it)",
+    "categories": "Categories",
+    "updated": "Updated",
     "template": "Template",
     "newTemplate": "New template",
     "rename": "Rename",

@@ -66,13 +66,15 @@ export default class BudgetTemplateService {
     const templates = await prisma.budget_templates.findMany({
       where: { users_user_id: userId },
       orderBy: { template_id: 'asc' },
-      include: { _count: { select: { rows: true } } },
+      include: { rows: { select: { planned_amount_debit: true, planned_amount_credit: true } } },
     });
     return templates.map((t) => ({
       template_id: t.template_id,
       name: t.name,
       updated_at: Number(t.updated_at),
-      row_count: t._count.rows,
+      row_count: t.rows.length,
+      total_debit: t.rows.reduce((sum, r) => sum + Number(r.planned_amount_debit), 0) / 100,
+      total_credit: t.rows.reduce((sum, r) => sum + Number(r.planned_amount_credit), 0) / 100,
     }));
   }
 

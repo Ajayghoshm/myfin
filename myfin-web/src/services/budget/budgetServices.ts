@@ -278,6 +278,8 @@ export type BudgetTemplateSummary = {
   name: string;
   updated_at: number;
   row_count: number;
+  total_debit: number;
+  total_credit: number;
 };
 
 /** A new named template (`name`), or an existing one (`template_id`; none = the oldest). */
