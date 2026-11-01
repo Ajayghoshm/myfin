@@ -17,6 +17,7 @@ export type Category = {
   status: CategoryStatus;
   type: string;
   users_user_id: bigint;
+  parent_category_id?: bigint | null;
 };
 
 const getCategories = () => {
@@ -31,6 +32,7 @@ export type AddCategoryRequest = {
   status: CategoryStatus;
   exclude_from_budgets: boolean;
   is_fixed?: boolean;
+  parent_category_id?: bigint | null;
 };
 
 const addCategory = (request: AddCategoryRequest) => {
@@ -46,6 +48,7 @@ export type EditCategoryRequest = {
   new_status: CategoryStatus;
   new_exclude_from_budgets: boolean;
   new_is_fixed: boolean;
+  new_parent_category_id?: bigint | null;
 };
 
 const editCategory = (request: EditCategoryRequest) => {
@@ -56,9 +59,17 @@ const removeCategory = (id: bigint) => {
   return axios.delete<string>(`/cats`, { data: { category_id: id } });
 };
 
+const mergeCategories = (sourceId: bigint, targetId: bigint) => {
+  return axios.post('/cats/merge', {
+    source_category_id: sourceId,
+    target_category_id: targetId,
+  });
+};
+
 export default {
   getCategories,
   addCategory,
   editCategory,
   removeCategory,
+  mergeCategories,
 };
