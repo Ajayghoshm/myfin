@@ -88,6 +88,8 @@
     "investing": "Investissements",
     "debt": "Dettes",
     "netWorth": "Patrimoine net",
+    "viewTotal": "Total",
+    "viewThisMonth": "Ce mois-ci",
     "demoAccountNotice": "Ceci est un compte démo. Les données sont réinitialisées chaque jour.",
     "demoAccountBadge": "Compte démo",
     "demoAccountResetChip": "Réinitialisation quotidienne"

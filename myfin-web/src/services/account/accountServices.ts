@@ -6,6 +6,19 @@ const getAccounts = () => {
   return axios.get<Account[]>(`/accounts`);
 };
 
+export type AccountsMonthChange = {
+  from: number;
+  to: number;
+  operatingFunds: number;
+  investing: number;
+  debt: number;
+  netWorth: number;
+};
+
+const getMonthChange = () => {
+  return axios.get<AccountsMonthChange>(`/accounts/stats/month-change`);
+};
+
 const removeAccount = (id: bigint) => {
   return axios.delete<string>(`/accounts`, { data: { account_id: id } });
 };
@@ -85,6 +98,7 @@ const autoPopulateWithDemoData = () => {
 };
 
 export default {
+  getMonthChange,
   getAccounts,
   removeAccount,
   addAccount,

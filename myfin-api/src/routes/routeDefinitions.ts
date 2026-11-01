@@ -290,6 +290,7 @@ export const routeGroups: RouteGroup[] = [
     controller: AccountController as ControllerModule,
     controllerSourceBaseUrl: new URL('../controllers/accountController', import.meta.url).href,
     routes: [
+      { method: 'get', path: '/stats/month-change', handlerName: 'getMonthChange' },
       { method: 'post', path: '/', handlerName: 'createAccount' },
       { method: 'get', path: '/', handlerName: 'getAllAccountsForUser' },
       { method: 'delete', path: '/', handlerName: 'deleteAccount' },

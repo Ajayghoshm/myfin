@@ -3,6 +3,7 @@ import joi from 'joi';
 import APIError from '../errorHandling/apiError.js';
 import AccountService from '../services/accountService.js';
 import { listAccountsWithFreshness } from '../services/accountFreshnessService.js';
+import { getCurrentMonthChange } from '../services/accountMonthChangeService.js';
 import Logger from '../utils/Logger.js';
 import CommonsController from './commonsController.js';
 
@@ -136,7 +137,18 @@ const recalculateAllUserAccountsBalances = async (
   }
 };
 
+const getMonthChange = async (req, res, next) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    res.json(await getCurrentMonthChange(sessionData.userId));
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
 export default {
+  getMonthChange,
   createAccount,
   getAllAccountsForUser,
   deleteAccount,

@@ -89,6 +89,8 @@
     "investing": "Investing",
     "debt": "Debt",
     "netWorth": "Net Worth",
+    "viewTotal": "Total",
+    "viewThisMonth": "This month",
     "demoAccountNotice": "This is a demo account. All data is reset once a day.",
     "demoAccountBadge": "Demo account",
     "demoAccountResetChip": "Daily reset",

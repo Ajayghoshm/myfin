@@ -30,6 +30,20 @@ export function useGetAccounts() {
   });
 }
 
+export function useGetAccountsMonthChange(enabled: boolean) {
+  async function getMonthChange() {
+    const data = await AccountServices.getMonthChange();
+    return data.data;
+  }
+
+  // Under the accounts key so every account mutation refreshes it too
+  return useQuery({
+    queryKey: [QUERY_KEY_GET_ACCOUNTS, 'month-change'],
+    queryFn: getMonthChange,
+    enabled,
+  });
+}
+
 export function useRemoveAccount() {
   async function removeAccount(accountId: bigint) {
     const result = await AccountServices.removeAccount(accountId);

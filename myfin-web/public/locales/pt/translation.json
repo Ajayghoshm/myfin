@@ -89,6 +89,8 @@
     "investing": "Investimento",
     "debt": "Passivo",
     "netWorth": "Património",
+    "viewTotal": "Total",
+    "viewThisMonth": "Este mês",
     "demoAccountNotice": "Esta é uma conta de demonstração. Todos os dados são repostos uma vez por dia.",
     "demoAccountBadge": "Conta demo",
     "demoAccountResetChip": "Reposição diária",
