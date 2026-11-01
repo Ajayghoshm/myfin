@@ -492,6 +492,9 @@
     "groupByPayee": "Agrupar por beneficiário",
     "groupMixed": "Misto",
     "applyToAllRows": "Aplicar a todas as linhas",
+    "groupMarked": "Marcadas {{marked}} de {{count}}",
+    "groupMarkHint": "Aplica-se a todas as linhas deste grupo, substituindo as marcas das linhas. As linhas onde a marca não é permitida ficam sem marca.",
+    "groupClearMarks": "Limpar marcas deste grupo",
     "groupTransactionsCount_one": "{{count}} transação",
     "groupTransactionsCount_other": "{{count}} transações",
     "payeeGroupsHint": "Definir um valor preenche as linhas em branco do grupo e fica guardado para futuras importações. As linhas que já têm valor mantêm-no."

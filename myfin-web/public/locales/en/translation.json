@@ -496,6 +496,9 @@
     "groupByPayee": "Group by payee",
     "groupMixed": "Mixed",
     "applyToAllRows": "Apply to all rows",
+    "groupMarked": "Marked {{marked}} of {{count}}",
+    "groupMarkHint": "Applies to every row in this group, replacing row marks. Rows where a mark is not allowed stay unmarked.",
+    "groupClearMarks": "Clear marks in this group",
     "groupTransactionsCount_one": "{{count}} transaction",
     "groupTransactionsCount_other": "{{count}} transactions",
     "payeeGroupsHint": "Setting a value fills the blank rows of the group and is remembered for future imports. Rows that already have a value keep it."

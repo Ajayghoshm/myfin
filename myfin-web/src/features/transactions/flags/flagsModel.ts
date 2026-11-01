@@ -54,3 +54,38 @@ export function clearInvestmentFields<
     return trx;
   return { ...trx, category_id: undefined, is_essential: false };
 }
+
+export type GroupFlagRow = {
+  tempId: number;
+  type: TrxType;
+  fromAccountId?: bigint | number | null;
+};
+
+/**
+ * The choice every row of a group should carry after "mark all". Marks a row does not allow are
+ * left out: loan/investment on a transfer, investment on income, an event on income, and an
+ * investment into the row's own from-account. `marked` counts rows that carry any mark.
+ */
+export function groupFlagChoices(
+  rows: GroupFlagRow[],
+  choice: FlagChoice,
+): { choices: Map<number, FlagChoice>; marked: number } {
+  const choices = new Map<number, FlagChoice>();
+  let marked = 0;
+  for (const row of rows) {
+    const kindAllowed =
+      (choice.kind === 'loan' && canMarkLoan(row.type)) ||
+      (choice.kind === 'investment' &&
+        canMarkInvestment(row.type) &&
+        choice.investmentAccountId != null &&
+        (row.fromAccountId == null ||
+          Number(row.fromAccountId) !== choice.investmentAccountId));
+    const event = canLinkEvent(row.type) ? (choice.event ?? null) : null;
+    const next: FlagChoice = kindAllowed
+      ? { ...choice, event }
+      : { kind: 'none', event };
+    choices.set(row.tempId, next);
+    if (next.kind !== 'none' || next.event) marked += 1;
+  }
+  return { choices, marked };
+}

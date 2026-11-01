@@ -64,6 +64,7 @@ import {
   applyInvestment,
   clearInvestmentFields,
   FlagChoice,
+  groupFlagChoices,
   NO_FLAGS,
 } from '../flags/flagsModel.ts';
 import {
@@ -717,6 +718,33 @@ const ImportTrxStep2 = (props: Props) => {
     [transactions],
   );
 
+  const markGroup = useCallback((group: PayeeGroup, choice: FlagChoice) => {
+    setTransactions((prev) => {
+      const { choices } = groupFlagChoices(
+        prev
+          .filter((trx) => group.rowIds.includes(trx.tempId))
+          .map((trx) => ({
+            tempId: trx.tempId,
+            type: rowTrxType(trx),
+            fromAccountId: trx.accountFrom?.id,
+          })),
+        choice,
+      );
+      return prev.map((trx) => {
+        const flags = choices.get(trx.tempId);
+        return flags ? { ...trx, flags } : trx;
+      });
+    });
+  }, []);
+
+  const groupMarkedCount = (group: PayeeGroup) =>
+    transactions.filter(
+      (trx) =>
+        group.rowIds.includes(trx.tempId) &&
+        (effectiveChoice(trx.flags, rowTrxType(trx)).kind !== 'none' ||
+          !!trx.flags.event),
+    ).length;
+
   const applyGroupPatch = useCallback(
     (group: PayeeGroup, patch: GroupPatch, overwrite: boolean) => {
       setTransactions((prev) =>
@@ -1102,6 +1130,9 @@ const ImportTrxStep2 = (props: Props) => {
                   applyGroupPatch(group, lastGroupPatches[group.key], true)
                 }
                 canApplyToAll={canApplyGroupToAll}
+                investingAccounts={investingAccounts}
+                onMarkGroup={markGroup}
+                markedCount={groupMarkedCount}
                 renderRows={(group) => (
                   <MyFinStaticTable
                     isRefetching={false}

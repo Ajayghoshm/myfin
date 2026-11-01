@@ -429,6 +429,9 @@
   },
   "importTransactions": {
     "createNewAccount": "+ Créer un nouveau compte…",
+    "groupMarked": "{{marked}} sur {{count}} marquées",
+    "groupMarkHint": "S'applique à chaque ligne de ce groupe et remplace les marques des lignes. Les lignes où la marque n'est pas permise restent sans marque.",
+    "groupClearMarks": "Effacer les marques du groupe",
     "importTransactions": "Importer des transactions",
     "strapLine": "Importez vos transactions en 3 étapes",
     "step0Label": "Importer depuis le presse-papiers",

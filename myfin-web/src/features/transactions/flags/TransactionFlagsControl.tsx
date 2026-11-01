@@ -32,6 +32,8 @@ type Props = {
   fromAccountId?: bigint | null;
   /** An existing transaction changes type through the dialog's own fields. */
   showInvestment: boolean;
+  /** Show the options straight away instead of behind the title link. */
+  defaultOpen?: boolean;
 };
 
 const TransactionFlagsControl = ({
@@ -42,11 +44,12 @@ const TransactionFlagsControl = ({
   investingAccounts: allInvestingAccounts,
   fromAccountId,
   showInvestment,
+  defaultOpen = false,
 }: Props) => {
   const { t } = useTranslation();
   const events = useGetEvents();
   const [open, setOpen] = useState(
-    value.kind !== 'none' || value.event != null,
+    defaultOpen || value.kind !== 'none' || value.event != null,
   );
 
   const investingAccounts = allInvestingAccounts.filter(

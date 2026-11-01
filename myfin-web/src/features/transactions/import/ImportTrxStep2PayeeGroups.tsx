@@ -1,4 +1,9 @@
-import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
+import {
+  Flag,
+  FlagOutlined,
+  KeyboardArrowDown,
+  KeyboardArrowUp,
+} from '@mui/icons-material';
 import {
   Autocomplete,
   Button,
@@ -6,6 +11,8 @@ import {
   Collapse,
   FilterOptionsState,
   IconButton,
+  Popover,
+  Stack,
   Table,
   TableBody,
   TableCell,
@@ -20,6 +27,8 @@ import { useTranslation } from 'react-i18next';
 import { CreatableOption } from '../../../components/useCreatableOptions.ts';
 import { TransactionType } from '../../../services/trx/trxServices.ts';
 import { useFormatNumberAsCurrency } from '../../../utils/textHooks.ts';
+import { FlagChoice, NO_FLAGS } from '../flags/flagsModel.ts';
+import TransactionFlagsControl from '../flags/TransactionFlagsControl.tsx';
 import {
   groupCategory,
   groupEntity,
@@ -46,8 +55,77 @@ export type Props = {
   onApplyToAll: (group: PayeeGroup) => void;
   /** True when the group has a pending choice that some rows do not yet carry. */
   canApplyToAll: (group: PayeeGroup) => boolean;
+  /** Investing accounts offered when marking a whole group. */
+  investingAccounts: { id: bigint; label: string }[];
+  /** Applies one mark to every row of the group (rows that disallow it stay unmarked). */
+  onMarkGroup: (group: PayeeGroup, choice: FlagChoice) => void;
+  /** How many of the group's rows carry a mark. */
+  markedCount: (group: PayeeGroup) => number;
   /** The group's individual rows, shown when the group is expanded. */
   renderRows: (group: PayeeGroup) => ReactNode;
+};
+
+const GroupMarkCell = ({
+  group,
+  marked,
+  investingAccounts,
+  onMark,
+}: {
+  group: PayeeGroup;
+  marked: number;
+  investingAccounts: { id: bigint; label: string }[];
+  onMark: (choice: FlagChoice) => void;
+}) => {
+  const { t } = useTranslation();
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const [draft, setDraft] = useState<FlagChoice>(NO_FLAGS);
+  const change = (next: FlagChoice) => {
+    setDraft(next);
+    onMark(next);
+  };
+  return (
+    <>
+      <Button
+        size="small"
+        startIcon={marked > 0 ? <Flag /> : <FlagOutlined />}
+        color={marked > 0 ? 'primary' : 'inherit'}
+        onClick={(e) => setAnchor(e.currentTarget)}
+      >
+        {t('importTransactions.groupMarked', {
+          marked,
+          count: group.count,
+        })}
+      </Button>
+      <Popover
+        open={!!anchor}
+        anchorEl={anchor}
+        onClose={() => setAnchor(null)}
+        onKeyDown={(e) => e.stopPropagation()}
+      >
+        <Stack sx={{ p: 2, width: 300 }} gap={1}>
+          <Typography variant="caption" color="text.secondary">
+            {t('importTransactions.groupMarkHint')}
+          </Typography>
+          <TransactionFlagsControl
+            value={draft}
+            onChange={change}
+            trxType={group.type}
+            description={group.payee}
+            investingAccounts={investingAccounts}
+            showInvestment
+            defaultOpen
+          />
+          <Button
+            size="small"
+            disabled={marked === 0 && draft.kind === 'none' && !draft.event}
+            onClick={() => change(NO_FLAGS)}
+          >
+            {t('importTransactions.groupClearMarks')}
+          </Button>
+        </Stack>
+      </Popover>
+    </>
+  );
 };
 
 const ImportTrxStep2PayeeGroups = (props: Props) => {
@@ -72,6 +150,7 @@ const ImportTrxStep2PayeeGroups = (props: Props) => {
               {t('transactions.entity')}
             </TableCell>
             <TableCell>{t('transactions.essential')}</TableCell>
+            <TableCell>{t('transactions.flags.title')}</TableCell>
             <TableCell />
           </TableRow>
         </TableHead>
@@ -176,6 +255,14 @@ const ImportTrxStep2PayeeGroups = (props: Props) => {
                     />
                   </TableCell>
                   <TableCell>
+                    <GroupMarkCell
+                      group={group}
+                      marked={props.markedCount(group)}
+                      investingAccounts={props.investingAccounts}
+                      onMark={(choice) => props.onMarkGroup(group, choice)}
+                    />
+                  </TableCell>
+                  <TableCell>
                     <Button
                       size="small"
                       disabled={!props.canApplyToAll(group)}
@@ -186,7 +273,7 @@ const ImportTrxStep2PayeeGroups = (props: Props) => {
                   </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell sx={{ py: 0, border: 0 }} colSpan={6}>
+                  <TableCell sx={{ py: 0, border: 0 }} colSpan={7}>
                     <Collapse in={isOpen} timeout="auto" unmountOnExit>
                       {props.renderRows(group)}
                     </Collapse>
