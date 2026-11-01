@@ -4,6 +4,7 @@ import { MYFIN } from '../consts.js';
 import APIError from '../errorHandling/apiError.js';
 import BudgetMatrixService from '../services/budgetMatrixService.js';
 import BudgetService from '../services/budgetService.js';
+import BudgetTemplateService from '../services/budgetTemplateService.js';
 import Logger from '../utils/Logger.js';
 import CommonsController from './commonsController.js';
 
@@ -305,6 +306,85 @@ const getBudgetsListForUser = async (req: Request, res: Response, next: NextFunc
   }
 };
 
+// TEMPLATE
+const getBudgetTemplate = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    const data = await BudgetTemplateService.get(sessionData.userId);
+    res.json(data);
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
+const templateRowSchema = joi.object({
+  category_id: positiveIntegerId,
+  planned_value_debit: currencyAmountSchema.optional(),
+  planned_value_credit: currencyAmountSchema.optional(),
+  expense_items: joi.array().items(breakdownItemSchema).optional(),
+  income_items: joi.array().items(breakdownItemSchema).optional(),
+});
+
+const replaceBudgetTemplateSchema = joi.object({
+  rows: joi
+    .array()
+    .items(templateRowSchema)
+    .description(
+      'Template rows: category_id, optional planned_value_debit/planned_value_credit (decimal currency) and optional expense_items/income_items. The template is replaced as a whole. GET returns updated_at in seconds since the epoch (null when no template exists).'
+    )
+    .required(),
+});
+
+const replaceBudgetTemplate = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    const input = await replaceBudgetTemplateSchema.validateAsync(req.body);
+    await BudgetTemplateService.replace(sessionData.userId, input.rows);
+    res.json('Budget template was successfully saved.');
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
+const templateFromBudgetSchema = joi.object({
+  budget_id: positiveIntegerId,
+});
+
+const saveBudgetTemplateFromBudget = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    const input = await templateFromBudgetSchema.validateAsync(req.body);
+    await BudgetTemplateService.fromBudget(sessionData.userId, BigInt(input.budget_id));
+    res.json('Budget template was successfully saved.');
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
+const createBudgetFromTemplateSchema = joi.object({
+  month: joi.number().integer().min(1).max(12).required(),
+  year: joi.number().integer().min(1970).required(),
+});
+
+const createBudgetFromTemplate = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    const input = await createBudgetFromTemplateSchema.validateAsync(req.body);
+    const data = await BudgetTemplateService.createBudgetFromTemplate(
+      sessionData.userId,
+      input.month,
+      input.year
+    );
+    res.json(data);
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
 export default {
   getAllBudgetsForUser,
   getFilteredBudgetsForUserByPage,
@@ -318,4 +398,8 @@ export default {
   getBudgetsListForUser,
   updateBudgetCategoryPlannedValues,
   updateBudgetDescription,
+  getBudgetTemplate,
+  replaceBudgetTemplate,
+  saveBudgetTemplateFromBudget,
+  createBudgetFromTemplate,
 };

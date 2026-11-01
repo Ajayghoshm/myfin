@@ -321,6 +321,14 @@ export const routeGroups: RouteGroup[] = [
       { method: 'post', path: '/step0', handlerName: 'addBudgetStep0' },
       { method: 'post', path: '/step1', handlerName: 'createBudget' },
       { method: 'get', path: '/matrix', handlerName: 'getBudgetMatrix' },
+      { method: 'get', path: '/template', handlerName: 'getBudgetTemplate' },
+      { method: 'put', path: '/template', handlerName: 'replaceBudgetTemplate' },
+      {
+        method: 'post',
+        path: '/template/from-budget',
+        handlerName: 'saveBudgetTemplateFromBudget',
+      },
+      { method: 'post', path: '/from-template', handlerName: 'createBudgetFromTemplate' },
       {
         method: 'put',
         path: '/:id/description',
