@@ -220,7 +220,6 @@ const BudgetTemplate = () => {
         suggestions.filter(isChanged).map((s) => String(s.category_id)),
       ),
     );
-    // biome-ignore lint/correctness/useExhaustiveDependencies: only reset when new suggestions arrive or the dialog opens
   }, [suggestOpen, suggestionsRequest.data]);
 
   const openSuggestions = () => {
