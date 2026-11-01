@@ -52,7 +52,7 @@ describe('Category hierarchy', () => {
     const b = await mk('B');
     await expect(
       CategoryService.setCategoryParent(user.user_id, a.category_id, b.category_id)
-    ).rejects.toThrow(/has subcategories/);
+    ).rejects.toThrow(/with subcategories/);
   });
 
   test('rejects a parent owned by another user', async () => {
