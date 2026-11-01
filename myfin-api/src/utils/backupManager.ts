@@ -1016,6 +1016,16 @@ class BackupManager {
     ]);
     Logger.addLog('BackupManager > Restore | Core entities successfully imported!');
 
+    // Parents can only be linked once every category exists; old backups have no parent field
+    for (const category of data.categories) {
+      const oldParentId = category.parent_category_id;
+      const newParentId = oldParentId != null ? categoryIdMap.get(oldParentId) : undefined;
+      const newId = categoryIdMap.get(category.category_id);
+      if (newParentId !== undefined && newId !== undefined) {
+        await CategoryService.setCategoryParent(userId, newId, newParentId, dbClient);
+      }
+    }
+
     // region Yearly costs (before transactions, which link to them)
     const yearlyCostIdMap: Map<bigint, bigint> = new Map(); // <old id, new id>
     for (const c of yearlyCosts) {

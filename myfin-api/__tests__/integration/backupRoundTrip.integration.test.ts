@@ -132,4 +132,48 @@ describe('Backup JSON round trip', () => {
     expect(put.status).toBe(200);
     await assertIntact();
   });
+
+  test('round trip keeps subcategory parents', async () => {
+    const food = await prisma.categories.create({
+      data: { name: 'Food', type: 'E', users_user_id: uid },
+    });
+    await prisma.categories.create({
+      data: {
+        name: 'Groceries',
+        type: 'E',
+        users_user_id: uid,
+        parent_category_id: food.category_id,
+      },
+    });
+    const backup = JSON.parse(JSON.stringify(await BackupManager.createBackup(uid)));
+    await UserService.restoreUser(uid, backup);
+    const newFood = await prisma.categories.findFirstOrThrow({
+      where: { users_user_id: uid, name: 'Food' },
+    });
+    const groceries = await prisma.categories.findFirstOrThrow({
+      where: { users_user_id: uid, name: 'Groceries' },
+    });
+    expect(newFood.parent_category_id).toBeNull();
+    expect(groceries.parent_category_id).toBe(newFood.category_id);
+  });
+
+  test('restoring a backup whose categories have no parent_category_id gives top-level categories', async () => {
+    const food = await prisma.categories.create({
+      data: { name: 'Food', type: 'E', users_user_id: uid },
+    });
+    await prisma.categories.create({
+      data: {
+        name: 'Groceries',
+        type: 'E',
+        users_user_id: uid,
+        parent_category_id: food.category_id,
+      },
+    });
+    const backup = JSON.parse(JSON.stringify(await BackupManager.createBackup(uid)));
+    for (const row of backup.categories) delete row.parent_category_id;
+    await UserService.restoreUser(uid, backup);
+    const rows = await prisma.categories.findMany({ where: { users_user_id: uid } });
+    expect(rows.length).toBe(2);
+    expect(rows.every((r) => r.parent_category_id === null)).toBe(true);
+  });
 });

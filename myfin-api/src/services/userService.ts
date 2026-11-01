@@ -516,6 +516,12 @@ const userService = {
           })
         );
 
+        // Detach subcategories first: the parent self-FK blocks deleting them in one go
+        await prismaTx.categories.updateMany({
+          where: { users_user_id: userId, parent_category_id: { not: null } },
+          data: { parent_category_id: null },
+        });
+
         // Delete all current categories
         promises.push(
           prismaTx.categories.deleteMany({
