@@ -137,6 +137,45 @@ export default class BudgetAllocationService {
           current?.breakdown_items.filter((item) => item.direction === 'INCOME') ?? []
         ),
       };
+      const budgeted =
+        totals.planned_amount_debit > 0n ||
+        totals.planned_amount_credit > 0n ||
+        (expenseItems ?? current?.breakdown_items.filter((i) => i.direction === 'EXPENSE') ?? [])
+          .length > 0 ||
+        (incomeItems ?? current?.breakdown_items.filter((i) => i.direction === 'INCOME') ?? [])
+          .length > 0;
+      if (budgeted) {
+        const related = await db.categories.findMany({
+          where: {
+            users_user_id: userId,
+            ...(category.parent_category_id === null
+              ? { parent_category_id: categoryId }
+              : { category_id: category.parent_category_id }),
+          },
+          select: { category_id: true, name: true },
+        });
+        const conflict = related.length
+          ? await db.budgets_has_categories.findFirst({
+              where: {
+                budgets_budget_id: budgetId,
+                budgets_users_user_id: userId,
+                categories_category_id: { in: related.map((c) => c.category_id) },
+                OR: [
+                  { planned_amount_debit: { gt: 0n } },
+                  { planned_amount_credit: { gt: 0n } },
+                  { breakdown_items: { some: {} } },
+                ],
+              },
+            })
+          : null;
+        if (conflict) {
+          const other = related.find((c) => c.category_id === conflict.categories_category_id);
+          throw APIError.badRequest(
+            `"${category.name}" and "${other?.name}" cannot both be budgeted in the same budget: budget either the parent category or its subcategories. Clear one of them first.`,
+            'BUDGET_CATEGORY_CONFLICT'
+          );
+        }
+      }
       await db.budgets_has_categories.upsert({
         where,
         create: { ...key, ...totals },

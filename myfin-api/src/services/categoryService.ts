@@ -94,6 +94,31 @@ class CategoryService {
       throw APIError.notFound('Category not found.');
     }
     await CategoryService.assertValidParent(userId, categoryId, parentId, dbClient);
+    if (parentId !== null) {
+      const budgeted = {
+        OR: [
+          { planned_amount_debit: { gt: 0n } },
+          { planned_amount_credit: { gt: 0n } },
+          { breakdown_items: { some: {} } },
+        ],
+      };
+      const [rows, parentRows] = await Promise.all([
+        dbClient.budgets_has_categories.findMany({
+          where: { budgets_users_user_id: userId, categories_category_id: categoryId, ...budgeted },
+          select: { budgets_budget_id: true },
+        }),
+        dbClient.budgets_has_categories.findMany({
+          where: { budgets_users_user_id: userId, categories_category_id: parentId, ...budgeted },
+          select: { budgets_budget_id: true },
+        }),
+      ]);
+      const parentBudgets = new Set(parentRows.map((r) => r.budgets_budget_id));
+      if (rows.some((r) => parentBudgets.has(r.budgets_budget_id))) {
+        throw APIError.notAcceptable(
+          'Both this category and the new parent are budgeted in the same budget. Clear the amounts of one of them in that budget first.'
+        );
+      }
+    }
     await dbClient.categories.update({
       where: { category_id: categoryId },
       data: { parent_category_id: parentId },
