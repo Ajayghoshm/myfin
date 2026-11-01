@@ -17,7 +17,7 @@
 |---|-------|-------|------|
 | 1 | Quick fixes | 1 scroll gap, 8 auth re-check on tab refocus | `2026-11-01-phase-1-quick-fixes.md` (written) |
 | 2 | Subcategories + move/merge | 15 subcategories (one level), 10 move + merge (merged-away category deleted; moved category's budgets and transactions follow it) | `2026-11-01-phase-2-subcategories.md` (written) |
-| 3 | Budgets | 2 grouping + auto-fill + edit categories ("Unassigned" when no group), 3 whole-category allocation, 4 fewer-click monthly budgeting, 5 templates (auto-fill source), 5a template <-> Insights (last-6-month average, confirm before applying), 11 hide rows where budgeted and spent are both zero (not remembered) | write when phase 2 ships |
+| 3 | Budgets | 2 grouping + auto-fill + edit categories ("Unassigned" when no group), 3 whole-category allocation, 4 fewer-click monthly budgeting, 5 templates (auto-fill source), 5a template <-> Insights (last-6-month average, confirm before applying), 11 hide rows where budgeted and spent are both zero (not remembered) | `2026-11-01-phase-3-budgets.md` (written; decisions: either/or parent amounts, one template, template one-click plus quick-entry screen) |
 | 4 | Transactions | 6 mark as loan (creates a new Debts loan) + link to event (existing or create new), 13 mark as investment (links to an investment account/asset; excluded from budget spending), 12 apply edited rule to existing transactions (overwrite, with preview), all in Add and Import Transaction | write when phase 3 ships |
 | 5 | Reports + export | 14 savings-and-investing report (toggle: invested counts as spending or not), 7 per-module JSON export | write when phase 4 ships |
 
