@@ -117,12 +117,16 @@ model categories {
   status                 String                   @default("Ativa") @db.VarChar(45)
   exclude_from_budgets   Int                      @default(0) @db.TinyInt
   is_fixed               Boolean                  @default(false)
+  parent_category_id     BigInt?
   budgets_has_categories budgets_has_categories[]
   users                  users                    @relation(fields: [users_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction, map: "categories_users_user_id_fk")
   transactions           transactions[]
+  parent                 categories?              @relation("CategoryParent", fields: [parent_category_id], references: [category_id], onDelete: NoAction, onUpdate: NoAction, map: "categories_parent_fk")
+  children               categories[]             @relation("CategoryParent")
 
   @@unique([users_user_id, type, name], map: "uq_name_type_user_id")
   @@index([users_user_id], map: "fk_category_users_idx")
+  @@index([parent_category_id], map: "categories_parent_idx")
 }
 
 model entities {
