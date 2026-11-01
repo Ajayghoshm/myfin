@@ -175,3 +175,25 @@ describe('typicalMonth helper', () => {
     expect(t.unsortedCents).toBe(0);
   });
 });
+
+describe('typicalMonth baseline length', () => {
+  test('typicalMonth default baseline is still 3 months', async () => {
+    const ctx = await setup();
+    const food = await ctx.mkCat('Food', E);
+    for (const m of [5, 6, 7, 8, 9, 10])
+      await ctx.add({ type: E, amount: 100, ym: { year: 2026, month: m }, day: 3, description: `S${m}`, categoryId: food.category_id });
+    const t = await typicalMonth(ctx.uid, NOV);
+    expect(t.baselineMonths).toBe(3);
+    expect(t.byCategory.get(food.category_id.toString())?.monthly).toHaveLength(3);
+  });
+
+  test('months=6 widens the baseline', async () => {
+    const ctx = await setup();
+    const food = await ctx.mkCat('Food', E);
+    for (const m of [5, 6, 7, 8, 9, 10])
+      await ctx.add({ type: E, amount: m === 5 ? 400 : 100, ym: { year: 2026, month: m }, day: 3, description: `S${m}`, categoryId: food.category_id });
+    const t = await typicalMonth(ctx.uid, NOV, 6);
+    expect(t.baselineMonths).toBe(6);
+    expect(t.byCategory.get(food.category_id.toString())?.avgCents).toBe(15_000);
+  });
+});

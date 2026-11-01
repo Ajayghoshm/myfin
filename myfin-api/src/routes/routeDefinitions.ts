@@ -323,6 +323,7 @@ export const routeGroups: RouteGroup[] = [
       { method: 'get', path: '/matrix', handlerName: 'getBudgetMatrix' },
       { method: 'get', path: '/template', handlerName: 'getBudgetTemplate' },
       { method: 'put', path: '/template', handlerName: 'replaceBudgetTemplate' },
+      { method: 'get', path: '/template/suggestions', handlerName: 'getBudgetTemplateSuggestions' },
       {
         method: 'post',
         path: '/template/from-budget',

@@ -318,6 +318,17 @@ const getBudgetTemplate = async (req: Request, res: Response, next: NextFunction
   }
 };
 
+const getBudgetTemplateSuggestions = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    const data = await BudgetTemplateService.suggestions(sessionData.userId);
+    res.json(data);
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
 const templateRowSchema = joi.object({
   category_id: positiveIntegerId,
   planned_value_debit: currencyAmountSchema.optional(),
@@ -399,6 +410,7 @@ export default {
   updateBudgetCategoryPlannedValues,
   updateBudgetDescription,
   getBudgetTemplate,
+  getBudgetTemplateSuggestions,
   replaceBudgetTemplate,
   saveBudgetTemplateFromBudget,
   createBudgetFromTemplate,

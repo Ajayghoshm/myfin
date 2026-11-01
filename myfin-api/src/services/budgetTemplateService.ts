@@ -9,6 +9,8 @@ import {
   serializeItems,
 } from './budgetAllocationService.js';
 import BudgetService from './budgetService.js';
+import { IST_OFFSET_SECONDS } from './insights/insightsPrimitives.js';
+import { typicalMonth } from './insights/typicalMonth.js';
 
 type Item = { label: string; amount: number; sort_order: number };
 export type TemplateRow = {
@@ -35,6 +37,15 @@ type CentsRow = {
 };
 
 const nowSeconds = () => Math.floor(Date.now() / 1000);
+const SUGGESTION_MONTHS = 6;
+export type TemplateSuggestion = {
+  category_id: bigint;
+  level: 'parent' | 'category';
+  current_debit: number;
+  current_credit: number;
+  suggested_debit: number;
+  suggested_credit: number;
+};
 
 export default class BudgetTemplateService {
   static async get(userId: bigint): Promise<{ rows: TemplateRow[]; updated_at: number | null }> {
@@ -57,6 +68,77 @@ export default class BudgetTemplateService {
         ...serializeItems(row.items),
       })),
     };
+  }
+
+  /**
+   * Read-only: the average of the last 6 completed months per category (the typical-month rules),
+   * next to the template's current amounts. A parent that holds a lump sum in the template gets one
+   * rolled-up row and its subcategories none; everything else is suggested per category.
+   */
+  static async suggestions(userId: bigint, now: number = nowSeconds()): Promise<TemplateSuggestion[]> {
+    const d = new Date((now + IST_OFFSET_SECONDS) * 1000);
+    const typical = await typicalMonth(
+      userId,
+      { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 },
+      SUGGESTION_MONTHS
+    );
+    const [categories, template] = await Promise.all([
+      prisma.categories.findMany({
+        where: { users_user_id: userId },
+        select: { category_id: true, status: true, exclude_from_budgets: true, parent_category_id: true },
+      }),
+      BudgetTemplateService.get(userId),
+    ]);
+    const eligible = new Set(
+      categories
+        .filter((c) => c.status === MYFIN.CATEGORY_STATUS.ACTIVE && !c.exclude_from_budgets)
+        .map((c) => c.category_id.toString())
+    );
+    const currentOf = new Map(template.rows.map((row) => [row.category_id.toString(), row]));
+    const childrenOf = new Map<string, string[]>();
+    for (const c of categories) {
+      if (c.parent_category_id == null) continue;
+      const key = c.parent_category_id.toString();
+      childrenOf.set(key, [...(childrenOf.get(key) ?? []), c.category_id.toString()]);
+    }
+    const avg = (id: string) => typical.byCategory.get(id);
+    const sides = (ids: string[]) => {
+      let debit = 0;
+      let credit = 0;
+      for (const id of ids) {
+        const entry = avg(id);
+        if (!entry || !eligible.has(id)) continue;
+        if (entry.kind === 'income') credit += entry.avgCents;
+        else debit += entry.avgCents;
+      }
+      return { debit: debit / 100, credit: credit / 100 };
+    };
+    const lumpParents = new Set<string>();
+    for (const [parentId, kids] of childrenOf) {
+      const row = currentOf.get(parentId);
+      if (row && kids.length && (row.planned_value_debit > 0 || row.planned_value_credit > 0))
+        lumpParents.add(parentId);
+    }
+    const rolledUp = new Set([...lumpParents].flatMap((id) => childrenOf.get(id) ?? []));
+
+    const out: TemplateSuggestion[] = [];
+    for (const c of categories) {
+      const id = c.category_id.toString();
+      if (!eligible.has(id) || rolledUp.has(id)) continue;
+      const isLump = lumpParents.has(id);
+      const { debit, credit } = sides(isLump ? [id, ...(childrenOf.get(id) ?? [])] : [id]);
+      if (debit === 0 && credit === 0) continue;
+      const current = currentOf.get(id);
+      out.push({
+        category_id: c.category_id,
+        level: isLump ? 'parent' : 'category',
+        current_debit: current?.planned_value_debit ?? 0,
+        current_credit: current?.planned_value_credit ?? 0,
+        suggested_debit: debit,
+        suggested_credit: credit,
+      });
+    }
+    return out.sort((a, b) => (a.category_id < b.category_id ? -1 : 1));
   }
 
   static async replace(userId: bigint, rows: TemplateRowInput[], dbClient = undefined) {

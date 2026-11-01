@@ -225,9 +225,13 @@ export function computeTypical(rows: Row[], baselineIdx: number[]) {
   return { baselineN: n, oneOffRows, baselineClean, typical };
 }
 
-/** The user's typical month for `ym`: average of the 3 effective months before it that have data. */
-export async function typicalMonth(userId: bigint, ym: YearMonth): Promise<TypicalMonth> {
-  const months = Array.from({ length: BASELINE_MONTHS }, (_, i) => shiftMonth(ym, i - BASELINE_MONTHS));
+/** The user's typical month for `ym`: average of the `baseline` (default 3) effective months before it that have data. */
+export async function typicalMonth(
+  userId: bigint,
+  ym: YearMonth,
+  baseline: number = BASELINE_MONTHS
+): Promise<TypicalMonth> {
+  const months = Array.from({ length: baseline }, (_, i) => shiftMonth(ym, i - baseline));
   const rule = await salaryRuleFor(userId);
   const rows = await fetchRows(userId, months, months.map(monthRangeIST), rule);
   return computeTypical(
