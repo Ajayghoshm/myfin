@@ -22,6 +22,7 @@ import {
   DialogContent,
   DialogTitle,
   FormControl,
+  FormControlLabel,
   IconButton,
   InputAdornment,
   InputBase,
@@ -32,6 +33,7 @@ import {
   Select,
   Skeleton,
   Stack,
+  Switch,
   TextField,
   Tooltip,
   Typography,
@@ -70,7 +72,16 @@ import CategoryIconBadge from '../../../services/category/CategoryIconBadge.tsx'
 import { TransactionType } from '../../../services/trx/trxServices.ts';
 import { getMonthsFullName } from '../../../utils/dateUtils.ts';
 import { useFormatNumberAsCurrency } from '../../../utils/textHooks.ts';
+import { apiErrorMessage } from '../../../utils/apiErrorMessage.ts';
+import { rolledUp } from '../budgetGroups.ts';
 import { BudgetCategoryTooltipContent } from '../details/BudgetCategoryRow.tsx';
+import {
+  type MatrixGroup,
+  type MatrixLayoutRow,
+  buildMatrixLayout,
+  mergedGroupForBudget,
+  matrixGroupMode,
+} from './matrixGroups.ts';
 
 type SummaryBudget = {
   budget_id: bigint;
@@ -566,6 +577,7 @@ function BudgetMatrix() {
   const [expensesExpanded, setExpensesExpanded] = useState(true);
   const [incomeExpanded, setIncomeExpanded] = useState(true);
   const [categoryQuery, setCategoryQuery] = useState('');
+  const [hideEmpty, setHideEmpty] = useState(false);
   const [, startSectionTransition] = useTransition();
   const matrixRef = useRef<HTMLDivElement>(null);
   const ignoreBlur = useRef(new Set<string>());
@@ -667,69 +679,6 @@ function BudgetMatrix() {
     () => matrix?.categories || [],
     [matrix?.categories],
   );
-  const categoriesByDirection = useMemo(() => {
-    const query = categoryQuery.trim().toLocaleLowerCase();
-    const filteredCategories = allCategories.filter((category) => {
-      if (!query) return true;
-      return `${category.name} ${category.description || ''}`
-        .toLocaleLowerCase()
-        .includes(query);
-    });
-
-    const plannedAmounts = {
-      debit: new Map<string, number>(),
-      credit: new Map<string, number>(),
-    };
-    for (const budget of matrix?.budgets || []) {
-      for (const value of budget.categories) {
-        const categoryId = value.category_id.toString();
-        plannedAmounts.debit.set(
-          categoryId,
-          (plannedAmounts.debit.get(categoryId) || 0) +
-            value.planned_amount_debit,
-        );
-        plannedAmounts.credit.set(
-          categoryId,
-          (plannedAmounts.credit.get(categoryId) || 0) +
-            value.planned_amount_credit,
-        );
-      }
-    }
-
-    const sortByPlannedAmount = (
-      categories: BudgetMatrixCategory[],
-      isExpense: boolean,
-    ) => {
-      const amounts = isExpense ? plannedAmounts.debit : plannedAmounts.credit;
-      return [...categories].sort(
-        (first, second) =>
-          (amounts.get(second.category_id.toString()) || 0) -
-            (amounts.get(first.category_id.toString()) || 0) ||
-          first.name.localeCompare(second.name),
-      );
-    };
-
-    return {
-      expense: sortByPlannedAmount(filteredCategories, true),
-      income: sortByPlannedAmount(filteredCategories, false),
-    };
-  }, [allCategories, categoryQuery, matrix?.budgets]);
-  const visibleCategoryIds = useMemo(
-    () =>
-      new Set(
-        categoriesByDirection.expense.map((category) =>
-          category.category_id.toString(),
-        ),
-      ),
-    [categoriesByDirection.expense],
-  );
-  const flatCategories = useMemo(
-    () => [
-      ...(expensesExpanded ? categoriesByDirection.expense : []),
-      ...(incomeExpanded ? categoriesByDirection.income : []),
-    ],
-    [categoriesByDirection, expensesExpanded, incomeExpanded],
-  );
   const categoryValuesByBudget = useMemo(() => {
     const valuesByBudget = new Map<string, Map<string, BudgetMatrixValue>>();
     for (const budget of matrix?.budgets || []) {
@@ -745,6 +694,41 @@ function BudgetMatrix() {
     }
     return valuesByBudget;
   }, [matrix?.budgets]);
+  const categoriesByDirection = useMemo(() => {
+    const budgetIds = (matrix?.budgets || []).map((budget) => budget.budget_id);
+    const layout = (isExpense: boolean) =>
+      buildMatrixLayout({
+        categories: allCategories,
+        budgetIds,
+        valuesByBudget: categoryValuesByBudget,
+        isExpense,
+        query: categoryQuery,
+        hideEmpty,
+      });
+    return { expense: layout(true), income: layout(false) };
+  }, [
+    allCategories,
+    categoryQuery,
+    hideEmpty,
+    matrix?.budgets,
+    categoryValuesByBudget,
+  ]);
+  const visibleCategoryIds = useMemo(
+    () =>
+      new Set(
+        categoriesByDirection.expense.map((row) =>
+          row.category.category_id.toString(),
+        ),
+      ),
+    [categoriesByDirection.expense],
+  );
+  const flatCategories = useMemo(
+    () => [
+      ...(expensesExpanded ? categoriesByDirection.expense : []),
+      ...(incomeExpanded ? categoriesByDirection.income : []),
+    ],
+    [categoriesByDirection, expensesExpanded, incomeExpanded],
+  );
   const referenceBudget = matrix?.budgets.at(-1);
   const referenceValues = useMemo(
     () =>
@@ -867,7 +851,7 @@ function BudgetMatrix() {
           delete next[key];
           return next;
         });
-      } catch {
+      } catch (error) {
         if (cellRequestVersions.current.get(key) !== requestVersion) return;
         updateLocalCategory(
           budget.budget_id,
@@ -880,7 +864,7 @@ function BudgetMatrix() {
           [key]: { status: 'error', previous, retryValue: value },
         }));
         snackbar.showSnackbar(
-          t('budgetMatrix.saveFailed'),
+          apiErrorMessage(error, t('budgetMatrix.saveFailed')),
           AlertSeverity.ERROR,
         );
       }
@@ -1146,6 +1130,8 @@ function BudgetMatrix() {
     row: number,
     budgetIndex: number,
     isExpense: boolean,
+    group?: MatrixGroup,
+    role?: MatrixLayoutRow['role'],
   ) => {
     const budget = matrix?.budgets[budgetIndex];
     if (!budget) return null;
@@ -1153,9 +1139,35 @@ function BudgetMatrix() {
       .get(budget.budget_id.toString())
       ?.get(category.category_id.toString());
     if (!value) return null;
-    const planned = isExpense
+    const mode = group
+      ? matrixGroupMode(
+          group,
+          budget.budget_id,
+          isExpense,
+          categoryValuesByBudget,
+        )
+      : 'empty';
+    const lockHint =
+      budget.is_open && group && role === 'parent' && mode === 'split'
+        ? t('budgetDetails.budgetedPerSubcategory')
+        : budget.is_open && group && role === 'child' && mode === 'lump'
+          ? t('budgetDetails.budgetedOnWholeCategory')
+          : undefined;
+    const ownPlanned = isExpense
       ? value.planned_amount_debit
       : value.planned_amount_credit;
+    const planned =
+      group && role === 'parent' && mode === 'split'
+        ? rolledUp(
+            mergedGroupForBudget(
+              group,
+              budget.budget_id,
+              isExpense,
+              categoryValuesByBudget,
+            ),
+            isExpense ? 'planned_debit' : 'planned_credit',
+          )
+        : ownPlanned;
     const actual = isExpense
       ? value.current_amount_debit
       : value.current_amount_credit;
@@ -1192,7 +1204,7 @@ function BudgetMatrix() {
         >
           <InputBase
             value={cellDrafts[key] ?? String(planned)}
-            disabled={!budget.is_open}
+            disabled={!budget.is_open || !!lockHint}
             readOnly={items.length > 0}
             onClick={() => {
               if (items.length) setBreakdownKey(key);
@@ -1235,7 +1247,11 @@ function BudgetMatrix() {
             }}
             inputProps={{
               'aria-label':
-                category.name + ' ' + t('budgetMatrix.budgetedValue'),
+                category.name +
+                ' ' +
+                t('budgetMatrix.budgetedValue') +
+                (lockHint ? ` (${lockHint})` : ''),
+              title: lockHint,
               'data-matrix-row': row,
               'data-matrix-col': budgetIndex,
               inputMode: 'decimal',
@@ -1247,7 +1263,7 @@ function BudgetMatrix() {
                 onClose={() => setBreakdownKey(null)}
                 title={`${category.name} · ${t(isExpense ? 'common.debit' : 'common.credit')}`}
                 items={items}
-                total={planned}
+                total={ownPlanned}
                 readOnly={!budget.is_open}
                 compact
                 onSave={async (next, amount) => {
@@ -1412,9 +1428,80 @@ function BudgetMatrix() {
     );
   };
 
+  const renderGroupHeader = (group: MatrixGroup, isExpense: boolean) => (
+    <Box sx={{ display: 'contents' }}>
+      <Typography
+        variant="body2"
+        fontWeight={700}
+        noWrap
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          position: 'sticky',
+          left: 0,
+          zIndex: 1,
+          px: 1,
+          minHeight: 32,
+          bgcolor: 'background.paper',
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+        }}
+      >
+        {group.parent.name}
+      </Typography>
+      {orderedSelectedBudgetIds.map((_, budgetIndex) => {
+        const budget = matrix?.budgets[budgetIndex];
+        if (!budget) return null;
+        const merged = mergedGroupForBudget(
+          group,
+          budget.budget_id,
+          isExpense,
+          categoryValuesByBudget,
+        );
+        const planned = rolledUp(
+          merged,
+          isExpense ? 'planned_debit' : 'planned_credit',
+        );
+        const actual = rolledUp(
+          merged,
+          isExpense ? 'current_debit' : 'current_credit',
+        );
+        const balance = isExpense ? planned - actual : actual - planned;
+        return [planned, actual, balance].map((amount, index) => (
+          <Typography
+            key={`${budget.budget_id.toString()}-${index}`}
+            variant="body2"
+            fontWeight={700}
+            color={
+              index === 2
+                ? balance < 0
+                  ? 'error.main'
+                  : 'success.main'
+                : 'text.primary'
+            }
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              minHeight: 32,
+              px: 1,
+              borderLeft: index === 0 ? '2px solid' : '1px solid',
+              borderBottom: '1px solid',
+              borderColor: 'divider',
+              fontVariantNumeric: 'tabular-nums',
+              bgcolor: 'action.hover',
+            }}
+          >
+            {formatCurrency.invoke(amount)}
+          </Typography>
+        ));
+      })}
+    </Box>
+  );
+
   const renderSection = (
     title: string,
-    categories: BudgetMatrixCategory[],
+    layoutRows: MatrixLayoutRow[],
     startRow: number,
     isExpense: boolean,
     expanded: boolean,
@@ -1512,7 +1599,8 @@ function BudgetMatrix() {
         sx={{ display: expanded ? 'contents' : 'none' }}
         aria-hidden={!expanded}
       >
-        {categories.map((category, categoryIndex) => {
+        {layoutRows.map((layoutRow, categoryIndex) => {
+          const { category, group, role } = layoutRow;
           const visible = visibleIds.has(category.category_id.toString());
           const row = startRow + categoryIndex;
           return (
@@ -1522,6 +1610,26 @@ function BudgetMatrix() {
                 display: visible ? 'contents' : 'none',
               }}
             >
+              {layoutRow.unassignedHeading && (
+                <Typography
+                  variant="caption"
+                  fontWeight={700}
+                  color="text.secondary"
+                  sx={{
+                    gridColumn: '1 / -1',
+                    position: 'sticky',
+                    left: 0,
+                    px: 1,
+                    py: 0.5,
+                    borderBottom: '1px solid',
+                    borderColor: 'divider',
+                  }}
+                >
+                  {t('budgetDetails.unassignedCategories')}
+                </Typography>
+              )}
+              {layoutRow.header &&
+                renderGroupHeader(layoutRow.header, isExpense)}
               <Box
                 sx={{
                   display: 'flex',
@@ -1532,6 +1640,7 @@ function BudgetMatrix() {
                   borderBottom: '1px solid',
                   borderColor: 'divider',
                   px: 1,
+                  pl: role === 'child' ? 3 : 1,
                   minHeight: 32,
                   bgcolor: 'background.paper',
                 }}
@@ -1563,7 +1672,14 @@ function BudgetMatrix() {
                 </Stack>
               </Box>
               {orderedSelectedBudgetIds.map((_, budgetIndex) =>
-                renderCategoryCells(category, row, budgetIndex, isExpense),
+                renderCategoryCells(
+                  category,
+                  row,
+                  budgetIndex,
+                  isExpense,
+                  group,
+                  role,
+                ),
               )}
             </Box>
           );
@@ -1658,6 +1774,17 @@ function BudgetMatrix() {
           <CategorySearchField
             label={t('budgetMatrix.searchCategories')}
             onQueryChange={setCategoryQuery}
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                size="small"
+                checked={hideEmpty}
+                onChange={(event) => setHideEmpty(event.target.checked)}
+              />
+            }
+            label={t('budgetDetails.hideEmptyRows')}
+            sx={{ mx: 0, whiteSpace: 'nowrap' }}
           />
           <FormControl size="small" sx={{ minWidth: 220 }}>
             <InputLabel>{t('budgetMatrix.selectBudgets')}</InputLabel>
