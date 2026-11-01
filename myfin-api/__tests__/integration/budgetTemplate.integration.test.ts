@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { prisma } from '../../src/config/prisma.js';
 import BudgetService from '../../src/services/budgetService.js';
 import BudgetTemplateService from '../../src/services/budgetTemplateService.js';
@@ -248,6 +248,122 @@ describe('budget template', () => {
       });
       expect(rows.map((r) => r.categories_category_id).sort()).toEqual([food, rent].sort());
       expect(rows.find((r) => r.categories_category_id === food)!.planned_amount_debit).toBe(10000n);
+    });
+
+    test('fromBudget drops the child of a stored parent + subcategory pair and keeps the parent', async () => {
+      const child = await cat('Groceries', userId, { parent_category_id: food });
+      const budgetId = await BudgetService.createBudget(userId, 8, 2026, [row(rent, 5)], '');
+      await prisma.budgets_has_categories.createMany({
+        data: [
+          {
+            budgets_budget_id: budgetId,
+            budgets_users_user_id: userId,
+            categories_category_id: food,
+            planned_amount_debit: 10000n,
+          },
+          {
+            budgets_budget_id: budgetId,
+            budgets_users_user_id: userId,
+            categories_category_id: child,
+            planned_amount_debit: 1000n,
+          },
+        ],
+      });
+      await BudgetTemplateService.fromBudget(userId, budgetId);
+      const { rows } = await BudgetTemplateService.get(userId);
+      expect(rows.map((r) => r.category_id).sort()).toEqual([food, rent].sort());
+      expect(rows.find((r) => r.category_id === food)!.planned_value_debit).toBe(100);
+    });
+
+    test('createBudgetFromTemplate keeps an active child when its parent is inactive and skipped', async () => {
+      const child = await cat('Groceries', userId, { parent_category_id: food });
+      await BudgetTemplateService.replace(userId, [row(rent, 5)]);
+      const t = await prisma.budget_templates.findUnique({ where: { users_user_id: userId } });
+      await prisma.budget_template_rows.createMany({
+        data: [
+          { template_id: t!.template_id, categories_category_id: food, planned_amount_debit: 10000n },
+          { template_id: t!.template_id, categories_category_id: child, planned_amount_debit: 1000n },
+        ],
+      });
+      await prisma.categories.update({ where: { category_id: food }, data: { status: 'Inativa' } });
+      const res = await BudgetTemplateService.createBudgetFromTemplate(userId, 9, 2026);
+      expect(res.skipped_category_ids).toEqual([food]);
+      const rows = await prisma.budgets_has_categories.findMany({
+        where: { budgets_budget_id: res.budget_id },
+      });
+      expect(rows.map((r) => r.categories_category_id).sort()).toEqual([child, rent].sort());
+    });
+
+    test('createBudgetFromTemplate maps a duplicate-month unique violation to 409', async () => {
+      await BudgetTemplateService.replace(userId, [row(food, 30)]);
+      const spy = vi
+        .spyOn(BudgetService, 'createBudget')
+        .mockRejectedValueOnce(Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }));
+      try {
+        await expect(
+          BudgetTemplateService.createBudgetFromTemplate(userId, 10, 2026)
+        ).rejects.toMatchObject({ code: 409 });
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    describe('mergeCategories next to a parent or subcategory of the target', () => {
+      let s1: bigint;
+      let s2: bigint;
+      let other: bigint;
+      beforeEach(async () => {
+        s1 = await cat('Groceries', userId, { parent_category_id: food });
+        s2 = await cat('Dining', userId, { parent_category_id: food });
+        other = await cat('Misc');
+      });
+      const expectNotMerged = async (src: bigint) => {
+        expect(await prisma.categories.count({ where: { category_id: src } })).toBe(1);
+      };
+
+      test('budgets: a subcategory into its parent is rejected when a sibling is budgeted too', async () => {
+        await BudgetService.createBudget(userId, 1, 2026, [row(s1, 5), row(s2, 7)], '');
+        await expect(CategoryService.mergeCategories(userId, s1, food)).rejects.toMatchObject({
+          code: 406,
+        });
+        await expectNotMerged(s1);
+      });
+
+      test('budgets: merging a budgeted category into a subcategory is rejected when its parent is budgeted', async () => {
+        await BudgetService.createBudget(userId, 1, 2026, [row(food, 50), row(other, 7)], '');
+        await expect(CategoryService.mergeCategories(userId, other, s1)).rejects.toMatchObject({
+          code: 406,
+        });
+        await expectNotMerged(other);
+      });
+
+      test('template: a subcategory into its parent is rejected when a sibling is budgeted too', async () => {
+        await BudgetTemplateService.replace(userId, [row(s1, 5), row(s2, 7)]);
+        await expect(CategoryService.mergeCategories(userId, s1, food)).rejects.toMatchObject({
+          code: 406,
+        });
+        await expectNotMerged(s1);
+      });
+
+      test('template: merging a budgeted category into a subcategory is rejected when its parent is budgeted', async () => {
+        await BudgetTemplateService.replace(userId, [row(food, 50), row(other, 7)]);
+        await expect(CategoryService.mergeCategories(userId, other, s1)).rejects.toMatchObject({
+          code: 406,
+        });
+        await expectNotMerged(other);
+      });
+
+      test('still allowed when no relative of the target is budgeted alongside the source', async () => {
+        await BudgetService.createBudget(userId, 1, 2026, [row(s1, 5)], '');
+        await BudgetTemplateService.replace(userId, [row(s1, 5)]);
+        await CategoryService.mergeCategories(userId, s1, food);
+        const b = await prisma.budgets_has_categories.findMany({
+          where: { budgets_users_user_id: userId },
+        });
+        expect(b.map((r) => r.categories_category_id)).toEqual([food]);
+        const { rows } = await BudgetTemplateService.get(userId);
+        expect(rows.map((r) => r.category_id)).toEqual([food]);
+      });
     });
 
     describe('mergeCategories re-parenting', () => {

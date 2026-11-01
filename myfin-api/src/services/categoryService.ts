@@ -223,6 +223,69 @@ class CategoryService {
         }
       }
 
+      // The source's amounts land on the target: none of the target's relatives (its subcategories
+      // or its parent) may be budgeted alongside it.
+      const relatives = await tx.categories.findMany({
+        where: {
+          users_user_id: userId,
+          category_id: { not: sourceId },
+          OR: [
+            { parent_category_id: targetId },
+            ...(target.parent_category_id ? [{ category_id: target.parent_category_id }] : []),
+          ],
+        },
+        select: { category_id: true },
+      });
+      if (relatives.length) {
+        const relativeIds = relatives.map((c) => c.category_id);
+        const sourceBudgets = await tx.budgets_has_categories.findMany({
+          where: {
+            budgets_users_user_id: userId,
+            categories_category_id: sourceId,
+            OR: [
+              { planned_amount_debit: { gt: 0n } },
+              { planned_amount_credit: { gt: 0n } },
+              { breakdown_items: { some: {} } },
+            ],
+          },
+          select: { budgets_budget_id: true },
+        });
+        const relativeClash = sourceBudgets.length
+          ? await tx.budgets_has_categories.findFirst({
+              where: {
+                budgets_users_user_id: userId,
+                categories_category_id: { in: relativeIds },
+                budgets_budget_id: { in: sourceBudgets.map((r) => r.budgets_budget_id) },
+                OR: [
+                  { planned_amount_debit: { gt: 0n } },
+                  { planned_amount_credit: { gt: 0n } },
+                  { breakdown_items: { some: {} } },
+                ],
+              },
+            })
+          : null;
+        if (relativeClash) {
+          throw APIError.notAcceptable(
+            'The target has a parent or subcategory that is budgeted in the same budget as the source. Clear the amounts of one of them in that budget first.'
+          );
+        }
+        const templateRows = await tx.budget_template_rows.findMany({
+          where: {
+            categories_category_id: { in: [sourceId, ...relativeIds] },
+            template: { users_user_id: userId },
+          },
+          select: { categories_category_id: true },
+        });
+        if (
+          templateRows.some((r) => r.categories_category_id === sourceId) &&
+          templateRows.some((r) => r.categories_category_id !== sourceId)
+        ) {
+          throw APIError.notAcceptable(
+            'The target has a parent or subcategory that is in the budget template together with the source. Clear one of them in the template first.'
+          );
+        }
+      }
+
       await tx.categories.updateMany({
         where: { parent_category_id: sourceId, users_user_id: userId },
         data: { parent_category_id: targetId },
