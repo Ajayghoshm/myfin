@@ -100,6 +100,134 @@ class CategoryService {
     });
   }
 
+  /**
+   * Merges ***sourceId*** into ***targetId***: everything that references the source category is
+   * re-pointed to the target, the source's subcategories are re-parented to the target and the
+   * source is deleted. All or nothing.
+   */
+  static async mergeCategories(userId: bigint, sourceId: bigint, targetId: bigint): Promise<void> {
+    if (sourceId === targetId) {
+      throw APIError.notAcceptable('A category cannot be merged into itself.');
+    }
+    await prisma.$transaction(async (tx) => {
+      const [source, target] = await Promise.all([
+        tx.categories.findFirst({
+          where: { category_id: sourceId, users_user_id: userId },
+          select: { category_id: true },
+        }),
+        tx.categories.findFirst({
+          where: { category_id: targetId, users_user_id: userId },
+          select: { parent_category_id: true },
+        }),
+      ]);
+      if (!source || !target) {
+        throw APIError.notFound('Category not found.');
+      }
+      if (target.parent_category_id === sourceId) {
+        throw APIError.notAcceptable('Cannot merge a category into one of its own subcategories.');
+      }
+      const childCount = await tx.categories.count({
+        where: { parent_category_id: sourceId, users_user_id: userId },
+      });
+      if (childCount > 0 && target.parent_category_id !== null) {
+        throw APIError.notAcceptable(
+          'A category with subcategories cannot be merged into a subcategory.'
+        );
+      }
+
+      await tx.categories.updateMany({
+        where: { parent_category_id: sourceId, users_user_id: userId },
+        data: { parent_category_id: targetId },
+      });
+
+      await tx.transactions.updateMany({
+        where: { categories_category_id: sourceId },
+        data: { categories_category_id: targetId },
+      });
+      await tx.rules.updateMany({
+        where: { users_user_id: userId, assign_category_id: sourceId },
+        data: { assign_category_id: targetId },
+      });
+      await tx.yearly_costs.updateMany({
+        where: { users_user_id: userId, category_id: sourceId },
+        data: { category_id: targetId },
+      });
+      await tx.planned_transactions.updateMany({
+        where: { users_user_id: userId, categories_category_id: sourceId },
+        data: { categories_category_id: targetId },
+      });
+      await tx.debt_payments.updateMany({
+        where: { original_category_id: sourceId, debts: { users_user_id: userId } },
+        data: { original_category_id: targetId },
+      });
+      await tx.events.updateMany({
+        where: { users_user_id: userId, category_id: sourceId },
+        data: { category_id: targetId },
+      });
+      await tx.user_financial_profile.updateMany({
+        where: { users_user_id: userId, salary_category_id: sourceId },
+        data: { salary_category_id: targetId },
+      });
+
+      const sourceRows = await tx.budgets_has_categories.findMany({
+        where: { budgets_users_user_id: userId, categories_category_id: sourceId },
+      });
+      for (const row of sourceRows) {
+        const key = {
+          budgets_budget_id: row.budgets_budget_id,
+          budgets_users_user_id: userId,
+        };
+        const targetRow = await tx.budgets_has_categories.findUnique({
+          where: {
+            budgets_budget_id_budgets_users_user_id_categories_category_id: {
+              ...key,
+              categories_category_id: targetId,
+            },
+          },
+        });
+        if (targetRow) {
+          await tx.budgets_has_categories.update({
+            where: {
+              budgets_budget_id_budgets_users_user_id_categories_category_id: {
+                ...key,
+                categories_category_id: targetId,
+              },
+            },
+            data: {
+              planned_amount_credit: { increment: row.planned_amount_credit },
+              planned_amount_debit: { increment: row.planned_amount_debit },
+              current_amount: { increment: row.current_amount },
+            },
+          });
+        } else {
+          await tx.budgets_has_categories.create({
+            data: {
+              ...key,
+              categories_category_id: targetId,
+              planned_amount_credit: row.planned_amount_credit,
+              planned_amount_debit: row.planned_amount_debit,
+              current_amount: row.current_amount,
+            },
+          });
+        }
+        await tx.budget_category_items.updateMany({
+          where: { ...key, categories_category_id: sourceId },
+          data: { categories_category_id: targetId },
+        });
+        await tx.budgets_has_categories.delete({
+          where: {
+            budgets_budget_id_budgets_users_user_id_categories_category_id: {
+              ...key,
+              categories_category_id: sourceId,
+            },
+          },
+        });
+      }
+
+      await tx.categories.delete({ where: { category_id: sourceId } });
+    });
+  }
+
   static async createCategory(category: Category, dbClient = prisma) {
     await CategoryService.assertValidParent(
       category.users_user_id,
