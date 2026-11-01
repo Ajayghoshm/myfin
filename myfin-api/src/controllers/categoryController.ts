@@ -26,6 +26,7 @@ const createCategorySchema = joi.object({
   status: joi.string().valid(MYFIN.CATEGORY_STATUS.ACTIVE, MYFIN.CATEGORY_STATUS.INACTIVE),
   exclude_from_budgets: joi.boolean().truthy(1, '1').falsy(0, '0').required(),
   is_fixed: joi.boolean().truthy(1, '1').falsy(0, '0').optional(),
+  parent_category_id: joi.number().allow(null).optional(),
 });
 
 // eslint-disable-next-line consistent-return
@@ -36,6 +37,10 @@ const createCategory = async (req: Request, res: Response, next: NextFunction) =
     const category = await CategoryService.createCategory({
       users_user_id: sessionData.userId,
       ...input,
+      parent_category_id:
+        input.parent_category_id !== undefined && input.parent_category_id !== null
+          ? BigInt(input.parent_category_id)
+          : null,
       exclude_from_budgets: +input.exclude_from_budgets,
       type: 'M',
     });
@@ -58,6 +63,7 @@ const updateCategorySchema = joi.object({
   new_status: joi.string().valid(MYFIN.CATEGORY_STATUS.ACTIVE, MYFIN.CATEGORY_STATUS.INACTIVE),
   new_exclude_from_budgets: joi.boolean().truthy(1, '1').falsy(0, '0').required(),
   new_is_fixed: joi.boolean().truthy(1, '1').falsy(0, '0').optional(),
+  new_parent_category_id: joi.number().allow(null).optional(),
 });
 
 // eslint-disable-next-line consistent-return
@@ -75,7 +81,39 @@ const updateCategory = async (req: Request, res: Response, next: NextFunction) =
       ...(input.new_is_fixed !== undefined ? { is_fixed: input.new_is_fixed } : {}),
     });
 
+    if (input.new_parent_category_id !== undefined) {
+      await CategoryService.setCategoryParent(
+        sessionData.userId,
+        BigInt(input.category_id),
+        input.new_parent_category_id === null ? null : BigInt(input.new_parent_category_id)
+      );
+    }
+
     return res.json('Category successfully updated!');
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
+// MERGE
+const mergeCategoriesSchema = joi.object({
+  source_category_id: joi.number().required(),
+  target_category_id: joi.number().required(),
+});
+
+// eslint-disable-next-line consistent-return
+const mergeCategories = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    const input = await mergeCategoriesSchema.validateAsync(req.body);
+    await CategoryService.mergeCategories(
+      sessionData.userId,
+      BigInt(input.source_category_id),
+      BigInt(input.target_category_id)
+    );
+
+    return res.json('Categories successfully merged!');
   } catch (err) {
     Logger.addLog(err);
     next(err || APIError.internalServerError());
@@ -105,5 +143,6 @@ export default {
   getAllCategoriesForUser,
   createCategory,
   updateCategory,
+  mergeCategories,
   deleteCategory,
 };

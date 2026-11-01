@@ -344,6 +344,7 @@ export const routeGroups: RouteGroup[] = [
       { method: 'post', path: '/', handlerName: 'createCategory' },
       { method: 'delete', path: '/', handlerName: 'deleteCategory' },
       { method: 'put', path: '/', handlerName: 'updateCategory' },
+      { method: 'post', path: '/merge', handlerName: 'mergeCategories' },
     ],
   },
   {
