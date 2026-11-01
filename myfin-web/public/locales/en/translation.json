@@ -679,7 +679,7 @@
     "operator": "Operator",
     "applyRules": "Apply rules to existing transactions",
     "applyTitle": "Apply rules to existing transactions",
-    "applyDescription": "Review the changes below. Nothing is updated until you confirm.",
+    "applyDescription": "Preview of your rules, including any you just saved, applied to existing transactions. Review the changes below. Nothing is updated until you confirm.",
     "applyEmpty": "No existing transactions would change.",
     "applyTruncated": "Only the first changes are shown. Apply these, then run this again for the rest.",
     "applyCurrentCategory": "Current category",
@@ -688,12 +688,7 @@
     "applyNewEntity": "New entity",
     "applyExclude": "Exclude",
     "applyConfirm": "Update {{count}} transactions",
-    "applyResult": "{{updated}} updated, {{skipped}} skipped",
-    "applyNowTitle": "Apply this rule now?",
-    "applyNowDescription": "Do you want to apply your rules to existing transactions? You will review the changes first.",
-    "applyNowAlert": "Nothing changes until you confirm the preview.",
-    "applyNow": "Apply now",
-    "applyLater": "Not now"
+    "applyResult": "{{updated}} updated, {{skipped}} skipped"
   },
   "budgets": {
     "newMonthFromTemplate": "New month from template",

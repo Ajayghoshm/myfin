@@ -631,7 +631,7 @@
     "operator": "Opérateur",
     "applyRules": "Appliquer les règles aux transactions existantes",
     "applyTitle": "Appliquer les règles aux transactions existantes",
-    "applyDescription": "Vérifiez les modifications ci-dessous. Rien n'est modifié tant que vous n'avez pas confirmé.",
+    "applyDescription": "Aperçu de vos règles, y compris celles que vous venez d'enregistrer, appliquées aux transactions existantes. Vérifiez les modifications ci-dessous. Rien n'est modifié tant que vous n'avez pas confirmé.",
     "applyEmpty": "Aucune transaction existante ne serait modifiée.",
     "applyTruncated": "Seules les premières modifications sont affichées. Appliquez-les, puis relancez pour le reste.",
     "applyCurrentCategory": "Catégorie actuelle",
@@ -640,12 +640,7 @@
     "applyNewEntity": "Nouvelle entité",
     "applyExclude": "Exclure",
     "applyConfirm": "Mettre à jour {{count}} transactions",
-    "applyResult": "{{updated}} mises à jour, {{skipped}} ignorées",
-    "applyNowTitle": "Appliquer cette règle maintenant ?",
-    "applyNowDescription": "Voulez-vous appliquer vos règles aux transactions existantes ? Vous vérifierez d'abord les modifications.",
-    "applyNowAlert": "Rien ne change tant que vous n'avez pas confirmé l'aperçu.",
-    "applyNow": "Appliquer maintenant",
-    "applyLater": "Pas maintenant"
+    "applyResult": "{{updated}} mises à jour, {{skipped}} ignorées"
   },
   "budgets": {
     "newMonthFromTemplate": "Nouveau mois depuis le modèle",

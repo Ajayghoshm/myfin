@@ -45,7 +45,6 @@ const Rules = () => {
   const [actionableRule, setActionableRule] = useState<Rule | null>(null);
   const [isRemoveDialogOpen, setRemoveDialogOpen] = useState(false);
   const [isAddEditDialogOpen, setAddEditDialogOpen] = useState(false);
-  const [isApplyPromptOpen, setApplyPromptOpen] = useState(false);
   const [isApplyDialogOpen, setApplyDialogOpen] = useState(false);
   const debouncedSearchQuery = useMemo(() => debounce(setSearchQuery, 300), []);
 
@@ -397,29 +396,13 @@ const Rules = () => {
           onClose={() => setAddEditDialogOpen(false)}
           onPositiveClick={() => {
             setAddEditDialogOpen(false);
-            setApplyPromptOpen(true);
+            setApplyDialogOpen(true);
           }}
           onNegativeClick={() => setAddEditDialogOpen(false)}
           rule={actionableRule}
           accounts={accounts}
           categories={categories}
           entities={entities}
-        />
-      )}
-      {isApplyPromptOpen && (
-        <GenericConfirmationDialog
-          isOpen={isApplyPromptOpen}
-          onClose={() => setApplyPromptOpen(false)}
-          onPositiveClick={() => {
-            setApplyPromptOpen(false);
-            setApplyDialogOpen(true);
-          }}
-          onNegativeClick={() => setApplyPromptOpen(false)}
-          titleText={t('rules.applyNowTitle')}
-          descriptionText={t('rules.applyNowDescription')}
-          positiveText={t('rules.applyNow')}
-          negativeText={t('rules.applyLater')}
-          alert={t('rules.applyNowAlert')}
         />
       )}
       {isApplyDialogOpen && (
