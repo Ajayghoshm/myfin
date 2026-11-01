@@ -666,6 +666,7 @@
     "deleteBudgetModalAlert": "Cette action est irréversible !"
   },
   "budgetDetails": {
+    "fillFromNamedTemplate": "Remplir avec le modèle : {{name}}",
     "fillFromTemplate": "Remplir depuis le modèle",
     "filledFromTemplate": "Montants remplis à partir du modèle. Les catégories inactives ont été ignorées.",
     "templateEmpty": "Le modèle est vide. Configurez-le d'abord depuis l'écran Modèle.",
@@ -767,6 +768,18 @@
     "itemsNote": "Total de la ventilation. Modifiez-la dans le détail du budget."
   },
   "budgetTemplate": {
+    "template": "Modèle",
+    "newTemplate": "Nouveau modèle",
+    "rename": "Renommer",
+    "delete": "Supprimer le modèle",
+    "templateName": "Nom du modèle",
+    "ok": "OK",
+    "deleteConfirm": "Supprimer le modèle \"{{name}}\" ? Les budgets déjà créés ne sont pas affectés.",
+    "discardConfirm": "Modifications non enregistrées sur ce modèle. Les abandonner ?",
+    "savedAsNew": "Enregistré comme nouveau modèle \"{{name}}\"",
+    "newTemplateNameOptional": "Nom du nouveau modèle (facultatif)",
+    "newTemplateNameHelp": "Laisser vide pour remplacer \"{{name}}\".",
+    "saveAsNew": "Enregistrer comme nouveau modèle",
     "title": "Modèle de budget",
     "strapLine": "Un budget réutilisable pour démarrer chaque nouveau mois.",
     "backToBudgets": "Retour aux budgets",
@@ -1493,6 +1506,14 @@
     "noFixed": "{{fund}} épargnés, mais aucune charge fixe à comparer pour l'instant. Marquez des catégories comme fixes pour voir combien de mois cela couvre."
   },
   "insights": {
+    "saveAsTemplate": "Enregistrer comme modèle de budget",
+    "templateFromTypical": "Mois type",
+    "templateFromTypicalHelp": "Moyenne de vos 6 derniers mois complets, par catégorie",
+    "templateFromMonth": "{{month}} tel quel",
+    "templateFromMonthHelp": "Ce que vous avez réellement dépensé et gagné ce mois-là, par catégorie",
+    "typicalTemplateName": "Mois type",
+    "templateNameHelp": "Crée un nouveau modèle de budget. Nommez-le ; vous pourrez modifier les montants ensuite.",
+    "savedAsTemplate": "Enregistré comme modèle de budget \"{{name}}\"",
     "insights": "Analyses",
     "strapLine": "Où est passé votre argent ce mois-ci",
     "month": "Mois",

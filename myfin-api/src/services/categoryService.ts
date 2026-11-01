@@ -6,6 +6,18 @@ import DateTimeUtils from '../utils/DateTimeUtils.js';
 import Logger from '../utils/Logger.js';
 import ConvertUtils from '../utils/convertUtils.js';
 import BudgetTemplateService from './budgetTemplateService.js';
+
+// Budget templates are separate budgets: a conflict only exists when both categories sit in the same one
+const sharesTemplate = (
+  rows: Array<{ template_id: bigint; categories_category_id: bigint }>,
+  isFirst: (categoryId: bigint) => boolean,
+  isSecond: (categoryId: bigint) => boolean
+) =>
+  rows.some(
+    (a) =>
+      isFirst(a.categories_category_id) &&
+      rows.some((b) => b.template_id === a.template_id && isSecond(b.categories_category_id))
+  );
 import TransactionService from './transactionService.js';
 
 const BudgetHasCategories = prisma.budgets_has_categories;
@@ -124,9 +136,9 @@ class CategoryService {
           categories_category_id: { in: [categoryId, parentId] },
           template: { users_user_id: userId },
         },
-        select: { categories_category_id: true },
+        select: { template_id: true, categories_category_id: true },
       });
-      if (templateRows.length === 2) {
+      if (sharesTemplate(templateRows, (id) => id === categoryId, (id) => id === parentId)) {
         throw APIError.notAcceptable(
           'Both this category and the new parent are in the budget template. Clear one of them in the template first.'
         );
@@ -211,12 +223,9 @@ class CategoryService {
             categories_category_id: { in: [...childIds, targetId] },
             template: { users_user_id: userId },
           },
-          select: { categories_category_id: true },
+          select: { template_id: true, categories_category_id: true },
         });
-        if (
-          templateRows.some((r) => r.categories_category_id === targetId) &&
-          templateRows.some((r) => r.categories_category_id !== targetId)
-        ) {
+        if (sharesTemplate(templateRows, (id) => id === targetId, (id) => id !== targetId)) {
           throw APIError.notAcceptable(
             'A subcategory of the source and the target are both in the budget template. Clear one of them in the template first.'
           );
@@ -274,12 +283,9 @@ class CategoryService {
             categories_category_id: { in: [sourceId, ...relativeIds] },
             template: { users_user_id: userId },
           },
-          select: { categories_category_id: true },
+          select: { template_id: true, categories_category_id: true },
         });
-        if (
-          templateRows.some((r) => r.categories_category_id === sourceId) &&
-          templateRows.some((r) => r.categories_category_id !== sourceId)
-        ) {
+        if (sharesTemplate(templateRows, (id) => id === sourceId, (id) => id !== sourceId)) {
           throw APIError.notAcceptable(
             'The target has a parent or subcategory that is in the budget template together with the source. Clear one of them in the template first.'
           );

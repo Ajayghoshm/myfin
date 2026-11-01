@@ -1,4 +1,11 @@
-import { ArrowBack, AutoAwesome, SaveAlt } from '@mui/icons-material';
+import {
+  AddCircleOutline,
+  ArrowBack,
+  AutoAwesome,
+  DeleteOutline,
+  EditOutlined,
+  SaveAlt,
+} from '@mui/icons-material';
 import {
   Alert,
   Box,
@@ -8,6 +15,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  IconButton,
   InputBase,
   MenuItem,
   Paper,
@@ -26,9 +34,13 @@ import {
   useSnackbar,
 } from '../../../providers/SnackbarProvider.tsx';
 import {
+  useCreateBudgetTemplate,
+  useDeleteBudgetTemplate,
   useGetBudgetTemplate,
   useGetBudgetTemplateSuggestions,
+  useGetBudgetTemplates,
   useGetBudgets,
+  useRenameBudgetTemplate,
   useSaveBudgetTemplate,
   useSaveBudgetTemplateFromBudget,
 } from '../../../services/budget/budgetHooks.ts';
@@ -82,7 +94,20 @@ const BudgetTemplate = () => {
   const format = useFormatNumberAsCurrency();
   const currencyPrefix = format.invoke(0).replace(/[\d.,\s]/g, '');
 
-  const templateRequest = useGetBudgetTemplate();
+  const templatesRequest = useGetBudgetTemplates();
+  const [selectedId, setSelectedId] = useState<string | undefined>();
+  // After saving a budget as a *new* template: pick it once the list has it
+  const [selectByName, setSelectByName] = useState<string | null>(null);
+  const templateRequest = useGetBudgetTemplate(selectedId);
+  const createTemplateRequest = useCreateBudgetTemplate();
+  const renameTemplateRequest = useRenameBudgetTemplate();
+  const deleteTemplateRequest = useDeleteBudgetTemplate();
+  const [nameDialog, setNameDialog] = useState<'create' | 'rename' | null>(
+    null,
+  );
+  const [nameValue, setNameValue] = useState('');
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [newTemplateName, setNewTemplateName] = useState('');
   const categoriesRequest = useGetCategories();
   const saveRequest = useSaveBudgetTemplate();
   const fromBudgetRequest = useSaveBudgetTemplateFromBudget();
@@ -91,12 +116,76 @@ const BudgetTemplate = () => {
   const [dirty, setDirty] = useState(false);
 
   const [suggestOpen, setSuggestOpen] = useState(false);
-  const suggestionsRequest = useGetBudgetTemplateSuggestions(suggestOpen);
+  const suggestionsRequest = useGetBudgetTemplateSuggestions(
+    suggestOpen,
+    selectedId,
+  );
   const [picked, setPicked] = useState<Set<string>>(new Set());
 
   const [fromBudgetOpen, setFromBudgetOpen] = useState(false);
   const [fromBudgetId, setFromBudgetId] = useState('');
   const budgetsRequest = useGetBudgets(0, 100, '', undefined);
+
+  const templates = templatesRequest.data;
+  useEffect(() => {
+    if (!templates || templates.length === 0) return;
+    const byName = selectByName
+      ? templates.find((tpl) => tpl.name === selectByName)
+      : undefined;
+    if (byName) {
+      setSelectedId(String(byName.template_id));
+      setSelectByName(null);
+    } else if (
+      !selectedId ||
+      !templates.some((tpl) => String(tpl.template_id) === selectedId)
+    ) {
+      setSelectedId(String(templates[0].template_id));
+    }
+  }, [templates, selectedId, selectByName]);
+
+  const selectTemplate = (id: string) => {
+    if (id === selectedId) return;
+    if (dirty && !window.confirm(t('budgetTemplate.discardConfirm'))) return;
+    setSelectedId(id);
+  };
+
+  const showError = (error: unknown) =>
+    snackbar.showSnackbar(
+      apiErrorMessage(error, t('common.somethingWentWrongTryAgain')),
+      AlertSeverity.ERROR,
+    );
+
+  const submitName = () => {
+    const name = nameValue.trim();
+    if (!name) return;
+    if (nameDialog === 'create') {
+      createTemplateRequest.mutate(name, {
+        onSuccess: (created) => {
+          setNameDialog(null);
+          if (dirty && !window.confirm(t('budgetTemplate.discardConfirm')))
+            return;
+          setSelectedId(String(created.template_id));
+        },
+        onError: showError,
+      });
+    } else if (selectedId) {
+      renameTemplateRequest.mutate(
+        { templateId: selectedId, name },
+        { onSuccess: () => setNameDialog(null), onError: showError },
+      );
+    }
+  };
+
+  const confirmDelete = () => {
+    if (!selectedId) return;
+    deleteTemplateRequest.mutate(selectedId, {
+      onSuccess: () => {
+        setDeleteOpen(false);
+        setSelectedId(undefined);
+      },
+      onError: showError,
+    });
+  };
 
   // Active categories only: inactive ones cannot be saved into a budget or template.
   const categories = useMemo(
@@ -168,7 +257,9 @@ const BudgetTemplate = () => {
         expense_items: r.expense_items,
         income_items: r.income_items,
       }));
-    saveRequest.mutate(payload, {
+    saveRequest.mutate(
+      { rows: payload, templateId: selectedId },
+      {
       onSuccess: () =>
         snackbar.showSnackbar(
           t('budgetTemplate.saved'),
@@ -179,24 +270,32 @@ const BudgetTemplate = () => {
           apiErrorMessage(error, t('common.somethingWentWrongTryAgain')),
           AlertSeverity.ERROR,
         ),
-    });
+      },
+    );
   };
 
   const handleFromBudget = () => {
-    fromBudgetRequest.mutate(BigInt(fromBudgetId), {
-      onSuccess: () => {
-        setFromBudgetOpen(false);
-        snackbar.showSnackbar(
-          t('budgetTemplate.savedFromBudget'),
-          AlertSeverity.SUCCESS,
-        );
+    const name = newTemplateName.trim();
+    fromBudgetRequest.mutate(
+      {
+        budgetId: BigInt(fromBudgetId),
+        target: name ? { name } : { template_id: selectedId },
       },
-      onError: (error) =>
-        snackbar.showSnackbar(
-          apiErrorMessage(error, t('common.somethingWentWrongTryAgain')),
-          AlertSeverity.ERROR,
-        ),
-    });
+      {
+        onSuccess: () => {
+          setFromBudgetOpen(false);
+          setNewTemplateName('');
+          if (name) setSelectByName(name);
+          snackbar.showSnackbar(
+            name
+              ? t('budgetTemplate.savedAsNew', { name })
+              : t('budgetTemplate.savedFromBudget'),
+            AlertSeverity.SUCCESS,
+          );
+        },
+        onError: showError,
+      },
+    );
   };
 
   // Suggestions: only rows whose category is on screen; a direction is only
@@ -427,6 +526,62 @@ const BudgetTemplate = () => {
       />
 
       <Stack
+        direction="row"
+        spacing={1}
+        alignItems="center"
+        sx={{ mb: 2 }}
+        flexWrap="wrap"
+        useFlexGap
+      >
+        <TextField
+          select
+          size="small"
+          label={t('budgetTemplate.template')}
+          value={selectedId ?? ''}
+          onChange={(event) => selectTemplate(event.target.value)}
+          sx={{ minWidth: 220 }}
+        >
+          {(templates ?? []).map((tpl) => (
+            <MenuItem
+              key={String(tpl.template_id)}
+              value={String(tpl.template_id)}
+            >
+              {tpl.name}
+            </MenuItem>
+          ))}
+        </TextField>
+        <Button
+          size="small"
+          startIcon={<AddCircleOutline />}
+          onClick={() => {
+            setNameValue('');
+            setNameDialog('create');
+          }}
+        >
+          {t('budgetTemplate.newTemplate')}
+        </Button>
+        <IconButton
+          size="small"
+          aria-label={t('budgetTemplate.rename')}
+          disabled={!selectedId}
+          onClick={() => {
+            setNameValue(templateRequest.data?.name ?? '');
+            setNameDialog('rename');
+          }}
+        >
+          <EditOutlined fontSize="small" />
+        </IconButton>
+        <IconButton
+          size="small"
+          aria-label={t('budgetTemplate.delete')}
+          disabled={!selectedId}
+          onClick={() => setDeleteOpen(true)}
+        >
+          <DeleteOutline fontSize="small" />
+        </IconButton>
+      </Stack>
+
+      <Stack
         direction={{ xs: 'column', sm: 'row' }}
         spacing={1}
         sx={{ mb: 2 }}
@@ -639,6 +794,17 @@ const BudgetTemplate = () => {
               </MenuItem>
             ))}
           </TextField>
+          <TextField
+            fullWidth
+            sx={{ mt: 2 }}
+            label={t('budgetTemplate.newTemplateNameOptional')}
+            helperText={t('budgetTemplate.newTemplateNameHelp', {
+              name: templateRequest.data?.name ?? '',
+            })}
+            value={newTemplateName}
+            onChange={(event) => setNewTemplateName(event.target.value)}
+            slotProps={{ htmlInput: { maxLength: 100 } }}
+          />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setFromBudgetOpen(false)}>
@@ -649,7 +815,72 @@ const BudgetTemplate = () => {
             disabled={!fromBudgetId || fromBudgetRequest.isPending}
             onClick={handleFromBudget}
           >
-            {t('budgetTemplate.replaceTemplate')}
+            {newTemplateName.trim()
+              ? t('budgetTemplate.saveAsNew')
+              : t('budgetTemplate.replaceTemplate')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={nameDialog !== null}
+        onClose={() => setNameDialog(null)}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle>
+          {nameDialog === 'create'
+            ? t('budgetTemplate.newTemplate')
+            : t('budgetTemplate.rename')}
+        </DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            sx={{ mt: 1 }}
+            label={t('budgetTemplate.templateName')}
+            value={nameValue}
+            onChange={(event) => setNameValue(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') submitName();
+            }}
+            slotProps={{ htmlInput: { maxLength: 100 } }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setNameDialog(null)}>
+            {t('budgetTemplate.cancel')}
+          </Button>
+          <Button
+            variant="contained"
+            disabled={!nameValue.trim()}
+            onClick={submitName}
+          >
+            {t('budgetTemplate.ok')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)}>
+        <DialogTitle>{t('budgetTemplate.delete')}</DialogTitle>
+        <DialogContent>
+          <Typography>
+            {t('budgetTemplate.deleteConfirm', {
+              name: templateRequest.data?.name ?? '',
+            })}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteOpen(false)}>
+            {t('budgetTemplate.cancel')}
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            disabled={deleteTemplateRequest.isPending}
+            onClick={confirmDelete}
+          >
+            {t('budgetTemplate.delete')}
           </Button>
         </DialogActions>
       </Dialog>

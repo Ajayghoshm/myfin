@@ -38,7 +38,7 @@ describe('budget template', () => {
   });
 
   test('get returns empty template for a new user', async () => {
-    expect(await BudgetTemplateService.get(userId)).toEqual({ rows: [], updated_at: null });
+    expect(await BudgetTemplateService.get(userId)).toMatchObject({ rows: [], updated_at: null, template_id: null });
   });
 
   test('replace then get round-trips amounts and items', async () => {
@@ -221,7 +221,7 @@ describe('budget template', () => {
       const theirChild = await cat('Kid', otherId);
       await BudgetTemplateService.replace(otherId, [row(theirFood, 1), row(theirChild, 1)]);
       // same category ids cannot be shared, so make the other template reference ours via raw rows
-      const t = await prisma.budget_templates.findUnique({ where: { users_user_id: otherId } });
+      const t = await prisma.budget_templates.findFirst({ where: { users_user_id: otherId } });
       await prisma.budget_template_rows.createMany({
         data: [
           { template_id: t!.template_id, categories_category_id: food, planned_amount_debit: 1n },
@@ -234,7 +234,7 @@ describe('budget template', () => {
     test('createBudgetFromTemplate keeps the parent and skips a stored conflicting child', async () => {
       const child = await cat('Groceries', userId, { parent_category_id: food });
       await BudgetTemplateService.replace(userId, [row(rent, 5)]);
-      const t = await prisma.budget_templates.findUnique({ where: { users_user_id: userId } });
+      const t = await prisma.budget_templates.findFirst({ where: { users_user_id: userId } });
       await prisma.budget_template_rows.createMany({
         data: [
           { template_id: t!.template_id, categories_category_id: food, planned_amount_debit: 10000n },
@@ -278,7 +278,7 @@ describe('budget template', () => {
     test('createBudgetFromTemplate keeps an active child when its parent is inactive and skipped', async () => {
       const child = await cat('Groceries', userId, { parent_category_id: food });
       await BudgetTemplateService.replace(userId, [row(rent, 5)]);
-      const t = await prisma.budget_templates.findUnique({ where: { users_user_id: userId } });
+      const t = await prisma.budget_templates.findFirst({ where: { users_user_id: userId } });
       await prisma.budget_template_rows.createMany({
         data: [
           { template_id: t!.template_id, categories_category_id: food, planned_amount_debit: 10000n },

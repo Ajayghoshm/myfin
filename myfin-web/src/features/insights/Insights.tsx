@@ -23,6 +23,7 @@ import {
 } from '../../utils/istMonth.ts';
 import BiggestChanges from './BiggestChanges.tsx';
 import EmergencyFundCard from './EmergencyFundCard.tsx';
+import SaveAsTemplateButton from './SaveAsTemplateButton.tsx';
 import SafeToSpendCard from './SafeToSpendCard.tsx';
 import ForecastCard from './ForecastCard.tsx';
 import FixedFlexibleCard from './FixedFlexibleCard.tsx';
@@ -102,6 +103,7 @@ const Insights = () => {
           </IconButton>
         </Stack>
       </Stack>
+      <SaveAsTemplateButton ym={ym} />
       <Box height={4} mb={2}>
         {isFetching && <LinearProgress />}
       </Box>

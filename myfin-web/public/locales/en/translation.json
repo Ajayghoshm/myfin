@@ -713,6 +713,7 @@
     "deleteBudgetModalAlert": "This action is irreversible!"
   },
   "budgetDetails": {
+    "fillFromNamedTemplate": "Fill from template: {{name}}",
     "fillFromTemplate": "Fill from template",
     "filledFromTemplate": "Amounts filled from the template. Inactive categories were skipped.",
     "templateEmpty": "The template is empty. Set it up from the Template screen first.",
@@ -814,6 +815,18 @@
     "itemsNote": "Total of the breakdown. Edit it in the budget details."
   },
   "budgetTemplate": {
+    "template": "Template",
+    "newTemplate": "New template",
+    "rename": "Rename",
+    "delete": "Delete template",
+    "templateName": "Template name",
+    "ok": "OK",
+    "deleteConfirm": "Delete the template \"{{name}}\"? Budgets already created from it are not affected.",
+    "discardConfirm": "You have unsaved changes on this template. Discard them?",
+    "savedAsNew": "Saved as new template \"{{name}}\"",
+    "newTemplateNameOptional": "New template name (optional)",
+    "newTemplateNameHelp": "Leave empty to replace \"{{name}}\" instead.",
+    "saveAsNew": "Save as new template",
     "title": "Budget template",
     "strapLine": "One reusable budget you can start every new month from.",
     "backToBudgets": "Back to budgets",
@@ -1577,6 +1590,14 @@
     "noFixed": "{{fund}} saved, but there are no fixed costs to compare against yet. Mark categories as fixed to see how many months this covers."
   },
   "insights": {
+    "saveAsTemplate": "Save as budget template",
+    "templateFromTypical": "Typical month",
+    "templateFromTypicalHelp": "Average of your last 6 completed months, per category",
+    "templateFromMonth": "{{month}} as it was",
+    "templateFromMonthHelp": "What you actually spent and earned that month, per category",
+    "typicalTemplateName": "Typical month",
+    "templateNameHelp": "This creates a new budget template. Name it; you can edit the amounts afterwards.",
+    "savedAsTemplate": "Saved as budget template \"{{name}}\"",
     "insights": "Insights",
     "strapLine": "Where your money went this month",
     "month": "Month",

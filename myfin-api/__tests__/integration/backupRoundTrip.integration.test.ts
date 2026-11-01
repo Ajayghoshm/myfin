@@ -228,7 +228,7 @@ describe('Backup JSON round trip', () => {
     delete backup.budget_template_rows;
     delete backup.budget_template_items;
     await UserService.restoreUser(uid, backup);
-    expect(await BudgetTemplateService.get(uid)).toEqual({ rows: [], updated_at: null });
+    expect(await BudgetTemplateService.get(uid)).toMatchObject({ rows: [], updated_at: null, template_id: null });
   });
 
   test('restore rejects a template whose items do not match planned totals', async () => {

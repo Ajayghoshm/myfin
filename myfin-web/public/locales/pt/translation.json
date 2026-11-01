@@ -710,6 +710,7 @@
     "deleteBudgetModalAlert": "Esta ação é irreversível!"
   },
   "budgetDetails": {
+    "fillFromNamedTemplate": "Preencher com o modelo: {{name}}",
     "fillFromTemplate": "Preencher a partir do modelo",
     "filledFromTemplate": "Valores preenchidos a partir do modelo. As categorias inativas foram ignoradas.",
     "templateEmpty": "O modelo está vazio. Configure-o primeiro no ecrã Modelo.",
@@ -811,6 +812,18 @@
     "itemsNote": "Total do detalhe. Edite-o nos detalhes do orçamento."
   },
   "budgetTemplate": {
+    "template": "Modelo",
+    "newTemplate": "Novo modelo",
+    "rename": "Mudar o nome",
+    "delete": "Eliminar modelo",
+    "templateName": "Nome do modelo",
+    "ok": "OK",
+    "deleteConfirm": "Eliminar o modelo \"{{name}}\"? Os orçamentos já criados não são afetados.",
+    "discardConfirm": "Tem alterações por guardar neste modelo. Descartar?",
+    "savedAsNew": "Guardado como novo modelo \"{{name}}\"",
+    "newTemplateNameOptional": "Nome do novo modelo (opcional)",
+    "newTemplateNameHelp": "Deixe vazio para substituir \"{{name}}\".",
+    "saveAsNew": "Guardar como novo modelo",
     "title": "Modelo de orçamento",
     "strapLine": "Um orçamento reutilizável para começar cada novo mês.",
     "backToBudgets": "Voltar aos orçamentos",
@@ -1574,6 +1587,14 @@
     "noFixed": "{{fund}} poupados, mas ainda não há custos fixos para comparar. Marque categorias como fixas para ver quantos meses isto cobre."
   },
   "insights": {
+    "saveAsTemplate": "Guardar como modelo de orçamento",
+    "templateFromTypical": "Mês típico",
+    "templateFromTypicalHelp": "Média dos últimos 6 meses completos, por categoria",
+    "templateFromMonth": "{{month}} como foi",
+    "templateFromMonthHelp": "O que realmente gastou e recebeu nesse mês, por categoria",
+    "typicalTemplateName": "Mês típico",
+    "templateNameHelp": "Cria um novo modelo de orçamento. Dê-lhe um nome; pode editar os valores depois.",
+    "savedAsTemplate": "Guardado como modelo de orçamento \"{{name}}\"",
     "insights": "Análises",
     "strapLine": "Para onde foi o seu dinheiro este mês",
     "month": "Mês",

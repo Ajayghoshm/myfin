@@ -11,7 +11,14 @@ import {
   EditNote,
   Visibility,
 } from '@mui/icons-material';
-import { Checkbox, FormGroup, Tooltip, useTheme } from '@mui/material';
+import {
+  Checkbox,
+  FormGroup,
+  Menu,
+  MenuItem,
+  Tooltip,
+  useTheme,
+} from '@mui/material';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
@@ -45,6 +52,7 @@ import {
 } from '../../../providers/SnackbarProvider.tsx';
 import {
   useCreateBudgetFromTemplate,
+  useGetBudgetTemplates,
   useGetBudgetListSummary,
   useGetBudgets,
   useRemoveBudget,
@@ -84,6 +92,8 @@ const BudgetList = () => {
   const removeBudgetRequest = useRemoveBudget();
   const summaryRequest = useGetBudgetListSummary();
   const fromTemplateRequest = useCreateBudgetFromTemplate();
+  const templatesRequest = useGetBudgetTemplates();
+  const [templateMenu, setTemplateMenu] = useState<HTMLElement | null>(null);
   const formatNumberAsCurrency = useFormatNumberAsCurrency();
 
   // Loading
@@ -133,7 +143,17 @@ const BudgetList = () => {
   const handleAddBudgetClick = () => {
     navigate(ROUTE_BUDGET_NEW);
   };
-  const handleNewMonthFromTemplateClick = () => {
+  const handleNewMonthFromTemplateClick = (
+    event: React.MouseEvent<HTMLElement>,
+  ) => {
+    // With several templates, ask which one; with one (or none) just use it
+    if ((templatesRequest.data?.length ?? 0) > 1) {
+      setTemplateMenu(event.currentTarget);
+      return;
+    }
+    createFromTemplate();
+  };
+  const createFromTemplate = (templateId?: number | string) => {
     // First month, starting from the current one, that has no budget yet.
     const existing = new Set(
       (summaryRequest.data ?? []).map((b) => `${b.year}-${b.month}`),
@@ -148,7 +168,7 @@ const BudgetList = () => {
       }
     }
     fromTemplateRequest.mutate(
-      { month, year },
+      { month, year, template_id: templateId },
       {
         onSuccess: (result) => {
           const skipped = result.skipped_category_ids.length;
@@ -428,6 +448,23 @@ const BudgetList = () => {
               >
                 {t('budgets.newMonthFromTemplate')}
               </Button>
+              <Menu
+                anchorEl={templateMenu}
+                open={Boolean(templateMenu)}
+                onClose={() => setTemplateMenu(null)}
+              >
+                {(templatesRequest.data ?? []).map((tpl) => (
+                  <MenuItem
+                    key={String(tpl.template_id)}
+                    onClick={() => {
+                      setTemplateMenu(null);
+                      createFromTemplate(tpl.template_id);
+                    }}
+                  >
+                    {tpl.name}
+                  </MenuItem>
+                ))}
+              </Menu>
               <Button
                 variant="outlined"
                 startIcon={<EditNote />}

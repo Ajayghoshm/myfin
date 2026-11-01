@@ -51,7 +51,7 @@ describe('budget template HTTP endpoints', () => {
   test('GET /budgets/template is empty for a new user and not captured by /:id', async () => {
     const res = await call('/budgets/template');
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ rows: [], updated_at: null });
+    expect(res.body).toMatchObject({ rows: [], updated_at: null, template_id: null });
   });
 
   test('PUT then GET round-trips', async () => {
@@ -102,5 +102,108 @@ describe('budget template HTTP endpoints', () => {
     ).toBe(400);
     expect((await call('/budgets/template', 'PUT', {})).status).toBe(400);
     expect((await call('/budgets/from-template', 'POST', { month: 13, year: 2026 })).status).toBe(400);
+  });
+});
+
+describe('multiple budget templates', () => {
+  let baseUrl: string;
+  let server: Server;
+  let userId: bigint;
+  let sessionkey: string;
+  let rent: bigint;
+  let food: bigint;
+
+  beforeAll(async () => {
+    await new Promise<void>((resolve) => {
+      server = app.listen(0, () => resolve());
+    });
+    baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  });
+  afterAll(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  beforeEach(async () => {
+    const user = await UserService.createUser({ username: 'multi', password: '123', email: 'multi@x.com' });
+    userId = user.user_id;
+    sessionkey = (await UserService.attemptLogin('multi', '123', false)).sessionkey;
+    const mk = (name: string) =>
+      prisma.categories.create({ data: { name, type: MYFIN.TRX_TYPES.EXPENSE, users_user_id: userId } });
+    rent = (await mk('Rent')).category_id;
+    food = (await mk('Food')).category_id;
+  });
+
+  const call = async (path: string, method = 'GET', body?: unknown) => {
+    const res = await fetch(`${baseUrl}${path}`, {
+      method,
+      body: body === undefined ? undefined : JSON.stringify(body),
+      headers: { authusername: 'multi', sessionkey, 'content-type': 'application/json' },
+    });
+    return { status: res.status, body: await res.json() };
+  };
+
+  test('templates are created, listed, edited separately, renamed and deleted', async () => {
+    const a = await call('/budgets/templates', 'POST', { name: 'Normal' });
+    const b = await call('/budgets/templates', 'POST', { name: 'Festival' });
+    expect(a.status).toBe(200);
+    expect((await call('/budgets/templates', 'POST', { name: 'normal' })).status).toBe(409);
+
+    await call('/budgets/template', 'PUT', {
+      template_id: Number(a.body.template_id),
+      rows: [{ category_id: Number(rent), planned_value_debit: 100 }],
+    });
+    await call('/budgets/template', 'PUT', {
+      template_id: Number(b.body.template_id),
+      rows: [{ category_id: Number(food), planned_value_debit: 50 }],
+    });
+
+    const list = await call('/budgets/templates');
+    expect(list.body.map((t: { name: string; row_count: number }) => [t.name, t.row_count])).toEqual([
+      ['Normal', 1],
+      ['Festival', 1],
+    ]);
+    const festival = await call(`/budgets/template?template_id=${b.body.template_id}`);
+    expect(festival.body.rows.map((r: { category_id: string }) => r.category_id)).toEqual([Number(food)]);
+    // no id: the oldest template
+    expect((await call('/budgets/template')).body.name).toBe('Normal');
+
+    expect((await call(`/budgets/templates/${b.body.template_id}`, 'PUT', { name: 'Diwali' })).status).toBe(200);
+    expect((await call(`/budgets/templates/${b.body.template_id}`, 'DELETE')).status).toBe(200);
+    expect((await call('/budgets/templates')).body).toHaveLength(1);
+  });
+
+  test("a budget is created from the chosen template and another user's template is not reachable", async () => {
+    const a = await call('/budgets/templates', 'POST', { name: 'Normal' });
+    const b = await call('/budgets/templates', 'POST', { name: 'Festival' });
+    await call('/budgets/template', 'PUT', {
+      template_id: Number(b.body.template_id),
+      rows: [{ category_id: Number(food), planned_value_debit: 50 }],
+    });
+    const created = await call('/budgets/from-template', 'POST', {
+      month: 3,
+      year: 2030,
+      template_id: Number(b.body.template_id),
+    });
+    expect(created.status).toBe(200);
+    const budget = await call(`/budgets/${created.body.budget_id}`);
+    expect(JSON.stringify(budget.body)).toContain('Food');
+    expect(JSON.stringify(budget.body)).not.toContain('"planned_amount_debit":100');
+
+    expect((await call(`/budgets/template?template_id=999999`)).status).toBe(404);
+    expect(a.body.template_id).toBeDefined();
+  });
+
+  test('save as a new named template from the typical month and from a month', async () => {
+    const typical = await call('/budgets/template/from-typical', 'POST', { name: 'Typical' });
+    expect(typical.status).toBe(200);
+    const month = await call('/budgets/template/from-month', 'POST', { name: 'March', month: 3, year: 2030 });
+    expect(month.status).toBe(200);
+    expect((await call('/budgets/templates')).body.map((t: { name: string }) => t.name)).toEqual([
+      'Typical',
+      'March',
+    ]);
+    expect((await call('/budgets/template/from-month', 'POST', { name: 'March', month: 3, year: 2030 })).status).toBe(
+      409
+    );
   });
 });

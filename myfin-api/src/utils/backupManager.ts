@@ -1098,35 +1098,49 @@ class BackupManager {
 
     // Budget template: categories exist and are linked by now; rows for unknown categories are skipped
     if (templateRows.length > 0 || (data.budget_templates ?? []).length > 0) {
-      const template = await dbClient.budget_templates.create({
-        data: {
-          users_user_id: userId,
-          updated_at: BigInt(data.budget_templates?.[0]?.updated_at ?? Math.floor(Date.now() / 1000)),
-        },
-      });
-      for (const row of templateRows) {
-        const categoryId = categoryIdMap.get(row.categories_category_id);
-        if (categoryId === undefined) continue;
-        await dbClient.budget_template_rows.create({
+      // Old backups hold one unnamed template (or only rows): every distinct template_id becomes a template
+      const sources: Array<{ template_id: unknown; name?: unknown; updated_at?: unknown }> = [
+        ...(data.budget_templates ?? []),
+      ];
+      for (const row of templateRows)
+        if (!sources.some((t) => String(t.template_id) === String(row.template_id)))
+          sources.push({ template_id: row.template_id });
+      const usedNames = new Set<string>();
+      for (const source of sources) {
+        let name = typeof source.name === 'string' && source.name.trim() ? source.name.trim().slice(0, 100) : 'Default';
+        for (let n = 2; usedNames.has(name.toLowerCase()); n++) name = `Template ${n}`;
+        usedNames.add(name.toLowerCase());
+        const template = await dbClient.budget_templates.create({
           data: {
-            template_id: template.template_id,
-            categories_category_id: categoryId,
-            planned_amount_credit: BigInt(row.planned_amount_credit),
-            planned_amount_debit: BigInt(row.planned_amount_debit),
+            users_user_id: userId,
+            name,
+            updated_at: BigInt((source.updated_at as bigint | number | string) ?? Math.floor(Date.now() / 1000)),
           },
         });
-        const items = templateItems.filter((i) => templateRowKey(i) === templateRowKey(row));
-        if (items.length > 0)
-          await dbClient.budget_template_items.createMany({
-            data: items.map((i) => ({
+        for (const row of templateRows.filter((r) => String(r.template_id) === String(source.template_id))) {
+          const categoryId = categoryIdMap.get(row.categories_category_id);
+          if (categoryId === undefined) continue;
+          await dbClient.budget_template_rows.create({
+            data: {
               template_id: template.template_id,
               categories_category_id: categoryId,
-              direction: i.direction,
-              label: i.label.trim(),
-              amount: BigInt(i.amount),
-              sort_order: i.sort_order,
-            })),
+              planned_amount_credit: BigInt(row.planned_amount_credit),
+              planned_amount_debit: BigInt(row.planned_amount_debit),
+            },
           });
+          const items = templateItems.filter((i) => templateRowKey(i) === templateRowKey(row));
+          if (items.length > 0)
+            await dbClient.budget_template_items.createMany({
+              data: items.map((i) => ({
+                template_id: template.template_id,
+                categories_category_id: categoryId,
+                direction: i.direction,
+                label: i.label.trim(),
+                amount: BigInt(i.amount),
+                sort_order: i.sort_order,
+              })),
+            });
+        }
       }
     }
 

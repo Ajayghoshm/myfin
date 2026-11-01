@@ -4,6 +4,7 @@ import BudgetServices, {
   CreateBudgetRequest,
   CreateBudgetFromTemplateRequest,
   BudgetTemplateRow,
+  BudgetTemplateTarget,
   UpdateBudgetRequest,
   UpdateBudgetDescriptionRequest,
   UpdateBudgetMatrixCellRequest,
@@ -260,43 +261,109 @@ export function useUpdateBudgetDescription() {
   });
 }
 
-export function useGetBudgetTemplate() {
-  async function getBudgetTemplate() {
-    const data = await BudgetServices.getBudgetTemplate();
+export const QUERY_KEY_GET_BUDGET_TEMPLATES = 'QUERY_KEY_GET_BUDGET_TEMPLATES';
+
+export function useGetBudgetTemplates() {
+  async function getBudgetTemplates() {
+    const data = await BudgetServices.getBudgetTemplates();
     return data.data;
   }
 
   return useQuery({
-    queryKey: [QUERY_KEY_GET_BUDGET_TEMPLATE],
+    queryKey: [QUERY_KEY_GET_BUDGET_TEMPLATES],
+    queryFn: getBudgetTemplates,
+  });
+}
+
+/** `templateId` left out: the user's oldest template. */
+export function useGetBudgetTemplate(templateId?: number | string) {
+  async function getBudgetTemplate() {
+    const data = await BudgetServices.getBudgetTemplate(templateId);
+    return data.data;
+  }
+
+  return useQuery({
+    queryKey: [QUERY_KEY_GET_BUDGET_TEMPLATE, templateId ?? 'default'],
     queryFn: getBudgetTemplate,
   });
 }
 
-export function useGetBudgetTemplateSuggestions(enabled = true) {
+export function useGetBudgetTemplateSuggestions(
+  enabled = true,
+  templateId?: number | string,
+) {
   async function getBudgetTemplateSuggestions() {
-    const data = await BudgetServices.getBudgetTemplateSuggestions();
+    const data = await BudgetServices.getBudgetTemplateSuggestions(templateId);
     return data.data;
   }
 
   return useQuery({
-    queryKey: [QUERY_KEY_GET_BUDGET_TEMPLATE_SUGGESTIONS],
+    queryKey: [
+      QUERY_KEY_GET_BUDGET_TEMPLATE_SUGGESTIONS,
+      templateId ?? 'default',
+    ],
     queryFn: getBudgetTemplateSuggestions,
     enabled,
   });
 }
 
-function invalidateBudgetTemplate() {
+export function invalidateBudgetTemplate() {
   void queryClient.invalidateQueries({
     queryKey: [QUERY_KEY_GET_BUDGET_TEMPLATE],
   });
   void queryClient.invalidateQueries({
     queryKey: [QUERY_KEY_GET_BUDGET_TEMPLATE_SUGGESTIONS],
   });
+  void queryClient.invalidateQueries({
+    queryKey: [QUERY_KEY_GET_BUDGET_TEMPLATES],
+  });
+}
+
+export function useCreateBudgetTemplate() {
+  async function createBudgetTemplate(name: string) {
+    const response = await BudgetServices.createBudgetTemplate(name);
+    invalidateBudgetTemplate();
+    return response.data;
+  }
+
+  return useMutation({ mutationFn: createBudgetTemplate });
+}
+
+export function useRenameBudgetTemplate() {
+  async function renameBudgetTemplate(request: {
+    templateId: number | string;
+    name: string;
+  }) {
+    const response = await BudgetServices.renameBudgetTemplate(
+      request.templateId,
+      request.name,
+    );
+    invalidateBudgetTemplate();
+    return response.data;
+  }
+
+  return useMutation({ mutationFn: renameBudgetTemplate });
+}
+
+export function useDeleteBudgetTemplate() {
+  async function deleteBudgetTemplate(templateId: number | string) {
+    const response = await BudgetServices.deleteBudgetTemplate(templateId);
+    invalidateBudgetTemplate();
+    return response.data;
+  }
+
+  return useMutation({ mutationFn: deleteBudgetTemplate });
 }
 
 export function useSaveBudgetTemplate() {
-  async function saveBudgetTemplate(rows: BudgetTemplateRow[]) {
-    const response = await BudgetServices.saveBudgetTemplate(rows);
+  async function saveBudgetTemplate(request: {
+    rows: BudgetTemplateRow[];
+    templateId?: number | string;
+  }) {
+    const response = await BudgetServices.saveBudgetTemplate(
+      request.rows,
+      request.templateId,
+    );
     invalidateBudgetTemplate();
     return response.data;
   }
@@ -307,9 +374,14 @@ export function useSaveBudgetTemplate() {
 }
 
 export function useSaveBudgetTemplateFromBudget() {
-  async function saveBudgetTemplateFromBudget(budgetId: bigint | number) {
-    const response =
-      await BudgetServices.saveBudgetTemplateFromBudget(budgetId);
+  async function saveBudgetTemplateFromBudget(request: {
+    budgetId: bigint | number;
+    target?: BudgetTemplateTarget;
+  }) {
+    const response = await BudgetServices.saveBudgetTemplateFromBudget(
+      request.budgetId,
+      request.target,
+    );
     invalidateBudgetTemplate();
     return response.data;
   }
@@ -317,6 +389,33 @@ export function useSaveBudgetTemplateFromBudget() {
   return useMutation({
     mutationFn: saveBudgetTemplateFromBudget,
   });
+}
+
+export function useSaveBudgetTemplateFromTypical() {
+  async function saveBudgetTemplateFromTypical(target: BudgetTemplateTarget) {
+    const response = await BudgetServices.saveBudgetTemplateFromTypical(target);
+    invalidateBudgetTemplate();
+    return response.data;
+  }
+
+  return useMutation({ mutationFn: saveBudgetTemplateFromTypical });
+}
+
+export function useSaveBudgetTemplateFromMonth() {
+  async function saveBudgetTemplateFromMonth(request: {
+    month: number;
+    year: number;
+    target: BudgetTemplateTarget;
+  }) {
+    const response = await BudgetServices.saveBudgetTemplateFromMonth(
+      { month: request.month, year: request.year },
+      request.target,
+    );
+    invalidateBudgetTemplate();
+    return response.data;
+  }
+
+  return useMutation({ mutationFn: saveBudgetTemplateFromMonth });
 }
 
 export function useCreateBudgetFromTemplate() {

@@ -108,10 +108,14 @@ model budgets_has_categories {
 
 model budget_templates {
   template_id   BigInt                @id @default(autoincrement())
-  users_user_id BigInt                @unique(map: "budget_templates_user_uq")
+  users_user_id BigInt
+  name          String                @default("Default") @db.VarChar(100)
   updated_at    BigInt
   users         users                 @relation(fields: [users_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction, map: "budget_templates_users_fk")
   rows          budget_template_rows[]
+
+  @@unique([users_user_id, name], map: "budget_templates_user_name_uq")
+  @@index([users_user_id], map: "budget_templates_user_idx")
 }
 
 model budget_template_rows {
@@ -321,7 +325,7 @@ model users {
   accounts                   accounts[]
   budgets                    budgets[]
   budgets_has_categories     budgets_has_categories[]
-  budget_template            budget_templates?
+  budget_templates           budget_templates[]
   categories                 categories[]
   entities                   entities[]
   invest_desired_allocations invest_desired_allocations[]

@@ -62,6 +62,7 @@ import {
 import {
   useCreateBudgetStep0,
   useGetBudgetTemplate,
+  useGetBudgetTemplates,
   useCreateBudgetStep1,
   useGetBudget,
   useGetBudgetListSummary,
@@ -69,9 +70,10 @@ import {
   useUpdateBudget,
   useUpdateBudgetStatus,
 } from '../../../services/budget/budgetHooks.ts';
-import {
+import BudgetServices, {
   BudgetCategory,
   type BudgetBreakdownItem,
+  type BudgetTemplateRow,
 } from '../../../services/budget/budgetServices.ts';
 import { TransactionType } from '../../../services/trx/trxServices.ts';
 import { getMonthsFullName } from '../../../utils/dateUtils.ts';
@@ -125,6 +127,7 @@ const BudgetDetailsScreen = () => {
   const updateBudgetRequest = useUpdateBudget();
   const getBudgetToCloneRequest = useGetBudgetToClone(budgetToClone);
   const budgetTemplateRequest = useGetBudgetTemplate();
+  const budgetTemplatesRequest = useGetBudgetTemplates();
   const getBudgetListSummaryRequest = useGetBudgetListSummary();
   const [monthYear, setMonthYear] = useState({
     month: dayjs().month() + 1,
@@ -526,8 +529,22 @@ const BudgetDetailsScreen = () => {
     setCloneBudgetDialogOpen(true);
   };
 
-  const handleFillFromTemplate = () => {
-    const rows = budgetTemplateRequest.data?.rows ?? [];
+  // With several templates the menu lists each one; its rows are fetched when picked
+  const handleFillFromTemplateId = async (templateId: number | string) => {
+    try {
+      const response = await BudgetServices.getBudgetTemplate(templateId);
+      handleFillFromTemplate(response.data.rows);
+    } catch (error) {
+      snackbar.showSnackbar(
+        apiErrorMessage(error, t('common.somethingWentWrongTryAgain')),
+        AlertSeverity.ERROR,
+      );
+    }
+  };
+
+  const handleFillFromTemplate = (
+    rows: BudgetTemplateRow[] = budgetTemplateRequest.data?.rows ?? [],
+  ) => {
     if (rows.length === 0) {
       snackbar.showSnackbar(
         t('budgetDetails.templateEmpty'),
@@ -939,20 +956,37 @@ const BudgetDetailsScreen = () => {
           </ListItemIcon>
           {t('budgetDetails.cloneAnotherBudget')}
         </MenuItem>
-        {isNew && (
-          <MenuItem
-            disabled={!isOpen || !budgetTemplateRequest.data}
-            onClick={() => {
-              setPageMenu(null);
-              handleFillFromTemplate();
-            }}
-          >
-            <ListItemIcon>
-              <ContentCopy fontSize="small" />
-            </ListItemIcon>
-            {t('budgetDetails.fillFromTemplate')}
-          </MenuItem>
-        )}
+        {isNew &&
+          ((budgetTemplatesRequest.data?.length ?? 0) > 1 ? (
+            budgetTemplatesRequest.data?.map((tpl) => (
+              <MenuItem
+                key={String(tpl.template_id)}
+                disabled={!isOpen}
+                onClick={() => {
+                  setPageMenu(null);
+                  void handleFillFromTemplateId(tpl.template_id);
+                }}
+              >
+                <ListItemIcon>
+                  <ContentCopy fontSize="small" />
+                </ListItemIcon>
+                {t('budgetDetails.fillFromNamedTemplate', { name: tpl.name })}
+              </MenuItem>
+            ))
+          ) : (
+            <MenuItem
+              disabled={!isOpen || !budgetTemplateRequest.data}
+              onClick={() => {
+                setPageMenu(null);
+                handleFillFromTemplate();
+              }}
+            >
+              <ListItemIcon>
+                <ContentCopy fontSize="small" />
+              </ListItemIcon>
+              {t('budgetDetails.fillFromTemplate')}
+            </MenuItem>
+          ))}
         <MenuItem
           onClick={() => {
             setPageMenu(null);

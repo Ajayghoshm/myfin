@@ -267,8 +267,23 @@ export type BudgetTemplateRow = BudgetBreakdowns & {
 };
 
 export type BudgetTemplate = {
+  template_id: number | string | null;
+  name: string | null;
   rows: BudgetTemplateRow[];
   updated_at: number | null;
+};
+
+export type BudgetTemplateSummary = {
+  template_id: number | string;
+  name: string;
+  updated_at: number;
+  row_count: number;
+};
+
+/** A new named template (`name`), or an existing one (`template_id`; none = the oldest). */
+export type BudgetTemplateTarget = {
+  template_id?: number | string;
+  name?: string;
 };
 
 export type BudgetTemplateSuggestion = {
@@ -280,23 +295,72 @@ export type BudgetTemplateSuggestion = {
   suggested_credit: number;
 };
 
-export type CreateBudgetFromTemplateRequest = { month: number; year: number };
+export type CreateBudgetFromTemplateRequest = {
+  month: number;
+  year: number;
+  template_id?: number | string;
+};
 export type CreateBudgetFromTemplateResponse = {
   budget_id: number;
   skipped_category_ids: Array<bigint | number | string>;
 };
 
-const getBudgetTemplate = () => {
-  return axios.get<BudgetTemplate>(`/budgets/template`);
+const getBudgetTemplates = () => {
+  return axios.get<BudgetTemplateSummary[]>(`/budgets/templates`);
 };
 
-const saveBudgetTemplate = (rows: BudgetTemplateRow[]) => {
-  return axios.put<string>(`/budgets/template`, { rows });
+const createBudgetTemplate = (name: string) => {
+  return axios.post<{ template_id: number | string; name: string }>(
+    `/budgets/templates`,
+    { name },
+  );
 };
 
-const saveBudgetTemplateFromBudget = (budgetId: bigint | number) => {
+const renameBudgetTemplate = (templateId: number | string, name: string) => {
+  return axios.put<string>(`/budgets/templates/${templateId}`, { name });
+};
+
+const deleteBudgetTemplate = (templateId: number | string) => {
+  return axios.delete<string>(`/budgets/templates/${templateId}`);
+};
+
+const getBudgetTemplate = (templateId?: number | string) => {
+  return axios.get<BudgetTemplate>(`/budgets/template`, {
+    params: { template_id: templateId },
+  });
+};
+
+const saveBudgetTemplate = (
+  rows: BudgetTemplateRow[],
+  templateId?: number | string,
+) => {
+  return axios.put<string>(`/budgets/template`, {
+    rows,
+    template_id: templateId,
+  });
+};
+
+const saveBudgetTemplateFromBudget = (
+  budgetId: bigint | number,
+  target: BudgetTemplateTarget = {},
+) => {
   return axios.post<string>(`/budgets/template/from-budget`, {
     budget_id: budgetId,
+    ...target,
+  });
+};
+
+const saveBudgetTemplateFromTypical = (target: BudgetTemplateTarget) => {
+  return axios.post<string>(`/budgets/template/from-typical`, target);
+};
+
+const saveBudgetTemplateFromMonth = (
+  month: { month: number; year: number },
+  target: BudgetTemplateTarget,
+) => {
+  return axios.post<string>(`/budgets/template/from-month`, {
+    ...month,
+    ...target,
   });
 };
 
@@ -304,11 +368,15 @@ const createBudgetFromTemplate = (request: CreateBudgetFromTemplateRequest) => {
   return axios.post<CreateBudgetFromTemplateResponse>(`/budgets/from-template`, {
     month: request.month,
     year: request.year,
+    template_id: request.template_id,
   });
 };
 
-const getBudgetTemplateSuggestions = () => {
-  return axios.get<BudgetTemplateSuggestion[]>(`/budgets/template/suggestions`);
+const getBudgetTemplateSuggestions = (templateId?: number | string) => {
+  return axios.get<BudgetTemplateSuggestion[]>(
+    `/budgets/template/suggestions`,
+    { params: { template_id: templateId } },
+  );
 };
 
 const updateBudgetDescription = (request: UpdateBudgetDescriptionRequest) => {
@@ -329,6 +397,12 @@ export default {
   getBudgetMatrix,
   updateBudgetMatrixCell,
   updateBudgetDescription,
+  getBudgetTemplates,
+  createBudgetTemplate,
+  renameBudgetTemplate,
+  deleteBudgetTemplate,
+  saveBudgetTemplateFromTypical,
+  saveBudgetTemplateFromMonth,
   getBudgetTemplate,
   saveBudgetTemplate,
   saveBudgetTemplateFromBudget,

@@ -307,10 +307,69 @@ const getBudgetsListForUser = async (req: Request, res: Response, next: NextFunc
 };
 
 // TEMPLATE
+// Optional on every template call: left out, the user's oldest template is used
+const templateIdSchema = positiveIntegerId.optional();
+const templateQuerySchema = joi.object({ template_id: templateIdSchema }).unknown(true);
+const templateTarget = joi.object({
+  template_id: templateIdSchema,
+  name: joi.string().trim().min(1).max(100).optional(),
+});
+const toBigInt = (id: unknown) => (id === undefined ? undefined : BigInt(id as string | number));
+
+const listBudgetTemplates = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    res.json(await BudgetTemplateService.list(sessionData.userId));
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
+const templateNameSchema = joi.object({ name: joi.string().trim().min(1).max(100).required() });
+
+const createBudgetTemplate = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    const input = await templateNameSchema.validateAsync(req.body);
+    const created = await BudgetTemplateService.create(sessionData.userId, input.name);
+    res.json({ template_id: created.template_id, name: created.name });
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
+const renameBudgetTemplate = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    const params = await joi.object({ id: positiveIntegerId }).validateAsync(req.params);
+    const input = await templateNameSchema.validateAsync(req.body);
+    await BudgetTemplateService.rename(sessionData.userId, BigInt(params.id), input.name);
+    res.json('Budget template was successfully renamed.');
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
+const deleteBudgetTemplate = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    const params = await joi.object({ id: positiveIntegerId }).validateAsync(req.params);
+    await BudgetTemplateService.remove(sessionData.userId, BigInt(params.id));
+    res.json('Budget template was successfully deleted.');
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
 const getBudgetTemplate = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const sessionData = await CommonsController.checkAuthSessionValidity(req);
-    const data = await BudgetTemplateService.get(sessionData.userId);
+    const query = await templateQuerySchema.validateAsync(req.query);
+    const data = await BudgetTemplateService.get(sessionData.userId, undefined, toBigInt(query.template_id));
     res.json(data);
   } catch (err) {
     Logger.addLog(err);
@@ -321,7 +380,8 @@ const getBudgetTemplate = async (req: Request, res: Response, next: NextFunction
 const getBudgetTemplateSuggestions = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const sessionData = await CommonsController.checkAuthSessionValidity(req);
-    const data = await BudgetTemplateService.suggestions(sessionData.userId);
+    const query = await templateQuerySchema.validateAsync(req.query);
+    const data = await BudgetTemplateService.suggestions(sessionData.userId, undefined, toBigInt(query.template_id));
     res.json(data);
   } catch (err) {
     Logger.addLog(err);
@@ -338,6 +398,7 @@ const templateRowSchema = joi.object({
 });
 
 const replaceBudgetTemplateSchema = joi.object({
+  template_id: templateIdSchema,
   rows: joi
     .array()
     .items(templateRowSchema)
@@ -351,7 +412,7 @@ const replaceBudgetTemplate = async (req: Request, res: Response, next: NextFunc
   try {
     const sessionData = await CommonsController.checkAuthSessionValidity(req);
     const input = await replaceBudgetTemplateSchema.validateAsync(req.body);
-    await BudgetTemplateService.replace(sessionData.userId, input.rows);
+    await BudgetTemplateService.replace(sessionData.userId, input.rows, undefined, toBigInt(input.template_id));
     res.json('Budget template was successfully saved.');
   } catch (err) {
     Logger.addLog(err);
@@ -359,7 +420,7 @@ const replaceBudgetTemplate = async (req: Request, res: Response, next: NextFunc
   }
 };
 
-const templateFromBudgetSchema = joi.object({
+const templateFromBudgetSchema = templateTarget.keys({
   budget_id: positiveIntegerId,
 });
 
@@ -367,7 +428,48 @@ const saveBudgetTemplateFromBudget = async (req: Request, res: Response, next: N
   try {
     const sessionData = await CommonsController.checkAuthSessionValidity(req);
     const input = await templateFromBudgetSchema.validateAsync(req.body);
-    await BudgetTemplateService.fromBudget(sessionData.userId, BigInt(input.budget_id));
+    await BudgetTemplateService.fromBudget(sessionData.userId, BigInt(input.budget_id), undefined, {
+      templateId: toBigInt(input.template_id),
+      name: input.name,
+    });
+    res.json('Budget template was successfully saved.');
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
+const templateFromTypicalSchema = templateTarget;
+
+const saveBudgetTemplateFromTypical = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    const input = await templateFromTypicalSchema.validateAsync(req.body);
+    await BudgetTemplateService.fromTypicalMonth(sessionData.userId, {
+      templateId: toBigInt(input.template_id),
+      name: input.name,
+    });
+    res.json('Budget template was successfully saved.');
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
+const templateFromMonthSchema = templateTarget.keys({
+  month: joi.number().integer().min(1).max(12).required(),
+  year: joi.number().integer().min(1970).required(),
+});
+
+const saveBudgetTemplateFromMonth = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    const input = await templateFromMonthSchema.validateAsync(req.body);
+    await BudgetTemplateService.fromMonth(
+      sessionData.userId,
+      { year: input.year, month: input.month },
+      { templateId: toBigInt(input.template_id), name: input.name }
+    );
     res.json('Budget template was successfully saved.');
   } catch (err) {
     Logger.addLog(err);
@@ -376,6 +478,7 @@ const saveBudgetTemplateFromBudget = async (req: Request, res: Response, next: N
 };
 
 const createBudgetFromTemplateSchema = joi.object({
+  template_id: templateIdSchema,
   month: joi.number().integer().min(1).max(12).required(),
   year: joi.number().integer().min(1970).required(),
 });
@@ -387,7 +490,8 @@ const createBudgetFromTemplate = async (req: Request, res: Response, next: NextF
     const data = await BudgetTemplateService.createBudgetFromTemplate(
       sessionData.userId,
       input.month,
-      input.year
+      input.year,
+      toBigInt(input.template_id)
     );
     res.json(data);
   } catch (err) {
@@ -409,6 +513,12 @@ export default {
   getBudgetsListForUser,
   updateBudgetCategoryPlannedValues,
   updateBudgetDescription,
+  listBudgetTemplates,
+  createBudgetTemplate,
+  renameBudgetTemplate,
+  deleteBudgetTemplate,
+  saveBudgetTemplateFromTypical,
+  saveBudgetTemplateFromMonth,
   getBudgetTemplate,
   getBudgetTemplateSuggestions,
   replaceBudgetTemplate,

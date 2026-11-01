@@ -9,8 +9,9 @@ import {
   serializeItems,
 } from './budgetAllocationService.js';
 import BudgetService from './budgetService.js';
-import { IST_OFFSET_SECONDS } from './insights/insightsPrimitives.js';
-import { typicalMonth } from './insights/typicalMonth.js';
+import { IST_OFFSET_SECONDS, type YearMonth, monthRangeIST, shiftMonth } from './insights/insightsPrimitives.js';
+import { fetchRows, typicalMonth } from './insights/typicalMonth.js';
+import { salaryRuleFor } from './insights/analyticsRules.js';
 
 type Item = { label: string; amount: number; sort_order: number };
 export type TemplateRow = {
@@ -48,12 +49,78 @@ export type TemplateSuggestion = {
 };
 
 export default class BudgetTemplateService {
+  /** The template with ***templateId***, else the user's oldest one; null when there is none. */
+  private static async findTemplate(
+    userId: bigint,
+    templateId: bigint | undefined,
+    db: Prisma.TransactionClient | typeof prisma
+  ) {
+    if (templateId === undefined)
+      return db.budget_templates.findFirst({ where: { users_user_id: userId }, orderBy: { template_id: 'asc' } });
+    const template = await db.budget_templates.findFirst({ where: { template_id: templateId, users_user_id: userId } });
+    if (!template) throw APIError.notFound();
+    return template;
+  }
+
+  static async list(userId: bigint) {
+    const templates = await prisma.budget_templates.findMany({
+      where: { users_user_id: userId },
+      orderBy: { template_id: 'asc' },
+      include: { _count: { select: { rows: true } } },
+    });
+    return templates.map((t) => ({
+      template_id: t.template_id,
+      name: t.name,
+      updated_at: Number(t.updated_at),
+      row_count: t._count.rows,
+    }));
+  }
+
+  private static cleanName(name: unknown) {
+    const trimmed = typeof name === 'string' ? name.trim() : '';
+    if (!trimmed || trimmed.length > 100) throw APIError.badRequest('Invalid template name.');
+    return trimmed;
+  }
+
+  /** Creates an empty template; the name must be new for the user. */
+  static async create(userId: bigint, name: unknown, db: Prisma.TransactionClient | typeof prisma = prisma) {
+    const cleaned = BudgetTemplateService.cleanName(name);
+    const taken = await db.budget_templates.findFirst({ where: { users_user_id: userId, name: cleaned } });
+    if (taken) throw APIError.conflict('A template with this name already exists.');
+    return db.budget_templates.create({
+      data: { users_user_id: userId, name: cleaned, updated_at: BigInt(nowSeconds()) },
+    });
+  }
+
+  static async rename(userId: bigint, templateId: bigint, name: unknown) {
+    const cleaned = BudgetTemplateService.cleanName(name);
+    const template = await BudgetTemplateService.findTemplate(userId, templateId, prisma);
+    if (!template) throw APIError.notFound();
+    const taken = await prisma.budget_templates.findFirst({
+      where: { users_user_id: userId, name: cleaned, NOT: { template_id: templateId } },
+    });
+    if (taken) throw APIError.conflict('A template with this name already exists.');
+    await prisma.budget_templates.update({ where: { template_id: templateId }, data: { name: cleaned } });
+  }
+
+  static async remove(userId: bigint, templateId: bigint) {
+    await performDatabaseRequest(async (db) => {
+      const template = await BudgetTemplateService.findTemplate(userId, templateId, db);
+      if (!template) throw APIError.notFound();
+      await db.budget_template_rows.deleteMany({ where: { template_id: templateId } });
+      await db.budget_templates.delete({ where: { template_id: templateId } });
+    });
+  }
+
   static async get(
     userId: bigint,
-    db: Prisma.TransactionClient | typeof prisma = prisma
-  ): Promise<{ rows: TemplateRow[]; updated_at: number | null }> {
+    db: Prisma.TransactionClient | typeof prisma = prisma,
+    templateId?: bigint
+  ): Promise<{ rows: TemplateRow[]; updated_at: number | null; template_id: bigint | null; name: string | null }> {
+    const found = await BudgetTemplateService.findTemplate(userId, templateId, db);
+    if (!found) return { rows: [], updated_at: null, template_id: null, name: null };
     const template = await db.budget_templates.findUnique({
-      where: { users_user_id: userId },
+      where: { template_id: found.template_id },
       include: {
         rows: {
           include: { items: { orderBy: [{ direction: 'asc' }, { sort_order: 'asc' }] } },
@@ -61,8 +128,10 @@ export default class BudgetTemplateService {
         },
       },
     });
-    if (!template) return { rows: [], updated_at: null };
+    if (!template) return { rows: [], updated_at: null, template_id: null, name: null };
     return {
+      template_id: template.template_id,
+      name: template.name,
       updated_at: Number(template.updated_at),
       rows: template.rows.map((row) => ({
         category_id: row.categories_category_id,
@@ -78,7 +147,11 @@ export default class BudgetTemplateService {
    * next to the template's current amounts. A parent that holds a lump sum in the template gets one
    * rolled-up row and its subcategories none; everything else is suggested per category.
    */
-  static async suggestions(userId: bigint, now: number = nowSeconds()): Promise<TemplateSuggestion[]> {
+  static async suggestions(
+    userId: bigint,
+    now: number = nowSeconds(),
+    templateId?: bigint
+  ): Promise<TemplateSuggestion[]> {
     const d = new Date((now + IST_OFFSET_SECONDS) * 1000);
     const typical = await typicalMonth(
       userId,
@@ -90,7 +163,7 @@ export default class BudgetTemplateService {
         where: { users_user_id: userId },
         select: { category_id: true, status: true, exclude_from_budgets: true, parent_category_id: true },
       }),
-      BudgetTemplateService.get(userId),
+      BudgetTemplateService.get(userId, prisma, templateId),
     ]);
     const eligible = new Set(
       categories
@@ -144,7 +217,7 @@ export default class BudgetTemplateService {
     return out.sort((a, b) => (a.category_id < b.category_id ? -1 : 1));
   }
 
-  static async replace(userId: bigint, rows: TemplateRowInput[], dbClient = undefined) {
+  static async replace(userId: bigint, rows: TemplateRowInput[], dbClient = undefined, templateId?: bigint) {
     if (!Array.isArray(rows)) throw APIError.badRequest('Invalid template rows.');
     for (const row of rows) {
       if (!row || !/^[1-9]\d*$/.test(String(row.category_id)))
@@ -188,17 +261,22 @@ export default class BudgetTemplateService {
           );
         }
       }
-      await BudgetTemplateService.store(userId, kept, db);
+      await BudgetTemplateService.store(userId, kept, db, templateId);
     }, dbClient);
   }
 
-  private static async store(userId: bigint, rows: CentsRow[], db: Prisma.TransactionClient) {
+  /** Writes ***rows*** into the given template (else the oldest, creating "Default" when the user has none). */
+  private static async store(
+    userId: bigint,
+    rows: CentsRow[],
+    db: Prisma.TransactionClient,
+    templateId?: bigint
+  ) {
     const updated_at = BigInt(nowSeconds());
-    const template = await db.budget_templates.upsert({
-      where: { users_user_id: userId },
-      create: { users_user_id: userId, updated_at },
-      update: { updated_at },
-    });
+    const existing = await BudgetTemplateService.findTemplate(userId, templateId, db);
+    const template = existing
+      ? await db.budget_templates.update({ where: { template_id: existing.template_id }, data: { updated_at } })
+      : await db.budget_templates.create({ data: { users_user_id: userId, updated_at } });
     const template_id = template.template_id;
     await db.budget_template_rows.deleteMany({ where: { template_id } });
     for (const row of rows) {
@@ -214,7 +292,22 @@ export default class BudgetTemplateService {
     }
   }
 
-  static async fromBudget(userId: bigint, budgetId: bigint, dbClient = undefined) {
+  /** Where a conversion writes: a new template when ***name*** is given, else an existing one (default: the oldest). */
+  private static async target(
+    userId: bigint,
+    db: Prisma.TransactionClient,
+    opts: { templateId?: bigint; name?: unknown }
+  ) {
+    if (opts.name !== undefined) return (await BudgetTemplateService.create(userId, opts.name, db)).template_id;
+    return opts.templateId;
+  }
+
+  static async fromBudget(
+    userId: bigint,
+    budgetId: bigint,
+    dbClient = undefined,
+    opts: { templateId?: bigint; name?: unknown } = {}
+  ) {
     return performDatabaseRequest(async (db) => {
       const budget = await db.budgets.findFirst({
         where: { budget_id: budgetId, users_user_id: userId },
@@ -252,11 +345,80 @@ export default class BudgetTemplateService {
         const parent = parentOf.get(r.categoryId);
         return !(parent && budgeted.has(parent));
       });
-      await BudgetTemplateService.store(userId, kept, db);
+      await BudgetTemplateService.store(userId, kept, db, await BudgetTemplateService.target(userId, db, opts));
     }, dbClient);
   }
 
-  static async createBudgetFromTemplate(userId: bigint, month: number, year: number) {
+  /**
+   * Turns per-category amounts (cents) into template rows: only active categories that can be budgeted,
+   * and a parent plus subcategory pair becomes the parent's lump sum, as a budget requires.
+   */
+  private static async rowsFromAmounts(userId: bigint, amounts: Map<string, { debit: number; credit: number }>) {
+    const categories = await prisma.categories.findMany({
+      where: { users_user_id: userId },
+      select: { category_id: true, status: true, exclude_from_budgets: true, parent_category_id: true },
+    });
+    const eligible = new Set(
+      categories
+        .filter((c) => c.status === MYFIN.CATEGORY_STATUS.ACTIVE && !c.exclude_from_budgets)
+        .map((c) => c.category_id.toString())
+    );
+    const parentOf = new Map(categories.map((c) => [c.category_id.toString(), c.parent_category_id?.toString() ?? null]));
+    const merged = new Map<string, { debit: number; credit: number }>();
+    for (const [id, value] of amounts) {
+      if (!eligible.has(id) || (value.debit <= 0 && value.credit <= 0)) continue;
+      const parent = parentOf.get(id);
+      // roll into the parent when it can hold the lump sum
+      const key = parent && eligible.has(parent) && amounts.has(parent) ? parent : id;
+      const entry = merged.get(key) ?? { debit: 0, credit: 0 };
+      entry.debit += value.debit;
+      entry.credit += value.credit;
+      merged.set(key, entry);
+    }
+    return [...merged].map(
+      ([id, value]): CentsRow => ({
+        categoryId: BigInt(id),
+        debit: BigInt(Math.round(value.debit)),
+        credit: BigInt(Math.round(value.credit)),
+        expense: [],
+        income: [],
+      })
+    );
+  }
+
+  /** Saves the typical month (average of the last 6 completed months) as a template. */
+  static async fromTypicalMonth(userId: bigint, opts: { templateId?: bigint; name?: unknown }, now: number = nowSeconds()) {
+    const d = new Date((now + IST_OFFSET_SECONDS) * 1000);
+    const typical = await typicalMonth(userId, { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 }, SUGGESTION_MONTHS);
+    const amounts = new Map<string, { debit: number; credit: number }>();
+    for (const [id, entry] of typical.byCategory) {
+      amounts.set(id, entry.kind === 'income' ? { debit: 0, credit: entry.avgCents } : { debit: entry.avgCents, credit: 0 });
+    }
+    const rows = await BudgetTemplateService.rowsFromAmounts(userId, amounts);
+    return performDatabaseRequest(async (db) => {
+      await BudgetTemplateService.store(userId, rows, db, await BudgetTemplateService.target(userId, db, opts));
+    });
+  }
+
+  /** Saves what one month actually looked like (spending and income per category) as a template. */
+  static async fromMonth(userId: bigint, ym: YearMonth, opts: { templateId?: bigint; name?: unknown }) {
+    const rule = await salaryRuleFor(userId);
+    const rows = await fetchRows(userId, [ym], [monthRangeIST(ym)], rule);
+    const amounts = new Map<string, { debit: number; credit: number }>();
+    for (const row of rows) {
+      if (row.categoryId == null) continue;
+      const entry = amounts.get(row.categoryId) ?? { debit: 0, credit: 0 };
+      if (row.type === MYFIN.TRX_TYPES.INCOME) entry.credit += row.cents;
+      else entry.debit += row.cents;
+      amounts.set(row.categoryId, entry);
+    }
+    const cents = await BudgetTemplateService.rowsFromAmounts(userId, amounts);
+    return performDatabaseRequest(async (db) => {
+      await BudgetTemplateService.store(userId, cents, db, await BudgetTemplateService.target(userId, db, opts));
+    });
+  }
+
+  static async createBudgetFromTemplate(userId: bigint, month: number, year: number, templateId?: bigint) {
     const exists = () => APIError.conflict('A budget already exists for this month.');
     try {
       return await prisma.$transaction(async (tx) => {
@@ -265,7 +427,7 @@ export default class BudgetTemplateService {
           select: { budget_id: true },
         });
         if (existing) throw exists();
-        const { rows } = await BudgetTemplateService.get(userId, tx);
+        const { rows } = await BudgetTemplateService.get(userId, tx, templateId);
         const categories = await tx.categories.findMany({
           where: { users_user_id: userId, category_id: { in: rows.map((row) => row.category_id) } },
           select: { category_id: true, status: true, parent_category_id: true },
@@ -305,9 +467,18 @@ export default class BudgetTemplateService {
     names: { source: string; target: string },
     tx: Prisma.TransactionClient
   ) {
-    const template = await tx.budget_templates.findUnique({ where: { users_user_id: userId } });
-    if (!template) return;
-    const { template_id } = template;
+    const templates = await tx.budget_templates.findMany({ where: { users_user_id: userId } });
+    for (const template of templates)
+      await BudgetTemplateService.mergeCategoryInTemplate(template.template_id, sourceId, targetId, names, tx);
+  }
+
+  private static async mergeCategoryInTemplate(
+    template_id: bigint,
+    sourceId: bigint,
+    targetId: bigint,
+    names: { source: string; target: string },
+    tx: Prisma.TransactionClient
+  ) {
     const at = (categoryId: bigint) => ({
       template_id_categories_category_id: { template_id, categories_category_id: categoryId },
     });
