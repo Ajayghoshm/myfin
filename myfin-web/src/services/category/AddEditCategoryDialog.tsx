@@ -92,11 +92,11 @@ const AddEditCategoryDialog = (props: Props) => {
   const [descriptionValue, setDescriptionValue] = useState<string>(
     props.category?.description || '',
   );
-  const [parentValue, setParentValue] = useState<string>(
+  const initialParentValue =
     props.category?.parent_category_id != null
       ? String(props.category.parent_category_id)
-      : '',
-  );
+      : '';
+  const [parentValue, setParentValue] = useState<string>(initialParentValue);
 
   const allCategories = getCategoriesRequest.data ?? [];
   const parentOptions = useMemo(
@@ -327,7 +327,11 @@ const AddEditCategoryDialog = (props: Props) => {
                 new_description: descriptionValue,
                 new_exclude_from_budgets: excludeFromBudgetsValue,
                 new_is_fixed: isFixedValue,
-                new_parent_category_id: selectedParent?.category_id ?? null,
+                // Only send when the user changed it, so an unloaded category
+                // list can never turn a subcategory into a top-level one.
+                ...(parentValue !== initialParentValue && {
+                  new_parent_category_id: selectedParent?.category_id ?? null,
+                }),
               });
             } else {
               // Create
