@@ -48,8 +48,11 @@ export type TemplateSuggestion = {
 };
 
 export default class BudgetTemplateService {
-  static async get(userId: bigint): Promise<{ rows: TemplateRow[]; updated_at: number | null }> {
-    const template = await prisma.budget_templates.findUnique({
+  static async get(
+    userId: bigint,
+    db: Prisma.TransactionClient | typeof prisma = prisma
+  ): Promise<{ rows: TemplateRow[]; updated_at: number | null }> {
+    const template = await db.budget_templates.findUnique({
       where: { users_user_id: userId },
       include: {
         rows: {
@@ -238,41 +241,57 @@ export default class BudgetTemplateService {
         if (copy.debit > 0n || copy.credit > 0n || copy.expense.length || copy.income.length)
           rows.push(copy);
       }
-      await BudgetTemplateService.store(userId, rows, db);
+      // A pre-phase budget may hold a parent + subcategory pair: keep the parent's lump sum only.
+      const parentRows = await db.categories.findMany({
+        where: { users_user_id: userId, category_id: { in: rows.map((r) => r.categoryId) } },
+        select: { category_id: true, parent_category_id: true },
+      });
+      const parentOf = new Map(parentRows.map((c) => [c.category_id, c.parent_category_id]));
+      const budgeted = new Set(rows.map((r) => r.categoryId));
+      const kept = rows.filter((r) => {
+        const parent = parentOf.get(r.categoryId);
+        return !(parent && budgeted.has(parent));
+      });
+      await BudgetTemplateService.store(userId, kept, db);
     }, dbClient);
   }
 
   static async createBudgetFromTemplate(userId: bigint, month: number, year: number) {
-    return prisma.$transaction(async (tx) => {
-      const existing = await tx.budgets.findFirst({
-        where: { users_user_id: userId, month, year },
-        select: { budget_id: true },
+    const exists = () => APIError.conflict('A budget already exists for this month.');
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const existing = await tx.budgets.findFirst({
+          where: { users_user_id: userId, month, year },
+          select: { budget_id: true },
+        });
+        if (existing) throw exists();
+        const { rows } = await BudgetTemplateService.get(userId, tx);
+        const categories = await tx.categories.findMany({
+          where: { users_user_id: userId, category_id: { in: rows.map((row) => row.category_id) } },
+          select: { category_id: true, status: true, parent_category_id: true },
+        });
+        const activeIds = new Set(
+          categories.filter((c) => c.status === MYFIN.CATEGORY_STATUS.ACTIVE).map((c) => c.category_id)
+        );
+        // A stored parent + subcategory pair must not block the month: keep the parent's lump sum,
+        // but only when that parent is itself usable (active).
+        const parentOf = new Map(categories.map((c) => [c.category_id, c.parent_category_id]));
+        const inTemplate = new Set(rows.map((row) => row.category_id));
+        const usable = (row: TemplateRow) => {
+          if (!activeIds.has(row.category_id)) return false;
+          const parent = parentOf.get(row.category_id);
+          return !(parent && inTemplate.has(parent) && activeIds.has(parent));
+        };
+        const skipped_category_ids = rows.filter((row) => !usable(row)).map((row) => row.category_id);
+        const values = rows.filter(usable);
+        const budget_id = await BudgetService.createBudget(userId, month, year, values, '', tx as never);
+        return { budget_id, skipped_category_ids };
       });
-      if (existing) throw APIError.conflict('A budget already exists for this month.');
-      const { rows } = await BudgetTemplateService.get(userId);
-      const active = await tx.categories.findMany({
-        where: {
-          users_user_id: userId,
-          category_id: { in: rows.map((row) => row.category_id) },
-          status: MYFIN.CATEGORY_STATUS.ACTIVE,
-        },
-        select: { category_id: true },
-      });
-      const activeIds = new Set(active.map((c) => c.category_id));
-      // A stored parent + subcategory pair must not block the month: keep the parent's lump sum.
-      const parents = await tx.categories.findMany({
-        where: { users_user_id: userId, category_id: { in: rows.map((row) => row.category_id) } },
-        select: { category_id: true, parent_category_id: true },
-      });
-      const parentOf = new Map(parents.map((c) => [c.category_id, c.parent_category_id]));
-      const inTemplate = new Set(rows.map((row) => row.category_id));
-      const usable = (row: TemplateRow) =>
-        activeIds.has(row.category_id) && !inTemplate.has(parentOf.get(row.category_id));
-      const skipped_category_ids = rows.filter((row) => !usable(row)).map((row) => row.category_id);
-      const values = rows.filter(usable);
-      const budget_id = await BudgetService.createBudget(userId, month, year, values, '', tx as never);
-      return { budget_id, skipped_category_ids };
-    });
+    } catch (e) {
+      // A concurrent request created the same month between the check and the insert.
+      if ((e as { code?: string }).code === 'P2002') throw exists();
+      throw e;
+    }
   }
 
   /**
