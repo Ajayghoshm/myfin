@@ -5,7 +5,9 @@ import '../app.css';
 import {
   alpha,
   AppBar,
+  Backdrop,
   Box,
+  CircularProgress,
   IconButton,
   ListItemIcon,
   ListItemText,
@@ -22,7 +24,7 @@ import {
   HelpOutlineOutlined,
   LogoutOutlined,
 } from '@mui/icons-material';
-import { useContext, useEffect, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { ColorModeContext } from '../providers/MyFinThemeProvider.tsx';
 import {
   MY_FIN_THEME_LABEL_KEYS,
@@ -34,6 +36,7 @@ import { ROUTE_PROFILE, ROUTE_AUTH, ROUTE_HELP } from '../providers/RoutesProvid
 import { useTranslation } from 'react-i18next';
 import PlannedMatchPromptHost from '../features/transactions/PlannedMatchPromptHost.tsx';
 import { useUserData } from '../providers/UserProvider.tsx';
+import AuthServices from '../services/auth/authServices.ts';
 
 const PrivateRoute = () => {
   const colorMode = useContext(ColorModeContext);
@@ -46,6 +49,9 @@ const PrivateRoute = () => {
   const { userSessionData } = useUserData();
   const [themeMenuAnchor, setThemeMenuAnchor] =
     useState<null | HTMLElement>(null);
+
+  const [isRecheckingSession, setRecheckingSession] = useState(false);
+  const recheckInFlight = useRef(false);
 
   const isDemoAccount = userSessionData?.is_demo === true;
   const isThemeMenuOpen = Boolean(themeMenuAnchor);
@@ -70,6 +76,39 @@ const PrivateRoute = () => {
     // every time the location (route) change, check if session is still valid
     authStatus.refetch();
   }, [location.pathname]);
+
+  useEffect(() => {
+    // Coming back to the tab (after any time away): confirm the session is still valid before the
+    // user can interact. `focus` and `visibilitychange` often fire together, so one check at a time.
+    async function recheckSession() {
+      if (document.visibilityState !== 'visible' || recheckInFlight.current) {
+        return;
+      }
+      recheckInFlight.current = true;
+      setRecheckingSession(true);
+      try {
+        if (!(await AuthServices.validateSession())) {
+          authStatus.refetch(); // the effect below sends the user to the login screen
+        }
+      } catch (error) {
+        // The server answered with a rejection (e.g. 401): treat the session as invalid.
+        // No response at all (network down) is not a logout; the page stays as it is.
+        if ((error as { response?: unknown })?.response) {
+          authStatus.refetch();
+        }
+      } finally {
+        recheckInFlight.current = false;
+        setRecheckingSession(false);
+      }
+    }
+
+    window.addEventListener('focus', recheckSession);
+    document.addEventListener('visibilitychange', recheckSession);
+    return () => {
+      window.removeEventListener('focus', recheckSession);
+      document.removeEventListener('visibilitychange', recheckSession);
+    };
+  }, [authStatus.refetch]);
 
   useEffect(() => {
     // Navigate to the authentication route if the user is no longer authenticated
@@ -222,6 +261,12 @@ const PrivateRoute = () => {
             </AppBar>
             <Outlet />
             <PlannedMatchPromptHost />
+            <Backdrop
+              open={isRecheckingSession}
+              sx={{ color: '#fff', zIndex: (t) => t.zIndex.modal + 2 }}
+            >
+              <CircularProgress color="inherit" />
+            </Backdrop>
           </main>
         </Box>
       )}
