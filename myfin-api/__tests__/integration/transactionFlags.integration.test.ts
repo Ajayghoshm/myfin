@@ -137,6 +137,43 @@ describe('transaction flags', () => {
     expect(trx.debt_id).toBeNull();
   });
 
+  test('loan and event on one expense both apply', async () => {
+    const id = await add(userId, bankId, E, 'Loan for trip');
+    const res = await applyFlags(userId, [
+      { transaction_id: String(id), flags: { loan: { name: 'Ravi' }, event: { new_event: { name: 'Trip' } } } },
+    ]);
+    expect(res).toEqual({ applied: 2, failed: [] });
+    const trx = await prisma.transactions.findFirstOrThrow({ where: { transaction_id: id } });
+    expect(trx.debt_id).not.toBeNull();
+    expect(await prisma.event_occurrence_transactions.count({ where: { transaction_id: id } })).toBe(1);
+  });
+
+  test('a failed new_event link leaves no event behind', async () => {
+    const id = await add(userId, bankId, I, 'Salary');
+    const flags = { event: { new_event: { name: 'Orphan' } } };
+    const res = await applyFlags(userId, [{ transaction_id: String(id), flags }]);
+    expect(res.failed).toHaveLength(1);
+    expect(await prisma.events.count({ where: { users_user_id: userId, name: 'Orphan' } })).toBe(0);
+    // a retry on a good transaction can reuse the name
+    const good = await add(userId, bankId, E, 'Dinner');
+    expect((await applyFlags(userId, [{ transaction_id: String(good), flags }])).applied).toBe(1);
+  });
+
+  test('an income with an event flag is reported as failed', async () => {
+    const id = await add(userId, bankId, I, 'Gift received');
+    const event = await createEvent(userId, { name: 'Party', kind: 'other', date: '2026-06-10', repeat: 'once' });
+    const res = await applyFlags(userId, [{ transaction_id: String(id), flags: { event: { event_id: event.event_id } } }]);
+    expect(res.applied).toBe(0);
+    expect(res.failed).toHaveLength(1);
+    expect(res.failed[0]).toMatchObject({ transaction_id: String(id), flag: 'event' });
+  });
+
+  test('a non-numeric transaction_id is reported as failed', async () => {
+    const res = await applyFlags(userId, [{ transaction_id: 'abc', flags: { loan: {} } }]);
+    expect(res.applied).toBe(0);
+    expect(res.failed).toEqual([{ transaction_id: 'abc', flag: 'loan', message: 'Invalid transaction id.' }]);
+  });
+
   test('bulk import returns created_by_index and omits duplicates', async () => {
     const row = (external_id: string, description: string) => ({
       account_from_id: bankId,

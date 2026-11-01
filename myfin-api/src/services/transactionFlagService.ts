@@ -3,7 +3,7 @@ import { MYFIN } from '../consts.js';
 import APIError from '../errorHandling/apiError.js';
 import { createPeopleDebt } from './debts/debtService.js';
 import { addDays, daysBetween, istDate } from './routines/eventDates.js';
-import { createEvent, linkTransaction, occurrencesBetween } from './routines/eventService.js';
+import { createEvent, deleteEvent, linkTransaction, occurrencesBetween } from './routines/eventService.js';
 
 export type TransactionFlags = {
   loan?: { name?: string; due_date?: number | null };
@@ -66,7 +66,13 @@ async function applyEvent(userId: bigint, transactionId: bigint, event: NonNulla
   const near = occurrencesBetween(target, addDays(day, -OCCURRENCE_WINDOW_DAYS), addDays(day, OCCURRENCE_WINDOW_DAYS));
   if (near.length === 0) throw APIError.badRequest('This event has no occurrence near the transaction.');
   const date = near.reduce((best, d) => (Math.abs(daysBetween(day, d)) < Math.abs(daysBetween(day, best)) ? d : best));
-  await linkTransaction(userId, eventId, date, transactionId);
+  try {
+    await linkTransaction(userId, eventId, date, transactionId);
+  } catch (err) {
+    // Do not leave the event this call just created behind (a retry would hit a duplicate name)
+    if ('new_event' in event) await deleteEvent(userId, eventId).catch(() => undefined);
+    throw err;
+  }
 }
 
 /** Marks transactions as loans and/or links them to events. A failing flag is reported and never stops the rest. */
@@ -81,7 +87,7 @@ export async function applyFlags(userId: bigint, items: FlagItem[]): Promise<Fla
         result.failed.push({
           transaction_id: item.transaction_id,
           flag,
-          message: err instanceof Error ? err.message : 'Could not apply the flag.',
+          message: err instanceof APIError ? err.message : 'Could not apply the flag.',
         });
       }
     };
@@ -93,13 +99,14 @@ export async function applyFlags(userId: bigint, items: FlagItem[]): Promise<Fla
         if (item.flags[flag]) result.failed.push({ transaction_id: item.transaction_id, flag, message: 'Invalid transaction id.' });
       continue;
     }
-    if (item.flags.loan) {
-      const loan = item.flags.loan;
-      await attempt('loan', () => applyLoan(userId, transactionId, loan));
-    }
+    // The event goes first: a loan marks the row as debt bookkeeping, which can no longer be linked
     if (item.flags.event) {
       const event = item.flags.event;
       await attempt('event', () => applyEvent(userId, transactionId, event));
+    }
+    if (item.flags.loan) {
+      const loan = item.flags.loan;
+      await attempt('loan', () => applyLoan(userId, transactionId, loan));
     }
   }
   return result;
