@@ -40,7 +40,11 @@ import { cssGradients } from '../../../utils/gradientUtils.ts';
 import { useFormatNumberAsCurrency } from '../../../utils/textHooks.ts';
 import { formatNumberAsCurrency } from '../../../utils/textUtils.ts';
 
-type Props = {
+export type BudgetCategoryRowProps = {
+  // Shown instead of the item count; locks the Estimated input and breakdown.
+  lockHint?: string;
+  // Planned amount to display when it is not the row's own (children's sum).
+  displayPlanned?: number;
   isOpen: boolean;
   breakdownRevision: number;
   month: number;
@@ -57,6 +61,7 @@ type Props = {
   ) => void;
   onBreakdownValidityChange: (key: string, valid: boolean) => void;
 };
+type Props = BudgetCategoryRowProps;
 
 interface TooltipContentProps {
   category: BudgetCategoryTooltipData;
@@ -250,6 +255,8 @@ const BudgetCategoryRow = memo(function BudgetCategoryRow({
   onInputChange,
   onBreakdownChange,
   onBreakdownValidityChange,
+  lockHint,
+  displayPlanned,
 }: Props) {
   const { t } = useTranslation();
   const theme = useTheme();
@@ -259,9 +266,11 @@ const BudgetCategoryRow = memo(function BudgetCategoryRow({
   const [breakdownValid, setBreakdownValid] = useState(true);
   const items =
     (isDebit ? category.expense_items : category.income_items) ?? [];
-  const total = isDebit
+  const ownTotal = isDebit
     ? category.planned_amount_debit
     : category.planned_amount_credit;
+  const total = displayPlanned ?? ownTotal;
+  const locked = !!lockHint;
 
   const renderCategoryTooltip = useMemo(
     () => (
@@ -408,7 +417,9 @@ const BudgetCategoryRow = memo(function BudgetCategoryRow({
                 color: breakdownValid ? 'text.secondary' : 'error.main',
               }}
             >
-              {items.length
+              {lockHint
+                ? lockHint
+                : items.length
                 ? t('budgetBreakdown.items', { count: items.length })
                 : t('budgetBreakdown.singleAmount')}
             </Typography>
@@ -417,7 +428,7 @@ const BudgetCategoryRow = memo(function BudgetCategoryRow({
             size="small"
             aria-label={`${category.name}: ${t('budgetBreakdown.title')}`}
             aria-expanded={breakdownOpen}
-            disabled={!isOpen && !items.length}
+            disabled={(!isOpen && !items.length) || (locked && !items.length)}
             onClick={() => setBreakdownOpen((value) => !value)}
             sx={{ color: 'text.secondary', mr: -0.5 }}
           >
@@ -447,9 +458,9 @@ const BudgetCategoryRow = memo(function BudgetCategoryRow({
             inputProps={{
               'aria-label': `${category.name}: ${t('budgetDetails.estimated')}`,
             }}
-            readOnly={!isOpen || items.length > 0 || breakdownOpen}
+            readOnly={!isOpen || locked || items.length > 0 || breakdownOpen}
             onValueChange={
-              items.length || breakdownOpen || !isOpen
+              items.length || breakdownOpen || !isOpen || locked
                 ? undefined
                 : handleInputChange
             }
@@ -480,7 +491,8 @@ const BudgetCategoryRow = memo(function BudgetCategoryRow({
               '& input': { p: 0 },
               borderRadius: 0.5,
               '&:focus-within': {
-                outline: isOpen && !items.length ? '1px solid' : 'none',
+                outline:
+                  isOpen && !items.length && !locked ? '1px solid' : 'none',
                 outlineColor: 'primary.main',
               },
             }}
@@ -567,7 +579,7 @@ const BudgetCategoryRow = memo(function BudgetCategoryRow({
           {t('budgetDetails.transactionsList')}
         </MenuItem>
         <MenuItem
-          disabled={!isOpen && !items.length}
+          disabled={(!isOpen && !items.length) || (locked && !items.length)}
           onClick={() => {
             setMenuAnchor(null);
             setBreakdownOpen(true);
@@ -588,8 +600,8 @@ const BudgetCategoryRow = memo(function BudgetCategoryRow({
           onClose={() => setBreakdownOpen(false)}
           title={`${category.name} · ${t(isDebit ? 'common.debit' : 'common.credit')}`}
           items={items}
-          total={total}
-          readOnly={!isOpen}
+          total={ownTotal}
+          readOnly={!isOpen || locked}
           onChange={handleBreakdownChange}
           onValidityChange={handleBreakdownValidityChange}
           onSave={async (next, amount) => handleBreakdownChange(next, amount)}

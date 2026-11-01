@@ -17,13 +17,13 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
+  FormControlLabel,
   IconButton,
-  List,
-  ListItem,
   Tooltip,
   Menu,
   MenuItem,
   ListItemIcon,
+  Switch,
   alpha,
   useTheme,
 } from '@mui/material';
@@ -35,7 +35,7 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { DatePicker } from '@mui/x-date-pickers';
 import dayjs, { Dayjs } from 'dayjs';
-import React, {
+import {
   useCallback,
   useDeferredValue,
   useEffect,
@@ -75,7 +75,9 @@ import { TransactionType } from '../../../services/trx/trxServices.ts';
 import { getMonthsFullName } from '../../../utils/dateUtils.ts';
 import { useFormatNumberAsCurrency } from '../../../utils/textHooks.ts';
 import { addLeadingZero } from '../../../utils/textUtils.ts';
-import BudgetCategoryRow from './BudgetCategoryRow.tsx';
+import BudgetCategoryList from './BudgetCategoryList.tsx';
+import { buildBudgetView } from './budgetView.ts';
+import { apiErrorMessage } from '../../../utils/apiErrorMessage.ts';
 import BudgetDescription from './BudgetDescription.tsx';
 import BudgetListSummaryDialog from './BudgetListSummaryDialog.tsx';
 import BudgetSummaryBoard from './BudgetSummaryBoard.tsx';
@@ -105,6 +107,7 @@ const BudgetDetailsScreen = () => {
   const [pageMenu, setPageMenu] = useState<HTMLElement | null>(null);
   const [expenseSearch, setExpenseSearch] = useState('');
   const [incomeSearch, setIncomeSearch] = useState('');
+  const [hideEmpty, setHideEmpty] = useState(false);
   const deferredExpenseSearch = useDeferredValue(expenseSearch);
   const deferredIncomeSearch = useDeferredValue(incomeSearch);
   useEffect(() => {
@@ -153,31 +156,6 @@ const BudgetDetailsScreen = () => {
     null,
   );
   const [nextBudget, setNextBudget] = useState<RelatedBudget | null>(null);
-  const orderCategoriesByDebitAmount = (
-    categories: BudgetCategory[],
-    isOpen: boolean,
-  ) => {
-    return [...categories]
-      .filter((cat) =>
-        isOpen
-          ? true
-          : cat.current_amount_debit != 0 ||
-            cat.planned_amount_debit != 0 ||
-            (cat.expense_items?.length ?? 0) > 0,
-      )
-      .sort((a, b) => {
-        if (isOpen)
-          return (
-            Number(b.initial_planned_amount_debit + '') -
-            Number(a.initial_planned_amount_debit + '')
-          );
-        return (
-          Number(b.current_amount_debit + '') -
-          Number(a.current_amount_debit + '')
-        );
-      });
-  };
-
   const getDescriptionValue = () => {
     return descriptionRef.current?.value ?? '';
   };
@@ -188,37 +166,14 @@ const BudgetDetailsScreen = () => {
     }
   };
 
-  const orderCategoriesByCreditAmount = (
-    categories: BudgetCategory[],
-    isOpen: boolean,
-  ) => {
-    return [...categories]
-      .filter((cat) =>
-        isOpen
-          ? true
-          : cat.current_amount_credit != 0 ||
-            cat.planned_amount_credit != 0 ||
-            (cat.income_items?.length ?? 0) > 0,
-      )
-      .sort((a, b) => {
-        if (isOpen)
-          return (
-            Number(b.initial_planned_amount_credit + '') -
-            Number(a.initial_planned_amount_credit + '')
-          );
-        return (
-          Number(b.current_amount_credit + '') -
-          Number(a.current_amount_credit + '')
-        );
-      });
-  };
-
-  const debitCategories = useMemo(() => {
-    return orderCategoriesByDebitAmount(categories, isOpen);
-  }, [categories, isOpen]);
-  const creditCategories = useMemo(() => {
-    return orderCategoriesByCreditAmount(categories, isOpen);
-  }, [categories, isOpen]);
+  const debitView = useMemo(
+    () => buildBudgetView(categories, true, isOpen, hideEmpty),
+    [categories, isOpen, hideEmpty],
+  );
+  const creditView = useMemo(
+    () => buildBudgetView(categories, false, isOpen, hideEmpty),
+    [categories, isOpen, hideEmpty],
+  );
 
   const calculateBudgetBalances = (
     categories?: BudgetCategory[],
@@ -340,7 +295,12 @@ const BudgetDetailsScreen = () => {
       getBudgetToCloneRequest.isError
     ) {
       snackbar.showSnackbar(
-        t('common.somethingWentWrongTryAgain'),
+        apiErrorMessage(
+          updateBudgetRequest.error ??
+            createBudgetStep1Request.error ??
+            updateBudgetStatusRequest.error,
+          t('common.somethingWentWrongTryAgain'),
+        ),
         AlertSeverity.ERROR,
       );
     }
@@ -878,6 +838,18 @@ const BudgetDetailsScreen = () => {
               <ArrowForwardIos sx={{ fontSize: 14 }} />
             </IconButton>
           </Stack>
+          <FormControlLabel
+            control={
+              <Switch
+                size="small"
+                checked={hideEmpty}
+                onChange={(event) => setHideEmpty(event.target.checked)}
+              />
+            }
+            label={t('budgetDetails.hideEmptyRows')}
+            slotProps={{ typography: { fontSize: 13 } }}
+            sx={{ mx: 0, whiteSpace: 'nowrap' }}
+          />
           {!isNew && (
             <Button
               variant="outlined"
@@ -998,8 +970,8 @@ const BudgetDetailsScreen = () => {
             />
           </Stack>
 
-          {!debitCategories.some((category) =>
-            matchesCategory(category.name, deferredExpenseSearch),
+          {!debitView.names.some((name) =>
+            matchesCategory(name, deferredExpenseSearch),
           ) && (
             <Typography
               role="status"
@@ -1008,42 +980,22 @@ const BudgetDetailsScreen = () => {
               {t('budgetDetails.noMatchingCategories')}
             </Typography>
           )}
-          <List
-            disablePadding
-            sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}
-          >
-            {debitCategories.map((category) => (
-              <React.Fragment
-                key={`${id ?? 'new'}:${budgetToClone}:${category.category_id}`}
-              >
-                <ListItem
-                  alignItems="flex-start"
-                  sx={{
-                    p: 0,
-                    display: matchesCategory(
-                      category.name,
-                      deferredExpenseSearch,
-                    )
-                      ? 'flex'
-                      : 'none',
-                  }}
-                >
-                  <BudgetCategoryRow
-                    category={category}
-                    isOpen={isOpen}
-                    isDebit={true}
-                    breakdownRevision={breakdownRevision}
-                    onBreakdownValidityChange={setBreakdownValidity}
-                    month={monthYear.month}
-                    year={monthYear.year}
-                    onBreakdownChange={updateBreakdown}
-                    onCategoryClick={handleCategoryClick}
-                    onInputChange={onCategoryPlannedAmountChange}
-                  />
-                </ListItem>
-              </React.Fragment>
-            ))}
-          </List>
+          <BudgetCategoryList
+            view={debitView}
+            isDebit={true}
+            keyPrefix={`${id ?? 'new'}:${budgetToClone}`}
+            matches={(name) => matchesCategory(name, deferredExpenseSearch)}
+            rowProps={{
+              isOpen,
+              breakdownRevision,
+              onBreakdownValidityChange: setBreakdownValidity,
+              month: monthYear.month,
+              year: monthYear.year,
+              onBreakdownChange: updateBreakdown,
+              onCategoryClick: handleCategoryClick,
+              onInputChange: onCategoryPlannedAmountChange,
+            }}
+          />
         </Grid>
         <Grid size={{ xs: 12, lg: 6 }}>
           <Stack
@@ -1069,8 +1021,8 @@ const BudgetDetailsScreen = () => {
             />
           </Stack>
 
-          {!creditCategories.some((category) =>
-            matchesCategory(category.name, deferredIncomeSearch),
+          {!creditView.names.some((name) =>
+            matchesCategory(name, deferredIncomeSearch),
           ) && (
             <Typography
               role="status"
@@ -1079,42 +1031,22 @@ const BudgetDetailsScreen = () => {
               {t('budgetDetails.noMatchingCategories')}
             </Typography>
           )}
-          <List
-            disablePadding
-            sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}
-          >
-            {creditCategories.map((category) => (
-              <React.Fragment
-                key={`${id ?? 'new'}:${budgetToClone}:${category.category_id}`}
-              >
-                <ListItem
-                  alignItems="flex-start"
-                  sx={{
-                    p: 0,
-                    display: matchesCategory(
-                      category.name,
-                      deferredIncomeSearch,
-                    )
-                      ? 'flex'
-                      : 'none',
-                  }}
-                >
-                  <BudgetCategoryRow
-                    category={category}
-                    isOpen={isOpen}
-                    isDebit={false}
-                    breakdownRevision={breakdownRevision}
-                    onBreakdownValidityChange={setBreakdownValidity}
-                    month={monthYear.month}
-                    year={monthYear.year}
-                    onBreakdownChange={updateBreakdown}
-                    onCategoryClick={handleCategoryClick}
-                    onInputChange={onCategoryPlannedAmountChange}
-                  />
-                </ListItem>
-              </React.Fragment>
-            ))}
-          </List>
+          <BudgetCategoryList
+            view={creditView}
+            isDebit={false}
+            keyPrefix={`${id ?? 'new'}:${budgetToClone}`}
+            matches={(name) => matchesCategory(name, deferredIncomeSearch)}
+            rowProps={{
+              isOpen,
+              breakdownRevision,
+              onBreakdownValidityChange: setBreakdownValidity,
+              month: monthYear.month,
+              year: monthYear.year,
+              onBreakdownChange: updateBreakdown,
+              onCategoryClick: handleCategoryClick,
+              onInputChange: onCategoryPlannedAmountChange,
+            }}
+          />
         </Grid>
       </Grid>
       <Box
