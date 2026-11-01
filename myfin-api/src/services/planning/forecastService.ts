@@ -242,6 +242,29 @@ export async function forecastToBudget(
     select: { category_id: true },
   });
   const activeIds = new Set(active.map((c) => c.category_id.toString()));
+  // A parent and its subcategories cannot both be budgeted: put the children's values on the parent.
+  const parents = await prisma.categories.findMany({
+    where: {
+      users_user_id: userId,
+      category_id: { in: [...wanted.keys()].map((i) => BigInt(i)) },
+      parent_category_id: { not: null },
+    },
+    select: { category_id: true, parent_category_id: true },
+  });
+  for (const child of parents) {
+    const childId = child.category_id.toString();
+    const parentId = String(child.parent_category_id);
+    const c = wanted.get(childId);
+    const p = wanted.get(parentId);
+    if (!c || !p || !activeIds.has(parentId) || !(p.debit || p.credit)) continue;
+    if (!c.debit && !c.credit) continue;
+    if (c.debit) p.debit = (p.debit ?? 0) + c.debit;
+    if (c.credit) p.credit = (p.credit ?? 0) + c.credit;
+    p.debit = p.debit === undefined ? undefined : Math.round(p.debit * 100) / 100;
+    p.credit = p.credit === undefined ? undefined : Math.round(p.credit * 100) / 100;
+    c.debit = c.debit === undefined ? undefined : 0;
+    c.credit = c.credit === undefined ? undefined : 0;
+  }
   // Inactive categories cannot hold a planned amount: report them like breakdown categories.
   const inactiveIds = [...wanted.keys()].filter((id) => !activeIds.has(id));
 
@@ -270,7 +293,10 @@ export async function forecastToBudget(
     });
     const byCat = new Map(alloc.map((a) => [a.categories_category_id.toString(), a]));
     const skipped: string[] = [...inactiveIds];
-    for (const [id, w] of wanted) {
+    const isZero = (w: Wanted) => !w.debit && !w.credit;
+    // Zero (clearing) writes first so that a child is cleared before its parent is filled.
+    const entries = [...wanted].sort((x, y) => Number(!isZero(x[1])) - Number(!isZero(y[1])));
+    for (const [id, w] of entries) {
       if (!activeIds.has(id)) continue;
       const a = byCat.get(id);
       if ((a?._count.breakdown_items ?? 0) > 0) {
@@ -279,14 +305,20 @@ export async function forecastToBudget(
       }
       if (mode === 'fill_empty' && ((a?.planned_amount_debit ?? 0n) !== 0n || (a?.planned_amount_credit ?? 0n) !== 0n))
         continue;
-      await BudgetService.updateBudgetCategoryPlannedValues(
-        userId,
-        existing.budget_id,
-        BigInt(id),
-        w.debit,
-        w.credit,
-        client
-      );
+      try {
+        await BudgetService.updateBudgetCategoryPlannedValues(
+          userId,
+          existing.budget_id,
+          BigInt(id),
+          w.debit,
+          w.credit,
+          client
+        );
+      } catch (e) {
+        // The stored budget already has the other side of a parent/subcategory pair: skip and report.
+        if ((e as { rationale?: string }).rationale !== 'BUDGET_CATEGORY_CONFLICT') throw e;
+        skipped.push(id);
+      }
     }
     return { budget_id: existing.budget_id.toString(), skipped_category_ids: skipped };
   });

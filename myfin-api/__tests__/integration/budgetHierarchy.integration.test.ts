@@ -72,6 +72,16 @@ describe('budget parent/subcategory either-or rule', () => {
     }
   });
 
+  test('a full-budget save can move an amount between parent and child in either order', async () => {
+    await set(budgetId, parentId, 100);
+    await BudgetService.updateBudget(userId, budgetId, 1, 2026, [row(childId, '50'), row(parentId, '0')], '');
+    await BudgetService.updateBudget(userId, budgetId, 1, 2026, [row(parentId, '70'), row(childId, '0')], '');
+    await BudgetService.updateBudget(userId, budgetId, 1, 2026, [row(childId, '40'), row(parentId, '0')], '');
+    await BudgetService.updateBudget(userId, budgetId, 1, 2026, [row(parentId, '0'), row(childId, '0')], '');
+    const rows = await prisma.budgets_has_categories.findMany({ where: { budgets_budget_id: budgetId } });
+    expect(rows.every((r) => r.planned_amount_debit === 0n)).toBe(true);
+  });
+
   test('allows a parent lump sum when subcategory rows are zero', async () => {
     await set(budgetId, childId, 0);
     await set(budgetId, parentId, 100);

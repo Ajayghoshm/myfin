@@ -66,7 +66,7 @@ async function setup(opts: { lastYear?: number | null } = {}) {
     await spend(lastYear, { year: 2025, month: 12 }, 'GROCER', groceries.category_id);
   }
   await createYearlyCost(uid, { name: 'Course', amount: 12000, due_month: 12, category_id: education.category_id });
-  return { uid, rent, groceries, education, salary };
+  return { uid, rent, groceries, education, salary, spend };
 }
 
 const line = (f: Awaited<ReturnType<typeof forecast>>, name: string) => f.categories.find((c) => c.name === name);
@@ -221,6 +221,53 @@ describe('forecast to budget', () => {
     }
     const compare = await budgetCompare(ctx.uid, DEC, NOW);
     expect(compare.rows.find((r) => r.name === 'Groceries')?.has_breakdown).toBe(true);
+  });
+
+  describe('parent and subcategory forecasts', () => {
+    const withChild = async () => {
+      const ctx = await setup();
+      const veg = await prisma.categories.create({
+        data: { name: 'Veg', type: E, users_user_id: ctx.uid, parent_category_id: ctx.groceries.category_id },
+      });
+      for (const m of [8, 9, 10]) await ctx.spend(2000, { year: 2026, month: m }, 'VEGMAN', veg.category_id);
+      const f = await forecast(ctx.uid, DEC, NOW);
+      const parentAmount = line(f, 'Groceries')!.amount;
+      const childAmount = line(f, 'Veg')!.amount;
+      expect(parentAmount).toBeGreaterThan(0);
+      expect(childAmount).toBeGreaterThan(0);
+      return { ...ctx, veg, total: Math.round((parentAmount + childAmount) * 100) / 100 };
+    };
+
+    test('create puts the combined forecast on the parent and zero on the child', async () => {
+      const ctx = await withChild();
+      await forecastToBudget(ctx.uid, DEC, 'create', NOW);
+      const { by } = await planned(ctx.uid, DEC);
+      expect(by.Groceries.debit).toBe(ctx.total);
+      expect(by.Veg?.debit ?? 0).toBe(0);
+    });
+
+    test('replace works over a budget where the child was budgeted', async () => {
+      const ctx = await withChild();
+      const budgetId = await BudgetService.createBudget(ctx.uid, 12, 2026, [], '');
+      await BudgetService.updateBudgetCategoryPlannedValues(ctx.uid, budgetId, ctx.veg.category_id, 33, 0);
+      const res = await forecastToBudget(ctx.uid, DEC, 'replace', NOW);
+      expect(res.skipped_category_ids).toEqual([]);
+      const { by } = await planned(ctx.uid, DEC);
+      expect(by.Groceries.debit).toBe(ctx.total);
+      expect(by.Veg.debit).toBe(0);
+    });
+
+    test('fill_empty skips a parent whose child is already budgeted and reports it', async () => {
+      const ctx = await withChild();
+      const budgetId = await BudgetService.createBudget(ctx.uid, 12, 2026, [], '');
+      await BudgetService.updateBudgetCategoryPlannedValues(ctx.uid, budgetId, ctx.veg.category_id, 33, 0);
+      const res = await forecastToBudget(ctx.uid, DEC, 'fill_empty', NOW);
+      expect(res.skipped_category_ids).toEqual([String(ctx.groceries.category_id)]);
+      const { by } = await planned(ctx.uid, DEC);
+      expect(by.Veg.debit).toBe(33);
+      expect(by.Groceries?.debit ?? 0).toBe(0);
+      expect(by.Rent.debit).toBe(30000);
+    });
   });
 
   test('income-only line leaves the debit untouched', async () => {

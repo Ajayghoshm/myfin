@@ -677,7 +677,15 @@ class BudgetService {
       if (!value || !/^[1-9]\d*$/.test(String(value.category_id)))
         throw APIError.badRequest('Invalid category id.');
     }
-    for (const value of catValuesArr) {
+    // Rows that clear a category go first so that moving an amount between a parent and its
+    // subcategories in one request does not depend on the order of the rows.
+    const isClearing = (value: any) =>
+      !Number(value.planned_value_debit) &&
+      !Number(value.planned_value_credit) &&
+      !value.expense_items?.length &&
+      !value.income_items?.length;
+    const ordered = [...catValuesArr.filter(isClearing), ...catValuesArr.filter((v) => !isClearing(v))];
+    for (const value of ordered) {
       await BudgetAllocationService.save(
         userId,
         budgetId,
