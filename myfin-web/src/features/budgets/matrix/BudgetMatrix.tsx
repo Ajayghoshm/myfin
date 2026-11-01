@@ -55,6 +55,7 @@ import {
   useCreateBudgetStep0,
   useCreateBudgetStep1,
   useGetBudgetListSummary,
+  useGetBudgetTemplate,
   useGetBudgetMatrix,
   useGetBudgetToClone,
   useUpdateBudgetDescription,
@@ -67,8 +68,13 @@ import type {
   BudgetMatrixItem,
   BudgetMatrixResponse,
   BudgetMatrixValue,
+  BudgetTemplateRow,
 } from '../../../services/budget/budgetServices.ts';
 import CategoryIconBadge from '../../../services/category/CategoryIconBadge.tsx';
+import {
+  type Category,
+  CategoryStatus,
+} from '../../../services/category/categoryServices.ts';
 import { TransactionType } from '../../../services/trx/trxServices.ts';
 import { getMonthsFullName } from '../../../utils/dateUtils.ts';
 import { useFormatNumberAsCurrency } from '../../../utils/textHooks.ts';
@@ -407,6 +413,29 @@ const getTooltipCategory = (
       }
     : undefined;
 
+const TEMPLATE_SOURCE = 'template';
+
+// Template amounts on the user's active categories; inactive or missing ones
+// are left out because they cannot be saved into a budget.
+const templateToCategories = (
+  categories: Category[],
+  rows: BudgetTemplateRow[],
+) => {
+  const byId = new Map(rows.map((r) => [String(r.category_id), r]));
+  return categories
+    .filter((c) => c.status === CategoryStatus.Active)
+    .map((c) => {
+      const row = byId.get(String(c.category_id));
+      return {
+        category_id: c.category_id,
+        planned_amount_debit: row?.planned_value_debit ?? 0,
+        planned_amount_credit: row?.planned_value_credit ?? 0,
+        expense_items: row?.expense_items,
+        income_items: row?.income_items,
+      };
+    });
+};
+
 function AddMonthDialog(props: {
   open: boolean;
   initialMonth: string;
@@ -421,8 +450,14 @@ function AddMonthDialog(props: {
   const [description, setDescription] = useState('');
   const [cloneId, setCloneId] = useState('');
   const step0 = useCreateBudgetStep0();
-  const clone = useGetBudgetToClone(cloneId ? BigInt(cloneId) : null);
+  const clone = useGetBudgetToClone(
+    cloneId && cloneId !== TEMPLATE_SOURCE ? BigInt(cloneId) : null,
+  );
   const create = useCreateBudgetStep1();
+  const templateRequest = useGetBudgetTemplate();
+  const fromTemplate = cloneId === TEMPLATE_SOURCE;
+  const templateEmpty =
+    fromTemplate && (templateRequest.data?.rows.length ?? 0) === 0;
 
   useEffect(() => {
     if (props.open) {
@@ -457,7 +492,18 @@ function AddMonthDialog(props: {
       return;
     }
 
-    const source = cloneId ? clone.data : step0.data;
+    const source = fromTemplate
+      ? templateRequest.data && step0.data
+        ? {
+            categories: templateToCategories(
+              step0.data.categories,
+              templateRequest.data.rows,
+            ),
+          }
+        : undefined
+      : cloneId
+        ? clone.data
+        : step0.data;
     if (!source) {
       snackbar.showSnackbar(
         t('common.somethingWentWrongTryAgain'),
@@ -517,6 +563,9 @@ function AddMonthDialog(props: {
               onChange={(event) => setCloneId(event.target.value)}
             >
               <MenuItem value="">{t('budgetMatrix.blankMonth')}</MenuItem>
+              <MenuItem value={TEMPLATE_SOURCE}>
+                {t('budgetMatrix.fromTemplate')}
+              </MenuItem>
               {sortBudgets(props.budgets).map((budget) => (
                 <MenuItem
                   key={budget.budget_id.toString()}
@@ -527,7 +576,14 @@ function AddMonthDialog(props: {
               ))}
             </Select>
           </FormControl>
-          {cloneId && !clone.data && <CircularProgress size={20} />}
+          {templateEmpty && (
+            <Typography variant="body2" color="text.secondary">
+              {t('budgetMatrix.templateEmpty')}
+            </Typography>
+          )}
+          {cloneId && !fromTemplate && !clone.data && (
+            <CircularProgress size={20} />
+          )}
         </Stack>
       </DialogContent>
       <DialogActions>
@@ -536,7 +592,13 @@ function AddMonthDialog(props: {
           variant="contained"
           onClick={() => void submit()}
           disabled={
-            create.isPending || (cloneId ? clone.isFetching : step0.isFetching)
+            create.isPending ||
+            templateEmpty ||
+            (fromTemplate
+              ? templateRequest.isFetching || step0.isFetching
+              : cloneId
+                ? clone.isFetching
+                : step0.isFetching)
           }
           startIcon={
             create.isPending ? <CircularProgress size={16} /> : <Add />

@@ -651,6 +651,11 @@
     "operator": "Operador"
   },
   "budgets": {
+    "newMonthFromTemplate": "Novo mês a partir do modelo",
+    "createdFromTemplate": "Orçamento criado a partir do modelo",
+    "createdFromTemplateSkipped_one": "Orçamento criado a partir do modelo. {{count}} categoria inativa ou removida foi ignorada.",
+    "createdFromTemplateSkipped_many": "Orçamento criado a partir do modelo. {{count}} categorias inativas ou removidas foram ignoradas.",
+    "createdFromTemplateSkipped_other": "Orçamento criado a partir do modelo. {{count}} categorias inativas ou removidas foram ignoradas.",
     "budgets": "Orçamentos",
     "strapLine": "Faça planos para o seu futuro aqui",
     "addBudget": "Adicionar Orçamento",
@@ -666,6 +671,9 @@
     "deleteBudgetModalAlert": "Esta ação é irreversível!"
   },
   "budgetDetails": {
+    "fillFromTemplate": "Preencher a partir do modelo",
+    "filledFromTemplate": "Valores preenchidos a partir do modelo. As categorias inativas foram ignoradas.",
+    "templateEmpty": "O modelo está vazio. Configure-o primeiro no ecrã Modelo.",
     "unsavedCloseTitle": "Fechar o orçamento com alterações por guardar?",
     "unsavedCloseHelp": "Guarde as alterações antes de fechar ou descarte-as e feche a última versão guardada deste orçamento.",
     "fixBreakdownsBeforeClosing": "Corrija os itens inválidos antes de guardar ou descarte as alterações para fechar o orçamento.",
@@ -770,6 +778,8 @@
     "replaceTemplate": "Substituir modelo"
   },
   "budgetMatrix": {
+    "fromTemplate": "Modelo",
+    "templateEmpty": "O modelo está vazio. Configure-o primeiro no ecrã Modelo.",
     "title": "Matriz de orçamento",
     "strapLine": "Planeie vários meses numa só vista",
     "selectBudgets": "Selecionar orçamentos",

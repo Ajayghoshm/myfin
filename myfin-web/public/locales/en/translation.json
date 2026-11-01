@@ -655,6 +655,10 @@
     "operator": "Operator"
   },
   "budgets": {
+    "newMonthFromTemplate": "New month from template",
+    "createdFromTemplate": "Budget created from the template",
+    "createdFromTemplateSkipped_one": "Budget created from the template. {{count}} inactive or removed category was skipped.",
+    "createdFromTemplateSkipped_other": "Budget created from the template. {{count}} inactive or removed categories were skipped.",
     "budgets": "Budgets",
     "strapLine": "Plan your future here",
     "addBudget": "Add Budget",
@@ -670,6 +674,9 @@
     "deleteBudgetModalAlert": "This action is irreversible!"
   },
   "budgetDetails": {
+    "fillFromTemplate": "Fill from template",
+    "filledFromTemplate": "Amounts filled from the template. Inactive categories were skipped.",
+    "templateEmpty": "The template is empty. Set it up from the Template screen first.",
     "unsavedCloseTitle": "Close budget with unsaved changes?",
     "unsavedCloseHelp": "Save your changes before closing, or discard them and close the last saved version of this budget.",
     "fixBreakdownsBeforeClosing": "Correct the invalid breakdown items before saving, or discard your changes to close the budget.",
@@ -774,6 +781,8 @@
     "replaceTemplate": "Replace template"
   },
   "budgetMatrix": {
+    "fromTemplate": "Template",
+    "templateEmpty": "The template is empty. Set it up from the Template screen first.",
     "title": "Budget matrix",
     "strapLine": "Plan across several months at once",
     "selectBudgets": "Select budgets",

@@ -607,6 +607,11 @@
     "operator": "Opérateur"
   },
   "budgets": {
+    "newMonthFromTemplate": "Nouveau mois depuis le modèle",
+    "createdFromTemplate": "Budget créé à partir du modèle",
+    "createdFromTemplateSkipped_one": "Budget créé à partir du modèle. {{count}} catégorie inactive ou supprimée a été ignorée.",
+    "createdFromTemplateSkipped_many": "Budget créé à partir du modèle. {{count}} catégories inactives ou supprimées ont été ignorées.",
+    "createdFromTemplateSkipped_other": "Budget créé à partir du modèle. {{count}} catégories inactives ou supprimées ont été ignorées.",
     "budgets": "Budgets",
     "strapLine": "Planifiez votre avenir ici",
     "addBudget": "Ajouter un budget",
@@ -622,6 +627,9 @@
     "deleteBudgetModalAlert": "Cette action est irréversible !"
   },
   "budgetDetails": {
+    "fillFromTemplate": "Remplir depuis le modèle",
+    "filledFromTemplate": "Montants remplis à partir du modèle. Les catégories inactives ont été ignorées.",
+    "templateEmpty": "Le modèle est vide. Configurez-le d'abord depuis l'écran Modèle.",
     "unsavedCloseTitle": "Clôturer le budget avec des modifications non enregistrées ?",
     "unsavedCloseHelp": "Enregistrez les modifications avant de clôturer le budget, ou abandonnez-les et clôturez sa dernière version enregistrée.",
     "fixBreakdownsBeforeClosing": "Corrigez les postes invalides avant d’enregistrer, ou abandonnez les modifications pour clôturer le budget.",
@@ -726,6 +734,8 @@
     "replaceTemplate": "Remplacer le modèle"
   },
   "budgetMatrix": {
+    "fromTemplate": "Modèle",
+    "templateEmpty": "Le modèle est vide. Configurez-le d'abord depuis l'écran Modèle.",
     "title": "Matrice budgétaire",
     "strapLine": "Planifiez plusieurs mois en une seule vue",
     "selectBudgets": "Sélectionner les budgets",

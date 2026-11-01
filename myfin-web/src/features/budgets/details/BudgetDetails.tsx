@@ -5,6 +5,7 @@ import {
   CircleOutlined,
   ArrowForwardIos,
   CloudUpload,
+  ContentCopy,
   FileCopy,
   Lock,
   LockOpen,
@@ -60,6 +61,7 @@ import {
 } from '../../../providers/SnackbarProvider.tsx';
 import {
   useCreateBudgetStep0,
+  useGetBudgetTemplate,
   useCreateBudgetStep1,
   useGetBudget,
   useGetBudgetListSummary,
@@ -73,6 +75,7 @@ import {
 } from '../../../services/budget/budgetServices.ts';
 import { TransactionType } from '../../../services/trx/trxServices.ts';
 import { getMonthsFullName } from '../../../utils/dateUtils.ts';
+import { CategoryStatus } from '../../../services/category/categoryServices.ts';
 import { useFormatNumberAsCurrency } from '../../../utils/textHooks.ts';
 import { addLeadingZero } from '../../../utils/textUtils.ts';
 import BudgetCategoryList from './BudgetCategoryList.tsx';
@@ -121,6 +124,7 @@ const BudgetDetailsScreen = () => {
   const updateBudgetStatusRequest = useUpdateBudgetStatus();
   const updateBudgetRequest = useUpdateBudget();
   const getBudgetToCloneRequest = useGetBudgetToClone(budgetToClone);
+  const budgetTemplateRequest = useGetBudgetTemplate();
   const getBudgetListSummaryRequest = useGetBudgetListSummary();
   const [monthYear, setMonthYear] = useState({
     month: dayjs().month() + 1,
@@ -522,6 +526,40 @@ const BudgetDetailsScreen = () => {
     setCloneBudgetDialogOpen(true);
   };
 
+  const handleFillFromTemplate = () => {
+    const rows = budgetTemplateRequest.data?.rows ?? [];
+    if (rows.length === 0) {
+      snackbar.showSnackbar(
+        t('budgetDetails.templateEmpty'),
+        AlertSeverity.INFO,
+      );
+      return;
+    }
+    const byId = new Map(rows.map((r) => [String(r.category_id), r]));
+    // Inactive categories cannot be saved into a budget, so they are skipped.
+    setCategories((prev) =>
+      prev.map((category) => {
+        const row =
+          category.status === CategoryStatus.Active
+            ? byId.get(String(category.category_id))
+            : undefined;
+        return {
+          ...category,
+          planned_amount_debit: row?.planned_value_debit ?? 0,
+          planned_amount_credit: row?.planned_value_credit ?? 0,
+          expense_items: row?.expense_items,
+          income_items: row?.income_items,
+        };
+      }),
+    );
+    setInvalidBreakdowns({});
+    setBreakdownRevision((revision) => revision + 1);
+    snackbar.showSnackbar(
+      t('budgetDetails.filledFromTemplate'),
+      AlertSeverity.SUCCESS,
+    );
+  };
+
   const handleCloneBudgetSelected = (budgetId: bigint) => {
     if (budgetId == -1n) return;
     setCloneBudgetDialogOpen(false);
@@ -901,6 +939,20 @@ const BudgetDetailsScreen = () => {
           </ListItemIcon>
           {t('budgetDetails.cloneAnotherBudget')}
         </MenuItem>
+        {isNew && (
+          <MenuItem
+            disabled={!isOpen || !budgetTemplateRequest.data}
+            onClick={() => {
+              setPageMenu(null);
+              handleFillFromTemplate();
+            }}
+          >
+            <ListItemIcon>
+              <ContentCopy fontSize="small" />
+            </ListItemIcon>
+            {t('budgetDetails.fillFromTemplate')}
+          </MenuItem>
+        )}
         <MenuItem
           onClick={() => {
             setPageMenu(null);

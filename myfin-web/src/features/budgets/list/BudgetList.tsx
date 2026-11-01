@@ -7,6 +7,7 @@ import {
   Search,
   TableView,
   ContentCopy,
+  EventAvailable,
   Visibility,
 } from '@mui/icons-material';
 import { Checkbox, FormGroup, Tooltip, useTheme } from '@mui/material';
@@ -41,6 +42,8 @@ import {
   useSnackbar,
 } from '../../../providers/SnackbarProvider.tsx';
 import {
+  useCreateBudgetFromTemplate,
+  useGetBudgetListSummary,
   useGetBudgets,
   useRemoveBudget,
 } from '../../../services/budget/budgetHooks.ts';
@@ -50,6 +53,7 @@ import {
   getCurrentYear,
   getMonthsFullName,
 } from '../../../utils/dateUtils.ts';
+import { apiErrorMessage } from '../../../utils/apiErrorMessage.ts';
 import { useFormatNumberAsCurrency } from '../../../utils/textHooks.ts';
 import { formatNumberAsPercentage } from '../../../utils/textUtils.ts';
 
@@ -76,6 +80,8 @@ const BudgetList = () => {
   const debouncedSearchQuery = useMemo(() => debounce(setSearchQuery, 300), []);
 
   const removeBudgetRequest = useRemoveBudget();
+  const summaryRequest = useGetBudgetListSummary();
+  const fromTemplateRequest = useCreateBudgetFromTemplate();
   const formatNumberAsCurrency = useFormatNumberAsCurrency();
 
   // Loading
@@ -124,6 +130,41 @@ const BudgetList = () => {
 
   const handleAddBudgetClick = () => {
     navigate(ROUTE_BUDGET_NEW);
+  };
+  const handleNewMonthFromTemplateClick = () => {
+    // First month, starting from the current one, that has no budget yet.
+    const existing = new Set(
+      (summaryRequest.data ?? []).map((b) => `${b.year}-${b.month}`),
+    );
+    let month = getCurrentMonth();
+    let year = getCurrentYear();
+    while (existing.has(`${year}-${month}`)) {
+      month += 1;
+      if (month > 12) {
+        month = 1;
+        year += 1;
+      }
+    }
+    fromTemplateRequest.mutate(
+      { month, year },
+      {
+        onSuccess: (result) => {
+          const skipped = result.skipped_category_ids.length;
+          snackbar.showSnackbar(
+            skipped > 0
+              ? t('budgets.createdFromTemplateSkipped', { count: skipped })
+              : t('budgets.createdFromTemplate'),
+            skipped > 0 ? AlertSeverity.WARNING : AlertSeverity.SUCCESS,
+          );
+          navigate(ROUTE_BUDGET_DETAILS.replace(':id', result.budget_id + ''));
+        },
+        onError: (error) =>
+          snackbar.showSnackbar(
+            apiErrorMessage(error, t('common.somethingWentWrongTryAgain')),
+            AlertSeverity.ERROR,
+          ),
+      },
+    );
   };
   const handleBudgetMatrixClick = () => {
     navigate(ROUTE_BUDGET_MATRIX);
@@ -376,6 +417,14 @@ const BudgetList = () => {
                 }}
               >
                 {t('budgets.addBudget')}
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<EventAvailable />}
+                disabled={fromTemplateRequest.isPending || !summaryRequest.data}
+                onClick={handleNewMonthFromTemplateClick}
+              >
+                {t('budgets.newMonthFromTemplate')}
               </Button>
               <Button
                 variant="outlined"
