@@ -36,7 +36,7 @@ const SetupStep0 = (props: Props) => {
 
   const [language, setLanguage] = useState(i18next.resolvedLanguage || 'en');
 
-  const [currency, setCurrency] = useState<Currency>(CURRENCIES.EUR);
+  const [currency, setCurrency] = useState<Currency>(CURRENCIES.INR);
 
   useEffect(() => {
     i18next.changeLanguage(language);

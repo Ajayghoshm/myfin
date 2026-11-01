@@ -70,7 +70,7 @@ const ChangeCurrencyForm = () => {
 
   const [state, dispatch] = useReducer(
     reduceState,
-    { currencyCode: userSessionData?.currency ?? CURRENCIES.EUR.code },
+    { currencyCode: userSessionData?.currency ?? CURRENCIES.INR.code },
     createInitialState,
   );
 

@@ -342,7 +342,7 @@ model users {
   events                     events[]
   event_suggestion_dismissals event_suggestion_dismissals[]
   milestones                 milestones[]
-  currency                   String                       @default("EUR")
+  currency                   String                       @default("INR")
 }
 
 model tags {

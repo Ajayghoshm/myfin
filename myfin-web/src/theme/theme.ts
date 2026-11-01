@@ -13,7 +13,7 @@ export const MY_FIN_THEME_NAMES = [
 
 export type MyFinThemeName = (typeof MY_FIN_THEME_NAMES)[number];
 
-export const DEFAULT_MY_FIN_THEME: MyFinThemeName = 'dark';
+export const DEFAULT_MY_FIN_THEME: MyFinThemeName = 'light';
 
 export const MY_FIN_THEME_LABEL_KEYS: Record<MyFinThemeName, string> = {
   light: 'profile.lightTheme',

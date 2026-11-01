@@ -2,14 +2,14 @@ import localStore from '../data/localStore.ts';
 
 export const formatStringAsCurrency = (
   text: string,
-  currency: string = localStore.getSessionData().currency ?? 'EUR',
+  currency: string = localStore.getSessionData().currency ?? 'INR',
 ) => {
   return formatNumberAsCurrency(parseFloat(text), currency);
 };
 
 export const formatNumberAsCurrency = (
   text: number,
-  currency: string = localStore.getSessionData().currency ?? 'EUR',
+  currency: string = localStore.getSessionData().currency ?? 'INR',
 ) => {
   const formatter = Intl.NumberFormat('en', {
     style: 'currency',

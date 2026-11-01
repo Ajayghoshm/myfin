@@ -35,7 +35,7 @@ const Setup = () => {
 
   const [usernameValue, setUsername] = useState('');
   const [emailValue, setEmail] = useState('');
-  const [currencyValue, setCurrency] = useState(CURRENCIES.EUR);
+  const [currencyValue, setCurrency] = useState(CURRENCIES.INR);
 
   const goToAuth = () => {
     navigate(ROUTE_AUTH);

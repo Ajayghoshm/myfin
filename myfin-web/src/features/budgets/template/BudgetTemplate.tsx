@@ -285,10 +285,22 @@ const BudgetTemplate = () => {
           fontSize: 14,
           fontWeight: 650,
           fontVariantNumeric: 'tabular-nums',
-          '& input': { p: 0.5, textAlign: 'right' },
+          '& input': { p: 0.5, textAlign: 'right', cursor: readOnly ? 'default' : 'text' },
           opacity: readOnly ? 0.7 : 1,
-          borderBottom: readOnly ? 'none' : '1px solid',
-          borderColor: 'divider',
+          px: 0.5,
+          borderRadius: 1,
+          border: '1px solid',
+          borderColor: readOnly ? 'transparent' : 'divider',
+          bgcolor: readOnly ? 'transparent' : 'action.hover',
+          transition: 'border-color 120ms, box-shadow 120ms',
+          '&:hover': readOnly ? undefined : { borderColor: 'text.secondary' },
+          '&.Mui-focused': readOnly
+            ? undefined
+            : {
+                borderColor: 'primary.main',
+                boxShadow: (theme) => `0 0 0 2px ${theme.palette.primary.main}`,
+                bgcolor: 'action.selected',
+              },
         }}
       />
     );
