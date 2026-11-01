@@ -58,4 +58,19 @@ describe('flagsModel', () => {
     const trx = { type: 'E' as const, account_to_id: 4 };
     assert.deepEqual(applyInvestment(trx, NO_FLAGS), trx);
   });
+
+  test('toApiFlags gives an empty loan for a blank name and trims names', () => {
+    assert.deepEqual(toApiFlags({ kind: 'loan', loanName: '   ' }), {
+      loan: {},
+    });
+    assert.deepEqual(toApiFlags({ kind: 'loan' }), { loan: {} });
+    assert.deepEqual(toApiFlags({ kind: 'loan', loanName: '  Bob  ' }), {
+      loan: { name: 'Bob' },
+    });
+  });
+
+  test('applyInvestment leaves the transaction unchanged without an account id', () => {
+    const trx = { type: 'E' as const, account_to_id: 4 };
+    assert.deepEqual(applyInvestment(trx, { kind: 'investment' }), trx);
+  });
 });

@@ -610,37 +610,26 @@ const AddEditTransactionDialog = (props: Props) => {
               ? JSON.stringify(splitTransactionFormState?.tags)
               : undefined;
 
-            const choice: FlagChoice = {
-              ...flagChoice,
-              event:
-                flagChoice.event &&
-                'new_event' in flagChoice.event &&
-                !flagChoice.event.new_event.name.trim()
-                  ? null
-                  : flagChoice.event,
-            };
+            if (
+              flagChoice.event &&
+              'new_event' in flagChoice.event &&
+              !flagChoice.event.new_event.name.trim()
+            ) {
+              snackbar.showSnackbar(
+                t('transactions.flags.newEventNameRequired'),
+                AlertSeverity.ERROR,
+              );
+              return;
+            }
+            const choice: FlagChoice = flagChoice;
             const apiFlags = toApiFlags(choice);
             const applyFlags = (transactionId: string | number | bigint) => {
               if (!apiFlags.loan && !apiFlags.event) return;
-              applyFlagsRequest.mutate(
-                {
-                  items: [
-                    {
-                      transaction_id: String(transactionId),
-                      flags: apiFlags,
-                    },
-                  ],
-                },
-                {
-                  onSuccess: (result) => {
-                    if (result.failed.length > 0)
-                      snackbar.showSnackbar(
-                        t('transactions.flags.failed'),
-                        AlertSeverity.WARNING,
-                      );
-                  },
-                },
-              );
+              applyFlagsRequest.mutate({
+                items: [
+                  { transaction_id: String(transactionId), flags: apiFlags },
+                ],
+              });
             };
 
             // Process the form data as needed

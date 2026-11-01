@@ -447,6 +447,7 @@
       "noEvent": "None",
       "createEvent": "Create new event",
       "newEventName": "New event name",
+      "newEventNameRequired": "Enter a name for the new event",
       "failed": "Saved, but some marks could not be applied"
     }
   },

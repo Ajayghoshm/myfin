@@ -174,6 +174,13 @@ const TransactionFlagsControl = ({
             <TextField
               size="small"
               label={t('transactions.flags.newEventName')}
+              required
+              error={!value.event.new_event.name.trim()}
+              helperText={
+                value.event.new_event.name.trim()
+                  ? undefined
+                  : t('transactions.flags.newEventNameRequired')
+              }
               value={value.event.new_event.name}
               onChange={(e) =>
                 onChange({

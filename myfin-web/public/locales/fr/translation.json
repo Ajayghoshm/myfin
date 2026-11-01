@@ -422,6 +422,7 @@
       "noEvent": "Aucun",
       "createEvent": "Créer un nouvel événement",
       "newEventName": "Nom du nouvel événement",
+      "newEventNameRequired": "Saisissez un nom pour le nouvel événement",
       "failed": "Enregistré, mais certaines marques n’ont pas pu être appliquées"
     }
   },

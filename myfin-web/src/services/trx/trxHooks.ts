@@ -25,6 +25,11 @@ import {
   QUERY_KEY_GET_LOANS,
   QUERY_KEY_GET_REPAYMENT_SUGGESTIONS,
 } from '../debts/debtQueryKeys.ts';
+import { useTranslation } from 'react-i18next';
+import {
+  AlertSeverity,
+  useSnackbar,
+} from '../../providers/SnackbarProvider.tsx';
 import { useUserData } from '../../providers/UserProvider.tsx';
 import { invalidateEventQueries } from '../events/eventHooks.ts';
 
@@ -321,7 +326,14 @@ export function useBulkUpdateTransactions() {
   });
 }
 
+/**
+ * Reports failures itself: the add/edit dialog unmounts once the transaction is saved,
+ * so per-call mutate callbacks would never run. Hook-level options still do.
+ */
 export function useApplyTransactionFlags() {
+  const { t } = useTranslation();
+  const snackbar = useSnackbar();
+
   async function applyTransactionFlags(request: ApplyTransactionFlagsRequest) {
     const data = await TrxServices.applyTransactionFlags(request);
     void queryClient.invalidateQueries({
@@ -331,7 +343,17 @@ export function useApplyTransactionFlags() {
     return data.data;
   }
 
+  const warn = () =>
+    snackbar.showSnackbar(
+      t('transactions.flags.failed'),
+      AlertSeverity.WARNING,
+    );
+
   return useMutation({
     mutationFn: applyTransactionFlags,
+    onSuccess: (result) => {
+      if (result.failed.length > 0) warn();
+    },
+    onError: warn,
   });
 }
