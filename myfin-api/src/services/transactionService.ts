@@ -487,6 +487,7 @@ const createTransactionsInBulk = async (
     let importedCnt = 0;
     let skippedCnt = 0;
     const createdIds: bigint[] = [];
+    const createdByIndex: Array<{ index: number; transaction_id: bigint }> = [];
 
     // Rows carrying an external_id (e.g. PhonePe) are skipped if already stored for this user,
     // or if repeated earlier in this same list. Rows without one (paste import) always import.
@@ -510,7 +511,7 @@ const createTransactionsInBulk = async (
       return ownership.get(key);
     };
 
-    for (const trx of trxList) {
+    for (const [index, trx] of trxList.entries()) {
       if (
         !trx.date_timestamp ||
         !trx.amount ||
@@ -537,6 +538,7 @@ const createTransactionsInBulk = async (
 
       const created = await createTransaction(userId, trx, prismaTx, { skipBalanceUpdate: true });
       createdIds.push(created.transaction_id);
+      createdByIndex.push({ index, transaction_id: created.transaction_id });
       for (const accountId of accountsAffectedBy(trx)) {
         if (!accountId) continue;
         const key = String(accountId);
@@ -554,7 +556,12 @@ const createTransactionsInBulk = async (
       await updateAccountBalanceFrom(userId, accountId, date - 1, prismaTx);
     }
 
-    return { imported: importedCnt, skipped: skippedCnt, created_ids: createdIds };
+    return {
+      imported: importedCnt,
+      skipped: skippedCnt,
+      created_ids: createdIds,
+      created_by_index: createdByIndex,
+    };
   }, dbClient, { timeout: 60_000, maxWait: 10_000 });
 
 /** Imports the transactions and saves the payee rules chosen during review as one all-or-nothing unit. */

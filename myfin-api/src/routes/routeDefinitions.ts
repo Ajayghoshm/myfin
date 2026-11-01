@@ -434,6 +434,7 @@ export const routeGroups: RouteGroup[] = [
         handlerName: 'getAllTransactionsForUserInCategoryAndInMonth',
       },
       { method: 'post', path: '/auto-cat-trx', handlerName: 'autoCategorizeTransaction' },
+      { method: 'post', path: '/flags', handlerName: 'applyTransactionFlags' },
       { method: 'post', path: '/import/step0', handlerName: 'importTransactionsStep0' },
       { method: 'post', path: '/import/step1', handlerName: 'importTransactionsStep1' },
       { method: 'post', path: '/import/step2', handlerName: 'importTransactionsStep2' },

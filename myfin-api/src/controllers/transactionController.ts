@@ -7,6 +7,7 @@ import AccountService from '../services/accountService.js';
 import CategoryService from '../services/categoryService.js';
 import EntityService from '../services/entityService.js';
 import TransactionService from '../services/transactionService.js';
+import { applyFlags } from '../services/transactionFlagService.js';
 import { salaryRuleFor } from '../services/insights/analyticsRules.js';
 import Logger from '../utils/Logger.js';
 import ConvertUtils from '../utils/convertUtils.js';
@@ -501,6 +502,45 @@ const importPhonePePreview = async (req: Request, res: Response, next: NextFunct
   }
 };
 
+const applyTransactionFlagsSchema = joi.object({
+  items: joi
+    .array()
+    .items(
+      joi.object({
+        transaction_id: joi.string().pattern(/^\d+$/).required(),
+        flags: joi
+          .object({
+            loan: joi.object({
+              name: joi.string().max(255).allow(''),
+              due_date: joi.number().integer().allow(null),
+            }),
+            event: joi.alternatives(
+              joi.object({ event_id: joi.string().pattern(/^\d+$/).required() }),
+              joi.object({
+                new_event: joi
+                  .object({ name: joi.string().max(255).required(), kind: joi.string().max(32) })
+                  .required(),
+              })
+            ),
+          })
+          .required(),
+      })
+    )
+    .max(500)
+    .required(),
+});
+
+const applyTransactionFlags = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    const input = await applyTransactionFlagsSchema.validateAsync(req.body);
+    res.json(await applyFlags(sessionData.userId, input.items));
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
 const importPhonePeCategorizeSchema = joi.object({
   csv: joi.string().required(),
   mappings: joi.string().required(),
@@ -608,6 +648,7 @@ export default {
   importTransactionsStep2,
   importPhonePePreview,
   importPhonePeCategorize,
+  applyTransactionFlags,
   listShareInbox,
   createSharePairingCode,
   listShareDevices,
