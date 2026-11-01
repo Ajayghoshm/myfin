@@ -1,4 +1,5 @@
 import { useCreatableOptions } from '../../components/useCreatableOptions.ts';
+import { categoryPickerItems } from '../../services/category/categoryTree.ts';
 import {
   Rule,
   RuleMatchingOperatorType,
@@ -92,10 +93,12 @@ const AddEditRuleDialog = (props: Props) => {
   const ignoreOption = { id: -1n, label: t('common.ignore') };
   const categoryCreate = useCreatableOptions('category');
   const entityCreate = useCreatableOptions('entity');
-  const categoryPairs = props.categories.map((category) => ({
-    id: category.category_id,
-    label: category.name,
-  }));
+  const categoryPairs = categoryPickerItems(props.categories).map(
+    ({ category, label }) => ({
+      id: category.category_id,
+      label,
+    }),
+  );
   const entityPairs = props.entities.map((entity) => ({
     id: entity.entity_id,
     label: entity.name,

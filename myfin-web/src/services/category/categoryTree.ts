@@ -31,3 +31,15 @@ export const categoryLabel = (category: Category, all: Category[]): string => {
   );
   return parent ? `${parent.name} › ${category.name}` : category.name;
 };
+
+// Picker items ordered so subcategories sit right under their parent.
+export const categoryPickerItems = <T extends Category>(
+  categories: T[],
+  all: Category[] = categories,
+): { category: T; label: string }[] =>
+  buildCategoryTree(categories).flatMap((node) =>
+    [node.category, ...node.children].map((category) => ({
+      category: category as T,
+      label: categoryLabel(category, all),
+    })),
+  );

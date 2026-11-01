@@ -23,6 +23,7 @@ import {
   useSnackbar,
 } from '../../providers/SnackbarProvider.tsx';
 import { useGetCategories } from '../../services/category/CategoryHooks.tsx';
+import { categoryPickerItems } from '../../services/category/categoryTree.ts';
 import {
   useDeleteYearlyCost,
   useDismissYearlyCostSuggestion,
@@ -395,12 +396,12 @@ const YearlyCosts = () => {
               }
             >
               <MenuItem value="">{t('yearlyCosts.noCategory')}</MenuItem>
-              {expenseCategories.map((c) => (
+              {categoryPickerItems(expenseCategories, categoriesRequest.data ?? []).map(({ category: c, label }) => (
                 <MenuItem
                   key={String(c.category_id)}
                   value={String(c.category_id)}
                 >
-                  {c.name}
+                  {label}
                 </MenuItem>
               ))}
             </TextField>

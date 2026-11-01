@@ -78,6 +78,7 @@ import { CategoryIcon } from '../../services/category/categoryIcons.tsx';
 import AccountIconBadge from '../../services/account/AccountIconBadge.tsx';
 import { useUserData } from '../../providers/UserProvider.tsx';
 import { useGetCategories } from '../../services/category/CategoryHooks.tsx';
+import { categoryLabel } from '../../services/category/categoryTree.ts';
 import {
   isYearMonth,
   istYearMonthOf,
@@ -796,9 +797,13 @@ const Transactions = () => {
       label:
         categoryId === 'none'
           ? t('transactions.filterUncategorised')
-          : (getCategoriesRequest.data?.find(
-              (cat) => String(cat.category_id) === categoryId,
-            )?.name ??
+          : ((() => {
+              const all = getCategoriesRequest.data ?? [];
+              const found = all.find(
+                (cat) => String(cat.category_id) === categoryId,
+              );
+              return found ? categoryLabel(found, all) : undefined;
+            })() ??
             t('transactions.filterCategoryFallback', { id: categoryId })),
     });
   }

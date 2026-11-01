@@ -1,4 +1,5 @@
 import { KeyboardDoubleArrowRight } from '@mui/icons-material';
+import { categoryPickerItems } from '../../../services/category/categoryTree.ts';
 import {
   CreatableOption,
   useCreatableOptions,
@@ -328,10 +329,12 @@ const ImportTrxStep2 = (props: Props) => {
   );
   const categories: IdLabelPair[] | undefined = useMemo(
     () =>
-      props.data.categories.map((category) => ({
-        id: category.category_id,
-        label: category.name,
-      })),
+      categoryPickerItems(props.data.categories).map(
+        ({ category, label }) => ({
+          id: category.category_id,
+          label,
+        }),
+      ),
     [props.data.categories],
   );
   const accounts: IdLabelPair[] | undefined = useMemo(

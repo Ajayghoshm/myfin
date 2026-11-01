@@ -16,6 +16,7 @@ import {
 import { useGetAccounts } from '../../services/account/accountHooks.ts';
 import { isEarmarkableAccountType } from '../../services/auth/authServices.ts';
 import { useGetCategories } from '../../services/category/CategoryHooks.tsx';
+import { categoryPickerItems } from '../../services/category/categoryTree.ts';
 import { useGetAssets } from '../../services/invest/investHooks.ts';
 import {
   useGetFinancialProfile,
@@ -80,9 +81,9 @@ const FinancialProfileForm = () => {
     setRetirementAssetIds(profileRequest.data.retirement_asset_ids);
   }, [profileRequest.data]);
 
-  const options = (categoriesRequest.data ?? []).map((cat) => ({
+  const options = categoryPickerItems(categoriesRequest.data ?? []).map(({ category: cat, label }) => ({
     id: String(cat.category_id),
-    label: cat.name,
+    label,
   }));
   const selected = options.find((o) => o.id === categoryId) ?? null;
 

@@ -66,6 +66,7 @@ import {
 } from '../../services/trx/trxServices.ts';
 import { convertDateStringToUnixTimestamp } from '../../utils/dateUtils.ts';
 import CategoryIconBadge from '../../services/category/CategoryIconBadge.tsx';
+import { categoryPickerItems } from '../../services/category/categoryTree.ts';
 import AccountIconBadge from '../../services/account/AccountIconBadge.tsx';
 import {
   inferTrxType,
@@ -375,14 +376,14 @@ const AddEditTransactionDialog = (props: Props) => {
 
   useEffect(() => {
     if (!addTransactionStep0Request.isSuccess) return;
-    const categories = addTransactionStep0Request.data.categories.map(
-      (category) => ({
-        id: category.category_id || 0n,
-        iconKey: category.icon_key,
-        colorGradient: category.color_gradient,
-        label: category.name || '',
-      }),
-    );
+    const categories = categoryPickerItems(
+      addTransactionStep0Request.data.categories,
+    ).map(({ category, label }) => ({
+      id: category.category_id || 0n,
+      iconKey: category.icon_key,
+      colorGradient: category.color_gradient,
+      label,
+    }));
     setCategoryOptionsValue(categories);
     setCategoryValue((current) => {
       if (!current) return current;

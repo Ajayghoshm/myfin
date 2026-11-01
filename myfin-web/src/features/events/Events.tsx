@@ -29,6 +29,7 @@ import {
 } from '../../providers/SnackbarProvider.tsx';
 import { useUserData } from '../../providers/UserProvider.tsx';
 import { useGetCategories } from '../../services/category/CategoryHooks.tsx';
+import { categoryPickerItems } from '../../services/category/categoryTree.ts';
 import {
   useDeleteEvent,
   useDismissEventSuggestion,
@@ -531,12 +532,12 @@ const Events = () => {
                   }
                 >
                   <MenuItem value="">{t('events.none')}</MenuItem>
-                  {expenseCategories.map((c) => (
+                  {categoryPickerItems(expenseCategories, categoriesRequest.data ?? []).map(({ category: c, label }) => (
                     <MenuItem
                       key={String(c.category_id)}
                       value={String(c.category_id)}
                     >
-                      {c.name}
+                      {label}
                     </MenuItem>
                   ))}
                 </TextField>

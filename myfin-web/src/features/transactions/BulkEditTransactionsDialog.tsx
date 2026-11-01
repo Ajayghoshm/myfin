@@ -11,6 +11,7 @@ import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import { useGetCategories } from '../../services/category/CategoryHooks.tsx';
+import { categoryPickerItems } from '../../services/category/categoryTree.ts';
 import { useGetEntities } from '../../services/entity/entityHooks.ts';
 import { BulkUpdateTransactionsRequest } from '../../services/trx/trxServices.ts';
 import { IdLabelPair } from './AddEditTransactionDialog.tsx';
@@ -108,9 +109,9 @@ const BulkEditTransactionsDialog = (props: Props) => {
               kind="category"
               label={t('transactions.category')}
               noneLabel={t('common.noCategory')}
-              items={(categoriesRequest.data || []).map((cat) => ({
+              items={categoryPickerItems(categoriesRequest.data || []).map(({ category: cat, label }) => ({
                 id: cat.category_id,
-                label: cat.name,
+                label,
               }))}
               value={category}
               onChange={setCategory}
