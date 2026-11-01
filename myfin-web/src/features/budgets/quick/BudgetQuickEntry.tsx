@@ -34,6 +34,7 @@ import {
   useGetBudgetTemplate,
   useUpdateBudget,
 } from '../../../services/budget/budgetHooks.ts';
+import { buildQuickPayload } from './quickEntryPayload.ts';
 import type {
   BudgetBreakdownItem,
   UpdateBudgetCatValues,
@@ -230,6 +231,7 @@ const BudgetQuickEntry = () => {
     }
     const byId = new Map(templateRows.map((r) => [String(r.category_id), r]));
     setRows((prev) => {
+      setTouched(new Set(Object.keys(prev)));
       const next: Record<string, Row> = {};
       for (const [id, row] of Object.entries(prev)) {
         const tr = byId.get(id);
@@ -243,7 +245,6 @@ const BudgetQuickEntry = () => {
       }
       return next;
     });
-    setTouched(new Set(Object.keys(rows)));
     setDirty(true);
     snackbar.showSnackbar(
       t('budgetDetails.filledFromTemplate'),
@@ -252,15 +253,11 @@ const BudgetQuickEntry = () => {
   };
 
   const handleSave = () => {
-    const catValues: UpdateBudgetCatValues[] = rowList
-      .filter(hasPlanned)
-      .map((r) => ({
-        category_id: r.category_id,
-        planned_value_debit: String(r.planned_amount_debit),
-        planned_value_credit: String(r.planned_amount_credit),
-        expense_items: r.expense_items.length ? r.expense_items : undefined,
-        income_items: r.income_items.length ? r.income_items : undefined,
-      }));
+    const catValues: UpdateBudgetCatValues[] = buildQuickPayload(
+      rowList,
+      loaded,
+      existingId !== undefined && !!budget,
+    );
     const callbacks = {
       onSuccess: () => {
         setDirty(false);
@@ -404,6 +401,22 @@ const BudgetQuickEntry = () => {
     const children = [...group.children].sort(byName);
     const plannedField = direction === 'debit' ? 'planned_debit' : 'planned_credit';
     const currentField = direction === 'debit' ? 'current_debit' : 'current_credit';
+    const parentRow = renderRow(group.parent, {
+      lockHint:
+        mode === 'split' ? t('budgetDetails.budgetedPerSubcategory') : undefined,
+      display: {
+        planned: rolledUp(group, plannedField),
+        actual: rolledUp(group, currentField),
+      },
+    });
+    const childRows = children.map((child) =>
+      renderRow(child, {
+        indent: true,
+        lockHint:
+          mode === 'lump' ? t('budgetDetails.budgetedOnWholeCategory') : undefined,
+      }),
+    );
+    if (!parentRow && childRows.every((r) => r === null)) return null;
     return (
       <Box key={group.parent.category_id} sx={{ mt: 1.5 }}>
         <Typography
@@ -412,25 +425,8 @@ const BudgetQuickEntry = () => {
         >
           {group.parent.name}
         </Typography>
-        {renderRow(group.parent, {
-          lockHint:
-            mode === 'split'
-              ? t('budgetDetails.budgetedPerSubcategory')
-              : undefined,
-          display: {
-            planned: rolledUp(group, plannedField),
-            actual: rolledUp(group, currentField),
-          },
-        })}
-        {children.map((child) =>
-          renderRow(child, {
-            indent: true,
-            lockHint:
-              mode === 'lump'
-                ? t('budgetDetails.budgetedOnWholeCategory')
-                : undefined,
-          }),
-        )}
+        {parentRow}
+        {childRows}
       </Box>
     );
   };
