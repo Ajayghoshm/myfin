@@ -3,7 +3,6 @@ services:
     image: mysql:8.4
     restart: always
     container_name: db
-    command: --default-authentication-plugin=caching_sha2_password
     environment:
       MYSQL_ROOT_PASSWORD: myfinrootpassword
       MYSQL_DATABASE: myfin
@@ -45,7 +44,7 @@ services:
       # Reverse proxy trust for Express (1 = trust the first proxy hop)
       - TRUST_PROXY=1
       # Encrypted backups folder (path inside the container; map it below)
-      # - BACKUP_DIR=/backups
+      - BACKUP_DIR=/backups
     # Map a host folder synced with Google Drive for desktop / Dropbox / rclone, then enable BACKUP_DIR above:
     # volumes:
     #   - "$HOME/Library/CloudStorage/GoogleDrive-you@gmail.com/My Drive/MyFin backups:/backups"
