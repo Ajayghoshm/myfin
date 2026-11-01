@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
+  budgetConflicts,
   budgetMode,
+  clearPlannedRows,
   groupBudgetRows,
   isZeroRow,
+  resolveBudgetConflict,
   rolledUp,
 } from '../src/features/budgets/budgetGroups.ts';
 
@@ -99,5 +102,60 @@ describe('isZeroRow', () => {
     assert.equal(isZeroRow(row(1, 'A', null, { planned_amount_debit: 1 })), false);
     assert.equal(isZeroRow(row(1, 'A', null, { current_amount_credit: 1 })), false);
     assert.equal(isZeroRow(row(1, 'A', null, { income_items: [{}] })), false);
+  });
+});
+
+describe('conflict resolution', () => {
+  const mk = (id: string, parent: string | null, d = 0, items = false) => ({
+    category_id: id,
+    parent_category_id: parent,
+    name: id,
+    planned_amount_debit: d,
+    planned_amount_credit: 0,
+    expense_items: items ? [{ name: 'x', amount: d }] : [],
+    income_items: [],
+  });
+  const rows = {
+    p: mk('p', null, 100),
+    c1: mk('c1', 'p', 40, true),
+    c2: mk('c2', 'p', 0),
+    o: mk('o', null, 5),
+    oc: mk('oc', 'o', 0),
+  };
+  const groups = groupBudgetRows(Object.values(rows)).groups;
+  const pGroup = groups.find((g) => g.parent.category_id === 'p');
+  if (!pGroup) throw new Error('missing group');
+
+  test('budgetConflicts finds only groups with both sides planned', () => {
+    assert.deepEqual(
+      budgetConflicts(groups).map((g) => g.parent.name),
+      ['p'],
+    );
+  });
+
+  test('keeping the parent clears children and their items only', () => {
+    const { rows: next, clearedIds } = resolveBudgetConflict(
+      rows,
+      pGroup,
+      'parent',
+    );
+    assert.deepEqual(clearedIds.sort(), ['c1', 'c2']);
+    assert.equal(next.c1.planned_amount_debit, 0);
+    assert.deepEqual(next.c1.expense_items, []);
+    assert.equal(next.p, rows.p);
+    assert.equal(next.o, rows.o);
+    assert.equal(rows.c1.planned_amount_debit, 40);
+  });
+
+  test('keeping the children clears the parent only', () => {
+    const { rows: next } = resolveBudgetConflict(rows, pGroup, 'children');
+    assert.equal(next.p.planned_amount_debit, 0);
+    assert.deepEqual(next.p.income_items, []);
+    assert.equal(next.c1, rows.c1);
+    assert.equal(next.o, rows.o);
+  });
+
+  test('clearPlannedRows ignores unknown ids', () => {
+    assert.deepEqual(clearPlannedRows(rows, ['nope']), rows);
   });
 });

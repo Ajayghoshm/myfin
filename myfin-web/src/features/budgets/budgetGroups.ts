@@ -88,3 +88,51 @@ export function isZeroRow(row: BudgetRowLike): boolean {
     amount(row, 'current_credit') === 0
   );
 }
+
+type ClearableRow = {
+  planned_amount_debit?: number;
+  planned_amount_credit?: number;
+  expense_items?: readonly unknown[];
+  income_items?: readonly unknown[];
+};
+
+/** Zeroes the planned amounts and breakdown items of the given rows (items must go too, or the server rejects the mismatch). Other rows are returned as they were. */
+export function clearPlannedRows<T extends ClearableRow>(
+  rows: Record<string, T>,
+  categoryIds: string[],
+): Record<string, T> {
+  const next = { ...rows };
+  for (const id of categoryIds) {
+    if (!next[id]) continue;
+    next[id] = {
+      ...next[id],
+      planned_amount_debit: 0,
+      planned_amount_credit: 0,
+      expense_items: [],
+      income_items: [],
+    };
+  }
+  return next;
+}
+
+/** A parent and its subcategories that both carry a plan: keep one side, clear the other. */
+export function resolveBudgetConflict<
+  T extends BudgetRowLike & ClearableRow,
+>(
+  rows: Record<string, T>,
+  group: BudgetGroup<BudgetRowLike>,
+  keep: 'parent' | 'children',
+): { rows: Record<string, T>; clearedIds: string[] } {
+  const clearedIds =
+    keep === 'parent'
+      ? group.children.map((child) => String(child.category_id))
+      : [String(group.parent.category_id)];
+  return { rows: clearPlannedRows(rows, clearedIds), clearedIds };
+}
+
+/** The groups whose parent and at least one subcategory both carry a plan. */
+export function budgetConflicts<T extends BudgetRowLike>(
+  groups: BudgetGroup<T>[],
+): BudgetGroup<T>[] {
+  return groups.filter((g) => hasPlanned(g.parent) && g.children.some(hasPlanned));
+}

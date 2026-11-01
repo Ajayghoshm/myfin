@@ -45,10 +45,14 @@ import { apiErrorMessage } from '../../../utils/apiErrorMessage.ts';
 import { useFormatNumberAsCurrency } from '../../../utils/textHooks.ts';
 import {
   type BudgetGroup,
+  type BudgetRowLike,
+  budgetConflicts,
   budgetMode,
   groupBudgetRows,
+  resolveBudgetConflict,
   rolledUp,
 } from '../budgetGroups.ts';
+import BudgetConflictAlert from '../BudgetConflictAlert.tsx';
 
 type Direction = 'debit' | 'credit';
 type Row = {
@@ -68,11 +72,6 @@ const amountKey = (d: Direction) =>
   d === 'debit' ? 'planned_amount_debit' : 'planned_amount_credit';
 const itemsKey = (d: Direction) =>
   d === 'debit' ? 'expense_items' : 'income_items';
-const hasPlanned = (row: Row) =>
-  row.planned_amount_debit !== 0 ||
-  row.planned_amount_credit !== 0 ||
-  row.expense_items.length > 0 ||
-  row.income_items.length > 0;
 const byName = (a: { name: string }, b: { name: string }) =>
   a.name.localeCompare(b.name);
 
@@ -197,13 +196,17 @@ const BudgetQuickEntry = () => {
     () => groupBudgetRows(rowList),
     [rowList],
   );
-  const conflicts = useMemo(
-    () =>
-      groups
-        .filter((g) => hasPlanned(g.parent) && g.children.some(hasPlanned))
-        .map((g) => g.parent.name),
-    [groups],
-  );
+  const conflicts = useMemo(() => budgetConflicts(groups), [groups]);
+
+  const resolveConflict = (
+    group: BudgetGroup<BudgetRowLike>,
+    keep: 'parent' | 'children',
+  ) => {
+    const { clearedIds } = resolveBudgetConflict(rows, group, keep);
+    setRows((prev) => resolveBudgetConflict(prev, group, keep).rows);
+    setTouched((prev) => new Set([...prev, ...clearedIds]));
+    setDirty(true);
+  };
 
   const setAmount = (id: string, value: number) => {
     setRows((prev) => ({
@@ -532,11 +535,7 @@ const BudgetQuickEntry = () => {
           {t('budgetQuick.closed')}
         </Alert>
       )}
-      {conflicts.length > 0 && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          {t('budgetTemplate.conflict', { names: conflicts.join(', ') })}
-        </Alert>
-      )}
+      <BudgetConflictAlert conflicts={conflicts} onResolve={resolveConflict} />
       {dirty && (
         <Alert severity="info" sx={{ mb: 2 }}>
           {t('budgetQuick.unsaved')}

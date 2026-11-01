@@ -43,10 +43,14 @@ import { getMonthsFullName } from '../../../utils/dateUtils.ts';
 import { useFormatNumberAsCurrency } from '../../../utils/textHooks.ts';
 import {
   type BudgetGroup,
+  type BudgetRowLike,
+  budgetConflicts,
   budgetMode,
   groupBudgetRows,
+  resolveBudgetConflict,
   rolledUp,
 } from '../budgetGroups.ts';
+import BudgetConflictAlert from '../BudgetConflictAlert.tsx';
 
 type Direction = 'debit' | 'credit';
 type Row = {
@@ -134,13 +138,15 @@ const BudgetTemplate = () => {
     [rowList],
   );
 
-  const conflicts = useMemo(
-    () =>
-      groups
-        .filter((g) => hasPlanned(g.parent) && g.children.some(hasPlanned))
-        .map((g) => g.parent.name),
-    [groups],
-  );
+  const conflicts = useMemo(() => budgetConflicts(groups), [groups]);
+
+  const resolveConflict = (
+    group: BudgetGroup<BudgetRowLike>,
+    keep: 'parent' | 'children',
+  ) => {
+    setRows((prev) => resolveBudgetConflict(prev, group, keep).rows);
+    setDirty(true);
+  };
 
   const setAmount = (id: string, direction: Direction, value: number) => {
     setRows((prev) => ({
@@ -442,11 +448,7 @@ const BudgetTemplate = () => {
           {t('budgetTemplate.empty')}
         </Alert>
       )}
-      {conflicts.length > 0 && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          {t('budgetTemplate.conflict', { names: conflicts.join(', ') })}
-        </Alert>
-      )}
+      <BudgetConflictAlert conflicts={conflicts} onResolve={resolveConflict} />
       {dirty && (
         <Alert severity="info" sx={{ mb: 2 }}>
           {t('budgetTemplate.unsaved')}
