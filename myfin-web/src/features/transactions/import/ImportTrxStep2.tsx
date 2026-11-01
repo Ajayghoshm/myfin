@@ -719,10 +719,11 @@ const ImportTrxStep2 = (props: Props) => {
   );
 
   const markGroup = useCallback((group: PayeeGroup, choice: FlagChoice) => {
+    const ids = new Set(group.rowIds);
     setTransactions((prev) => {
       const { choices } = groupFlagChoices(
         prev
-          .filter((trx) => group.rowIds.includes(trx.tempId))
+          .filter((trx) => ids.has(trx.tempId))
           .map((trx) => ({
             tempId: trx.tempId,
             type: rowTrxType(trx),
@@ -737,13 +738,26 @@ const ImportTrxStep2 = (props: Props) => {
     });
   }, []);
 
+  const groupMarkedChoices = (group: PayeeGroup) => {
+    const ids = new Set(group.rowIds);
+    const marked: FlagChoice[] = [];
+    for (const trx of transactions) {
+      if (!ids.has(trx.tempId)) continue;
+      const choice = effectiveChoice(trx.flags, rowTrxType(trx));
+      if (choice.kind !== 'none' || choice.event) marked.push(choice);
+    }
+    return marked;
+  };
+
   const groupMarkedCount = (group: PayeeGroup) =>
-    transactions.filter(
-      (trx) =>
-        group.rowIds.includes(trx.tempId) &&
-        (effectiveChoice(trx.flags, rowTrxType(trx)).kind !== 'none' ||
-          !!trx.flags.event),
-    ).length;
+    groupMarkedChoices(group).length;
+
+  const groupCurrentChoice = (group: PayeeGroup): FlagChoice => {
+    const [first, ...rest] = groupMarkedChoices(group);
+    return first && rest.every((c) => JSON.stringify(c) === JSON.stringify(first))
+      ? first
+      : NO_FLAGS;
+  };
 
   const applyGroupPatch = useCallback(
     (group: PayeeGroup, patch: GroupPatch, overwrite: boolean) => {
@@ -1133,6 +1147,7 @@ const ImportTrxStep2 = (props: Props) => {
                 investingAccounts={investingAccounts}
                 onMarkGroup={markGroup}
                 markedCount={groupMarkedCount}
+                currentChoice={groupCurrentChoice}
                 renderRows={(group) => (
                   <MyFinStaticTable
                     isRefetching={false}

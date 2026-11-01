@@ -819,7 +819,7 @@
     "savedFromBudget": "Modelo substituído pelo orçamento selecionado",
     "empty": "Ainda não há modelo. Introduza valores, sugira-os com base nos últimos 6 meses ou guarde um orçamento existente como modelo.",
     "unsaved": "Tem alterações por guardar. Prima Guardar modelo para as manter.",
-    "conflictIntro": "Oriente a categoria principal ou as suas subcategorias, não ambas. Escolha o que manter:",
+    "conflictIntro": "Defina o orçamento da categoria principal ou das suas subcategorias, não de ambas. Escolha o que manter:",
     "keepParent": "Manter {{name}}, limpar as subcategorias",
     "keepChildren": "Manter as subcategorias, limpar {{name}}",
     "category": "Categoria",

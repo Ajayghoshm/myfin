@@ -61,6 +61,8 @@ export type Props = {
   onMarkGroup: (group: PayeeGroup, choice: FlagChoice) => void;
   /** How many of the group's rows carry a mark. */
   markedCount: (group: PayeeGroup) => number;
+  /** The choice shared by the group's marked rows, or none when they differ. */
+  currentChoice: (group: PayeeGroup) => FlagChoice;
   /** The group's individual rows, shown when the group is expanded. */
   renderRows: (group: PayeeGroup) => ReactNode;
 };
@@ -68,11 +70,13 @@ export type Props = {
 const GroupMarkCell = ({
   group,
   marked,
+  currentChoice,
   investingAccounts,
   onMark,
 }: {
   group: PayeeGroup;
   marked: number;
+  currentChoice: () => FlagChoice;
   investingAccounts: { id: bigint; label: string }[];
   onMark: (choice: FlagChoice) => void;
 }) => {
@@ -89,7 +93,10 @@ const GroupMarkCell = ({
         size="small"
         startIcon={marked > 0 ? <Flag /> : <FlagOutlined />}
         color={marked > 0 ? 'primary' : 'inherit'}
-        onClick={(e) => setAnchor(e.currentTarget)}
+        onClick={(e) => {
+          setDraft(currentChoice());
+          setAnchor(e.currentTarget);
+        }}
       >
         {t('importTransactions.groupMarked', {
           marked,
@@ -258,6 +265,7 @@ const ImportTrxStep2PayeeGroups = (props: Props) => {
                     <GroupMarkCell
                       group={group}
                       marked={props.markedCount(group)}
+                      currentChoice={() => props.currentChoice(group)}
                       investingAccounts={props.investingAccounts}
                       onMark={(choice) => props.onMarkGroup(group, choice)}
                     />
