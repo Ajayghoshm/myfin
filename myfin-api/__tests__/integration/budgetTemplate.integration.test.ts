@@ -195,4 +195,98 @@ describe('budget template', () => {
     expect(await prisma.budget_template_rows.count()).toBe(0);
     expect(await prisma.budget_template_items.count()).toBe(0);
   });
+
+  describe('hierarchy changes vs the template', () => {
+    test('setCategoryParent is rejected when the category and the new parent are both in the template', async () => {
+      const child = await cat('Groceries');
+      await BudgetTemplateService.replace(userId, [row(food, 100), row(child, 10)]);
+      await expect(CategoryService.setCategoryParent(userId, child, food)).rejects.toMatchObject({
+        code: 406,
+      });
+      const after = await prisma.categories.findUnique({ where: { category_id: child } });
+      expect(after!.parent_category_id).toBeNull();
+    });
+
+    test('setCategoryParent is allowed when only one is in the template', async () => {
+      const child = await cat('Groceries');
+      await BudgetTemplateService.replace(userId, [row(child, 10)]);
+      await CategoryService.setCategoryParent(userId, child, food);
+      const after = await prisma.categories.findUnique({ where: { category_id: child } });
+      expect(after!.parent_category_id).toBe(food);
+    });
+
+    test("another user's template conflict does not block setCategoryParent", async () => {
+      const child = await cat('Groceries');
+      const theirFood = await cat('Food', otherId, { name: 'Food2' });
+      const theirChild = await cat('Kid', otherId);
+      await BudgetTemplateService.replace(otherId, [row(theirFood, 1), row(theirChild, 1)]);
+      // same category ids cannot be shared, so make the other template reference ours via raw rows
+      const t = await prisma.budget_templates.findUnique({ where: { users_user_id: otherId } });
+      await prisma.budget_template_rows.createMany({
+        data: [
+          { template_id: t!.template_id, categories_category_id: food, planned_amount_debit: 1n },
+          { template_id: t!.template_id, categories_category_id: child, planned_amount_debit: 1n },
+        ],
+      });
+      await CategoryService.setCategoryParent(userId, child, food);
+    });
+
+    test('createBudgetFromTemplate keeps the parent and skips a stored conflicting child', async () => {
+      const child = await cat('Groceries', userId, { parent_category_id: food });
+      await BudgetTemplateService.replace(userId, [row(rent, 5)]);
+      const t = await prisma.budget_templates.findUnique({ where: { users_user_id: userId } });
+      await prisma.budget_template_rows.createMany({
+        data: [
+          { template_id: t!.template_id, categories_category_id: food, planned_amount_debit: 10000n },
+          { template_id: t!.template_id, categories_category_id: child, planned_amount_debit: 1000n },
+        ],
+      });
+      const res = await BudgetTemplateService.createBudgetFromTemplate(userId, 7, 2026);
+      expect(res.skipped_category_ids).toEqual([child]);
+      const rows = await prisma.budgets_has_categories.findMany({
+        where: { budgets_budget_id: res.budget_id },
+      });
+      expect(rows.map((r) => r.categories_category_id).sort()).toEqual([food, rent].sort());
+      expect(rows.find((r) => r.categories_category_id === food)!.planned_amount_debit).toBe(10000n);
+    });
+
+    describe('mergeCategories re-parenting', () => {
+      let child: bigint;
+      let target: bigint;
+      beforeEach(async () => {
+        child = await cat('Groceries', userId, { parent_category_id: food });
+        target = await cat('Dining');
+      });
+      const expectUntouched = async () => {
+        expect(await prisma.categories.count({ where: { category_id: food } })).toBe(1);
+        const c = await prisma.categories.findUnique({ where: { category_id: child } });
+        expect(c!.parent_category_id).toBe(food);
+      };
+
+      test('rejected when a child and the target are budgeted in the same budget', async () => {
+        const b = await BudgetService.createBudget(userId, 1, 2026, [row(child, 5), row(target, 7)], '');
+        expect(b).toBeDefined();
+        await expect(CategoryService.mergeCategories(userId, food, target)).rejects.toMatchObject({
+          code: 406,
+        });
+        await expectUntouched();
+      });
+
+      test('rejected when a child and the target are both in the template', async () => {
+        await BudgetTemplateService.replace(userId, [row(child, 5), row(target, 7)]);
+        await expect(CategoryService.mergeCategories(userId, food, target)).rejects.toMatchObject({
+          code: 406,
+        });
+        await expectUntouched();
+      });
+
+      test('allowed when they are budgeted in different budgets', async () => {
+        await BudgetService.createBudget(userId, 1, 2026, [row(child, 5)], '');
+        await BudgetService.createBudget(userId, 2, 2026, [row(target, 7)], '');
+        await CategoryService.mergeCategories(userId, food, target);
+        const c = await prisma.categories.findUnique({ where: { category_id: child } });
+        expect(c!.parent_category_id).toBe(target);
+      });
+    });
+  });
 });

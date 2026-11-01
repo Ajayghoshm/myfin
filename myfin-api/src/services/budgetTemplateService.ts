@@ -177,10 +177,17 @@ export default class BudgetTemplateService {
         select: { category_id: true },
       });
       const activeIds = new Set(active.map((c) => c.category_id));
-      const skipped_category_ids = rows
-        .filter((row) => !activeIds.has(row.category_id))
-        .map((row) => row.category_id);
-      const values = rows.filter((row) => activeIds.has(row.category_id));
+      // A stored parent + subcategory pair must not block the month: keep the parent's lump sum.
+      const parents = await tx.categories.findMany({
+        where: { users_user_id: userId, category_id: { in: rows.map((row) => row.category_id) } },
+        select: { category_id: true, parent_category_id: true },
+      });
+      const parentOf = new Map(parents.map((c) => [c.category_id, c.parent_category_id]));
+      const inTemplate = new Set(rows.map((row) => row.category_id));
+      const usable = (row: TemplateRow) =>
+        activeIds.has(row.category_id) && !inTemplate.has(parentOf.get(row.category_id));
+      const skipped_category_ids = rows.filter((row) => !usable(row)).map((row) => row.category_id);
+      const values = rows.filter(usable);
       const budget_id = await BudgetService.createBudget(userId, month, year, values, '', tx as never);
       return { budget_id, skipped_category_ids };
     });
