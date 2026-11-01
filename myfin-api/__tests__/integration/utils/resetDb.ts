@@ -19,6 +19,7 @@ export default async () => {
     prisma.invest_assets.deleteMany(),
     prisma.rules.deleteMany(),
     prisma.tags.deleteMany(),
+    prisma.categories.updateMany({ data: { parent_category_id: null } }),
     prisma.categories.deleteMany(),
     prisma.entities.deleteMany(),
     prisma.budgets.deleteMany(),

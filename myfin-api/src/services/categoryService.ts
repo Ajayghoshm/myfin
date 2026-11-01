@@ -1,10 +1,11 @@
-import { performDatabaseRequest, prisma } from '../config/prisma.js';
-import { MYFIN, normalizeCategoryIconKey } from '../consts.js';
-import { Prisma } from '../generated/prisma/client.js';
-import DateTimeUtils from '../utils/DateTimeUtils.js';
-import Logger from '../utils/Logger.js';
-import ConvertUtils from '../utils/convertUtils.js';
-import TransactionService from './transactionService.js';
+import { performDatabaseRequest, prisma } from "../config/prisma.js";
+import { MYFIN, normalizeCategoryIconKey } from "../consts.js";
+import APIError from "../errorHandling/apiError.js";
+import { Prisma } from "../generated/prisma/client.js";
+import DateTimeUtils from "../utils/DateTimeUtils.js";
+import Logger from "../utils/Logger.js";
+import ConvertUtils from "../utils/convertUtils.js";
+import TransactionService from "./transactionService.js";
 
 const BudgetHasCategories = prisma.budgets_has_categories;
 
@@ -19,6 +20,7 @@ interface Category {
   exclude_from_budgets?: number;
   is_fixed?: boolean;
   users_user_id?: bigint;
+  parent_category_id?: bigint | null;
 }
 
 export interface CalculatedCategoryAmounts {
@@ -36,7 +38,7 @@ class CategoryService {
   static async getAllCategoriesForUser(
     userId: bigint,
     selectAttributes = undefined,
-    dbClient = prisma
+    dbClient = prisma,
   ): Promise<Array<Prisma.categoriesWhereInput>> {
     return dbClient.categories.findMany({
       where: { users_user_id: userId },
@@ -44,7 +46,62 @@ class CategoryService {
     });
   }
 
+  /**
+   * Enforces the one-level hierarchy: the parent must belong to the user, must not be the
+   * category itself, must not have a parent, and the category must not have children.
+   */
+  private static async assertValidParent(
+    userId: bigint,
+    categoryId: bigint | undefined,
+    parentId: bigint | null | undefined,
+    dbClient = prisma,
+  ): Promise<void> {
+    if (parentId === null || parentId === undefined) return;
+    if (categoryId !== undefined && categoryId === parentId) {
+      throw APIError.notAcceptable("A category cannot be its own parent.");
+    }
+    const parent = await dbClient.categories.findFirst({
+      where: { category_id: parentId, users_user_id: userId },
+      select: { parent_category_id: true },
+    });
+    if (!parent) {
+      throw APIError.notAcceptable("Parent category not found.");
+    }
+    if (parent.parent_category_id !== null) {
+      throw APIError.notAcceptable("A subcategory cannot be used as a parent.");
+    }
+    if (categoryId !== undefined) {
+      const childCount = await dbClient.categories.count({
+        where: { parent_category_id: categoryId, users_user_id: userId },
+      });
+      if (childCount > 0) {
+        throw APIError.notAcceptable("A category with subcategories cannot have a parent.");
+      }
+    }
+  }
+
+  static async setCategoryParent(
+    userId: bigint,
+    categoryId: bigint,
+    parentId: bigint | null,
+    dbClient = prisma,
+  ): Promise<void> {
+    const existing = await dbClient.categories.findFirst({
+      where: { category_id: categoryId, users_user_id: userId },
+      select: { category_id: true },
+    });
+    if (!existing) {
+      throw APIError.notFound("Category not found.");
+    }
+    await CategoryService.assertValidParent(userId, categoryId, parentId, dbClient);
+    await dbClient.categories.update({
+      where: { category_id: categoryId },
+      data: { parent_category_id: parentId },
+    });
+  }
+
   static async createCategory(category: Category, dbClient = prisma) {
+    await CategoryService.assertValidParent(category.users_user_id, undefined, category.parent_category_id, dbClient);
     return dbClient.categories.create({
       data: {
         name: category.name,
@@ -56,11 +113,18 @@ class CategoryService {
         is_fixed: category.is_fixed ?? false,
         type: category.type,
         users_user_id: category.users_user_id,
+        parent_category_id: category.parent_category_id ?? null,
       },
     });
   }
 
   static async deleteCategory(userId: bigint, categoryId: number, dbClient = prisma) {
+    const childCount = await dbClient.categories.count({
+      where: { parent_category_id: BigInt(categoryId), users_user_id: userId },
+    });
+    if (childCount > 0) {
+      throw APIError.notAcceptable("Cannot delete a category that has subcategories.");
+    }
     const deleteBudgetHasCategoriesRefs = BudgetHasCategories.deleteMany({
       where: {
         categories_category_id: categoryId,
@@ -83,12 +147,7 @@ class CategoryService {
     return prisma.$transaction([deleteBudgetHasCategoriesRefs, unlinkEvents, deleteCat]);
   }
 
-  static async updateCategory(
-    userId: bigint,
-    categoryId,
-    category: Prisma.categoriesUpdateInput,
-    dbClient = prisma
-  ) {
+  static async updateCategory(userId: bigint, categoryId, category: Prisma.categoriesUpdateInput, dbClient = prisma) {
     return dbClient.categories.update({
       where: {
         users_user_id: userId,
@@ -100,62 +159,56 @@ class CategoryService {
 
   private static buildSqlForExcludedAccountsList(excludedAccs) {
     if (!excludedAccs || excludedAccs.length === 0) {
-      return ' -1 ';
+      return " -1 ";
     }
-    let sql = '';
+    let sql = "";
     for (let cnt = 0; cnt < excludedAccs.length; cnt++) {
       const acc = excludedAccs[cnt].account_id;
       sql += ` '${acc}' `;
 
       if (cnt !== excludedAccs.length - 1) {
-        sql += ', ';
+        sql += ", ";
       }
     }
-    sql += '';
+    sql += "";
     return sql;
   }
 
   static async getAverageAmountForCategoryInLast12Months(
     userId: number | bigint,
     categoryId: number | bigint,
-    dbClient = prisma
+    dbClient = prisma,
   ) {
     const firstTimestamp = await TransactionService.getDateTimestampOfFirstTransactionForUser(
       userId as bigint,
-      dbClient
+      dbClient,
     );
     const nrOfTotalMonthsFromFirstTrx = DateTimeUtils.getFullMonthsBetweenDates(
       new Date(Number(firstTimestamp) * 1000),
-      new Date()
+      new Date(),
     );
     const monthYearFrom12MonthsAgo = DateTimeUtils.decrementMonthByX(
       DateTimeUtils.getMonthNumberFromTimestamp(),
       DateTimeUtils.getYearFromTimestamp(),
-      12
+      12,
     );
-    const beginDate = new Date(
-      monthYearFrom12MonthsAgo.year,
-      monthYearFrom12MonthsAgo.month - 1,
-      1
-    );
+    const beginDate = new Date(monthYearFrom12MonthsAgo.year, monthYearFrom12MonthsAgo.month - 1, 1);
     const sumAmounts = (
       await this.getAmountForCategoryInPeriod(
         categoryId,
         beginDate.getTime() / 1000,
         DateTimeUtils.getCurrentUnixTimestamp(),
         true,
-        dbClient
+        dbClient,
       )
     )[0];
 
     const divisor = nrOfTotalMonthsFromFirstTrx > 12 ? 12 : nrOfTotalMonthsFromFirstTrx;
     return {
       category_balance_credit:
-        ConvertUtils.convertBigIntegerToFloat(BigInt(sumAmounts.category_balance_credit ?? 0)) /
-        divisor,
+        ConvertUtils.convertBigIntegerToFloat(BigInt(sumAmounts.category_balance_credit ?? 0)) / divisor,
       category_balance_debit:
-        ConvertUtils.convertBigIntegerToFloat(BigInt(sumAmounts.category_balance_debit ?? 0)) /
-        divisor,
+        ConvertUtils.convertBigIntegerToFloat(BigInt(sumAmounts.category_balance_debit ?? 0)) / divisor,
     };
   }
 
@@ -164,7 +217,7 @@ class CategoryService {
     fromDate: number,
     toDate: number,
     includeTransfers = true,
-    dbClient = prisma
+    dbClient = prisma,
   ): Promise<{
     category_balance_credit: number;
     category_balance_debit: number;
@@ -181,7 +234,7 @@ class CategoryService {
           SELECT
             SUM(IF(type = 'I', amount, 0)) AS category_balance_credit,
             SUM(IF(type = 'E' OR (type = 'T' AND accounts_account_to_id IN (${Prisma.join(
-              listOfAccountsToExclude.map((a) => a.account_id)
+              listOfAccountsToExclude.map((a) => a.account_id),
             )})), amount, 0)) AS category_balance_debit
           FROM transactions
           WHERE date_timestamp BETWEEN ${fromDate} AND ${toDate}
@@ -206,23 +259,15 @@ class CategoryService {
     month: number,
     year: number,
     includeTransfers = true,
-    dbClient = prisma
+    dbClient = prisma,
   ): Promise<CalculatedCategoryAmounts> {
     return performDatabaseRequest(async (prismaTx) => {
       const nextMonth = month < 12 ? month + 1 : 1;
       const nextMonthsYear = month < 12 ? year : year + 1;
-      const maxDate = DateTimeUtils.getUnixTimestampFromDate(
-        new Date(nextMonthsYear, nextMonth - 1, 1)
-      );
+      const maxDate = DateTimeUtils.getUnixTimestampFromDate(new Date(nextMonthsYear, nextMonth - 1, 1));
       const minDate = DateTimeUtils.getUnixTimestampFromDate(new Date(year, month - 1, 1));
       /* Logger.addLog(`cat id: ${categoryId} | month: ${month} | year: ${year} | minDate: ${minDate} | maxDate: ${maxDate}`); */
-      const amounts = await this.getAmountForCategoryInPeriod(
-        categoryId,
-        minDate,
-        maxDate,
-        includeTransfers,
-        prismaTx
-      );
+      const amounts = await this.getAmountForCategoryInPeriod(categoryId, minDate, maxDate, includeTransfers, prismaTx);
 
       return amounts[0];
     }, dbClient);
@@ -232,18 +277,12 @@ class CategoryService {
     categoryId: bigint,
     year: number,
     includeTransfers = true,
-    dbClient = prisma
+    dbClient = prisma,
   ): Promise<CalculatedCategoryAmounts> {
     const maxDate = DateTimeUtils.getUnixTimestampFromDate(new Date(year, 11, 31));
     const minDate = DateTimeUtils.getUnixTimestampFromDate(new Date(year, 0, 1));
     /* Logger.addLog(`cat id: ${categoryId} | month: ${month} | year: ${year} | minDate: ${minDate} | maxDate: ${maxDate}`); */
-    const amounts = await this.getAmountForCategoryInPeriod(
-      categoryId,
-      minDate,
-      maxDate,
-      includeTransfers,
-      dbClient
-    );
+    const amounts = await this.getAmountForCategoryInPeriod(categoryId, minDate, maxDate, includeTransfers, dbClient);
 
     return amounts[0];
   }
@@ -251,24 +290,18 @@ class CategoryService {
   static async getAverageAmountForCategoryInLifetime(
     userId: number | bigint,
     categoryId: number | bigint,
-    dbClient = prisma
+    dbClient = prisma,
   ) {
     const firstTimestamp = await TransactionService.getDateTimestampOfFirstTransactionForUser(
       userId as bigint,
-      dbClient
+      dbClient,
     );
     const nrOfTotalMonthsFromFirstTrx = DateTimeUtils.getFullMonthsBetweenDates(
       new Date(Number(firstTimestamp) * 1000),
-      new Date()
+      new Date(),
     );
     const sumAmounts = (
-      await this.getAmountForCategoryInPeriod(
-        categoryId,
-        0,
-        DateTimeUtils.getCurrentUnixTimestamp(),
-        true,
-        dbClient
-      )
+      await this.getAmountForCategoryInPeriod(categoryId, 0, DateTimeUtils.getCurrentUnixTimestamp(), true, dbClient)
     )[0];
 
     return {
@@ -288,7 +321,7 @@ class CategoryService {
   static async getAllCategoriesForBudget(
     userId: number | bigint,
     budgetId: number | bigint,
-    dbClient = prisma
+    dbClient = prisma,
   ): Promise<Array<Prisma.categoriesUpdateInput>> {
     return dbClient.$queryRaw`SELECT users_user_id,
                                      category_id,
