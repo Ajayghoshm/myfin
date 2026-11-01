@@ -22,7 +22,13 @@ import { GridColDef } from '@mui/x-data-grid';
 import Chip from '@mui/material/Chip';
 import Stack from '@mui/material/Stack';
 import IconButton from '@mui/material/IconButton';
-import { AddCircleOutline, Delete, Edit, Search } from '@mui/icons-material';
+import {
+  AddCircleOutline,
+  CallMerge,
+  Delete,
+  Edit,
+  Search,
+} from '@mui/icons-material';
 import Box from '@mui/material/Box';
 import PageHeader from '../../components/PageHeader.tsx';
 import Button from '@mui/material/Button';
@@ -31,6 +37,7 @@ import InputAdornment from '@mui/material/InputAdornment';
 import Grid from '@mui/material/Grid';
 import GenericConfirmationDialog from '../../components/GenericConfirmationDialog.tsx';
 import AddEditCategoryDialog from '../../services/category/AddEditCategoryDialog.tsx';
+import MergeCategoryDialog from './MergeCategoryDialog.tsx';
 import MyFinStaticTable from '../../components/MyFinStaticTable.tsx';
 
 const Categories = () => {
@@ -49,6 +56,7 @@ const Categories = () => {
   );
   const [isRemoveDialogOpen, setRemoveDialogOpen] = useState(false);
   const [isAddEditDialogOpen, setAddEditDialogOpen] = useState(false);
+  const [isMergeDialogOpen, setMergeDialogOpen] = useState(false);
   const debouncedSearchQuery = useMemo(() => debounce(setSearchQuery, 300), []);
 
   const filteredCategories = useMemo(() => {
@@ -101,10 +109,14 @@ const Categories = () => {
 
   // Reset actionableCategory
   useEffect(() => {
-    if (isRemoveDialogOpen == false && isAddEditDialogOpen == false) {
+    if (
+      isRemoveDialogOpen == false &&
+      isAddEditDialogOpen == false &&
+      isMergeDialogOpen == false
+    ) {
       setActionableCategory(null);
     }
-  }, [isRemoveDialogOpen, isAddEditDialogOpen]);
+  }, [isRemoveDialogOpen, isAddEditDialogOpen, isMergeDialogOpen]);
 
   const handleEditButtonClick = (category: Category) => {
     setActionableCategory(category);
@@ -194,7 +206,7 @@ const Categories = () => {
     {
       field: 'actions',
       headerName: t('common.actions'),
-      minWidth: 100,
+      minWidth: 140,
       editable: false,
       sortable: false,
       renderCell: (params) => (
@@ -206,6 +218,17 @@ const Categories = () => {
             }}
           >
             <Edit fontSize="medium" color="action" />
+          </IconButton>
+          <IconButton
+            aria-label={t('categories.mergeAction')}
+            title={t('categories.mergeAction')}
+            onClick={(event) => {
+              event.stopPropagation();
+              setActionableCategory(params.value);
+              setMergeDialogOpen(true);
+            }}
+          >
+            <CallMerge fontSize="medium" color="action" />
           </IconButton>
           <IconButton
             aria-label={t('common.delete')}
@@ -244,6 +267,14 @@ const Categories = () => {
           onPositiveClick={() => setAddEditDialogOpen(false)}
           onNegativeClick={() => setAddEditDialogOpen(false)}
           category={actionableCategory}
+        />
+      )}
+      {isMergeDialogOpen && actionableCategory && (
+        <MergeCategoryDialog
+          isOpen={isMergeDialogOpen}
+          onClose={() => setMergeDialogOpen(false)}
+          source={actionableCategory}
+          categories={categories}
         />
       )}
       {isRemoveDialogOpen && (

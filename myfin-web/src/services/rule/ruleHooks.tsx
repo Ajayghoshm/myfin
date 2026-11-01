@@ -2,7 +2,7 @@ import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query';
 import { queryClient } from '../../data/react-query.ts';
 import ruleServices, { Rule } from './ruleServices.tsx';
 
-const QUERY_KEY_GET_RULES = 'QUERY_KEY_GET_RULES';
+export const QUERY_KEY_GET_RULES = 'QUERY_KEY_GET_RULES';
 
 export function useGetRules() {
   async function getRules() {

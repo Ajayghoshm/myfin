@@ -550,7 +550,13 @@
     "excludeFromBudgetsTooltip": "Exclure toutes les transactions de cette catégorie des calculs budgétaires",
     "parentCategory": "Catégorie parente",
     "noParentCategory": "Aucune (catégorie de premier niveau)",
-    "hasSubcategoriesCannotHaveParent": "Cette catégorie a des sous-catégories ; elle ne peut pas être placée sous une autre catégorie."
+    "hasSubcategoriesCannotHaveParent": "Cette catégorie a des sous-catégories ; elle ne peut pas être placée sous une autre catégorie.",
+    "mergeAction": "Fusionner avec…",
+    "mergeDialogTitle": "Fusionner {{name}} avec une autre catégorie",
+    "mergeTarget": "Fusionner avec",
+    "mergeWarning": "La fusion supprime {{name}}. Toutes ses transactions, règles, événements, éléments planifiés et montants de budget sont déplacés vers la catégorie cible. Cette action est irréversible.",
+    "categoriesSuccessfullyMerged": "Catégories fusionnées avec succès !",
+    "mergeConfirm": "Fusionner"
   },
   "entities": {
     "entities": "Entités",

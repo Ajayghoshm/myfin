@@ -598,7 +598,13 @@
     "excludeFromBudgetsTooltip": "Exclude all transactions associated with this category from budget calculations",
     "parentCategory": "Parent category",
     "noParentCategory": "None (top-level category)",
-    "hasSubcategoriesCannotHaveParent": "This category has subcategories, so it cannot be placed under another category."
+    "hasSubcategoriesCannotHaveParent": "This category has subcategories, so it cannot be placed under another category.",
+    "mergeAction": "Merge into…",
+    "mergeDialogTitle": "Merge {{name}} into another category",
+    "mergeTarget": "Merge into",
+    "mergeWarning": "Merging deletes {{name}}. All its transactions, rules, events, planned items and budget amounts move to the target category. This cannot be undone.",
+    "categoriesSuccessfullyMerged": "Category merged successfully!",
+    "mergeConfirm": "Merge"
   },
   "entities": {
     "entities": "Entities",
