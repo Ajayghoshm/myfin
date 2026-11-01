@@ -6,6 +6,7 @@ import {
   LockOpen,
   Search,
   TableView,
+  ContentCopy,
   Visibility,
 } from '@mui/icons-material';
 import { Checkbox, FormGroup, Tooltip, useTheme } from '@mui/material';
@@ -33,6 +34,7 @@ import {
   ROUTE_BUDGET_DETAILS,
   ROUTE_BUDGET_MATRIX,
   ROUTE_BUDGET_NEW,
+  ROUTE_BUDGET_TEMPLATE,
 } from '../../../providers/RoutesProvider.tsx';
 import {
   AlertSeverity,
@@ -374,6 +376,13 @@ const BudgetList = () => {
                 }}
               >
                 {t('budgets.addBudget')}
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<ContentCopy />}
+                onClick={() => navigate(ROUTE_BUDGET_TEMPLATE)}
+              >
+                {t('budgets.template')}
               </Button>
               <Tooltip title={t('budgets.matrixView')} placement="top">
                 <IconButton
