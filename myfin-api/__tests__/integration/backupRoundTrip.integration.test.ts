@@ -6,6 +6,7 @@ import { prisma } from '../../src/config/prisma.js';
 import { MYFIN } from '../../src/consts.js';
 import AccountService from '../../src/services/accountService.js';
 import BalanceCheckService from '../../src/services/balanceCheckService.js';
+import BudgetTemplateService from '../../src/services/budgetTemplateService.js';
 import { updateFinancialProfile } from '../../src/services/financialProfileService.js';
 import TransactionService from '../../src/services/transactionService.js';
 import UserService from '../../src/services/userService.js';
@@ -175,5 +176,68 @@ describe('Backup JSON round trip', () => {
     const rows = await prisma.categories.findMany({ where: { users_user_id: uid } });
     expect(rows.length).toBe(2);
     expect(rows.every((r) => r.parent_category_id === null)).toBe(true);
+  });
+
+  const seedTemplate = async () => {
+    const food = await prisma.categories.create({
+      data: { name: 'Food', type: 'E', users_user_id: uid },
+    });
+    const pay = await prisma.categories.create({
+      data: { name: 'Pay', type: 'I', users_user_id: uid },
+    });
+    await BudgetTemplateService.replace(uid, [
+      {
+        category_id: food.category_id,
+        expense_items: [
+          { label: 'Rice', amount: '30.50', sort_order: 0 },
+          { label: 'Veg', amount: '19.50', sort_order: 1 },
+        ],
+      },
+      { category_id: pay.category_id, planned_value_credit: 1000 },
+    ]);
+  };
+
+  test('round trip keeps the budget template with items', async () => {
+    await seedTemplate();
+    const backup = JSON.parse(JSON.stringify(await BackupManager.createBackup(uid)));
+    expect(backup.budget_templates).toHaveLength(1);
+    expect(backup.budget_template_rows).toHaveLength(2);
+    expect(backup.budget_template_items).toHaveLength(2);
+    await UserService.restoreUser(uid, backup);
+    const food = await prisma.categories.findFirstOrThrow({
+      where: { users_user_id: uid, name: 'Food' },
+    });
+    const pay = await prisma.categories.findFirstOrThrow({
+      where: { users_user_id: uid, name: 'Pay' },
+    });
+    const { rows } = await BudgetTemplateService.get(uid);
+    expect(rows).toHaveLength(2);
+    const foodRow = rows.find((r) => r.category_id === food.category_id);
+    expect(foodRow?.planned_value_debit).toBe(50);
+    expect(foodRow?.expense_items.map((i) => [i.label, i.amount])).toEqual([
+      ['Rice', 30.5],
+      ['Veg', 19.5],
+    ]);
+    expect(rows.find((r) => r.category_id === pay.category_id)?.planned_value_credit).toBe(1000);
+  });
+
+  test('a backup without template data restores with no template', async () => {
+    await seedTemplate();
+    const backup = JSON.parse(JSON.stringify(await BackupManager.createBackup(uid)));
+    delete backup.budget_templates;
+    delete backup.budget_template_rows;
+    delete backup.budget_template_items;
+    await UserService.restoreUser(uid, backup);
+    expect(await BudgetTemplateService.get(uid)).toEqual({ rows: [], updated_at: null });
+  });
+
+  test('restore rejects a template whose items do not match planned totals', async () => {
+    await seedTemplate();
+    const backup = JSON.parse(JSON.stringify(await BackupManager.createBackup(uid)));
+    backup.budget_template_items[0].amount = Number(backup.budget_template_items[0].amount) + 100;
+    await expect(UserService.restoreUser(uid, backup)).rejects.toBeTruthy();
+    const { rows } = await BudgetTemplateService.get(uid);
+    expect(rows).toHaveLength(2);
+    expect(await prisma.categories.count({ where: { users_user_id: uid } })).toBe(2);
   });
 });

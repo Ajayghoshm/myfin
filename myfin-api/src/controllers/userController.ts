@@ -229,6 +229,18 @@ const restoreUserSchema = joi.object({
     .array()
     .items(joi.object().pattern(joi.string(), joi.any()))
     .optional(),
+  budget_templates: joi
+    .array()
+    .items(joi.object().pattern(joi.string(), joi.any()))
+    .optional(),
+  budget_template_rows: joi
+    .array()
+    .items(joi.object().pattern(joi.string(), joi.any()))
+    .optional(),
+  budget_template_items: joi
+    .array()
+    .items(joi.object().pattern(joi.string(), joi.any()))
+    .optional(),
   categories: joi.array().items(joi.object().pattern(joi.string(), joi.any())).required(),
   entities: joi.array().items(joi.object().pattern(joi.string(), joi.any())).required(),
   tags: joi.array().items(joi.object().pattern(joi.string(), joi.any())).required(),

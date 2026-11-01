@@ -31,6 +31,9 @@ export interface BackupData {
   budgets?: Prisma.budgetsGetPayload<object>[];
   budgets_has_categories?: Prisma.budgets_has_categoriesGetPayload<object>[];
   budget_category_items?: Prisma.budget_category_itemsGetPayload<object>[];
+  budget_templates?: Prisma.budget_templatesGetPayload<object>[];
+  budget_template_rows?: Prisma.budget_template_rowsGetPayload<object>[];
+  budget_template_items?: Prisma.budget_template_itemsGetPayload<object>[];
   categories?: Prisma.categoriesGetPayload<object>[];
   entities?: Prisma.entitiesGetPayload<object>[];
   tags?: Prisma.tagsGetPayload<object>[];
@@ -359,6 +362,17 @@ class BackupManager {
         where: { budgets_users_user_id: userId },
         orderBy: [{ sort_order: 'asc' }, { item_id: 'asc' }],
       }),
+      budget_templates: await dbClient.budget_templates.findMany({
+        where: { users_user_id: userId },
+      }),
+      budget_template_rows: await dbClient.budget_template_rows.findMany({
+        where: { template: { users_user_id: userId } },
+        orderBy: [{ template_id: 'asc' }, { categories_category_id: 'asc' }],
+      }),
+      budget_template_items: await dbClient.budget_template_items.findMany({
+        where: { row: { template: { users_user_id: userId } } },
+        orderBy: [{ sort_order: 'asc' }, { item_id: 'asc' }],
+      }),
       categories,
       entities,
       tags,
@@ -539,6 +553,62 @@ class BackupManager {
         )
           throw APIError.badRequest(
             'Budget breakdown totals in backup do not match their allocation.',
+            'BUDGET_BREAKDOWN_CONFLICT'
+          );
+      }
+    }
+
+    // Validate the budget template before wiping anything; old backups have none
+    const templateRows = data.budget_template_rows ?? [];
+    const templateItems = data.budget_template_items ?? [];
+    const templateRowKey = (row: { template_id: unknown; categories_category_id: unknown }) =>
+      `${row.template_id}:${row.categories_category_id}`;
+    const templateParents = new Map<string, (typeof templateRows)[number]>();
+    for (const row of templateRows) {
+      if (
+        templateParents.has(templateRowKey(row)) ||
+        !/^\d+$/.test(String(row.planned_amount_credit)) ||
+        !/^\d+$/.test(String(row.planned_amount_debit))
+      )
+        throw APIError.badRequest(
+          'Invalid budget template in backup.',
+          'BUDGET_BREAKDOWN_INVALID'
+        );
+      templateParents.set(templateRowKey(row), row);
+    }
+    const templateTotals = new Map<string, bigint>();
+    for (const item of templateItems) {
+      if (
+        !templateParents.has(templateRowKey(item)) ||
+        !['EXPENSE', 'INCOME'].includes(item.direction) ||
+        !/^\d+$/.test(String(item.amount))
+      )
+        throw APIError.badRequest(
+          'Invalid budget template in backup.',
+          'BUDGET_BREAKDOWN_INVALID'
+        );
+      const cents = BigInt(item.amount);
+      normalizeItems([
+        {
+          label: item.label,
+          amount: `${cents / 100n}.${String(cents % 100n).padStart(2, '0')}`,
+          sort_order: item.sort_order,
+        },
+      ]);
+      const key = `${templateRowKey(item)}:${item.direction}`;
+      templateTotals.set(key, (templateTotals.get(key) ?? 0n) + cents);
+    }
+    for (const [key, row] of templateParents) {
+      for (const direction of ['EXPENSE', 'INCOME']) {
+        const sum = templateTotals.get(`${key}:${direction}`);
+        if (sum === undefined) continue;
+        validateCents(sum);
+        if (
+          sum !==
+          BigInt(direction === 'EXPENSE' ? row.planned_amount_debit : row.planned_amount_credit)
+        )
+          throw APIError.badRequest(
+            'Budget template totals in backup do not match their allocation.',
             'BUDGET_BREAKDOWN_CONFLICT'
           );
       }
@@ -1023,6 +1093,40 @@ class BackupManager {
       const newId = categoryIdMap.get(category.category_id);
       if (newParentId !== undefined && newId !== undefined) {
         await CategoryService.setCategoryParent(userId, newId, newParentId, dbClient);
+      }
+    }
+
+    // Budget template: categories exist and are linked by now; rows for unknown categories are skipped
+    if (templateRows.length > 0 || (data.budget_templates ?? []).length > 0) {
+      const template = await dbClient.budget_templates.create({
+        data: {
+          users_user_id: userId,
+          updated_at: BigInt(data.budget_templates?.[0]?.updated_at ?? Math.floor(Date.now() / 1000)),
+        },
+      });
+      for (const row of templateRows) {
+        const categoryId = categoryIdMap.get(row.categories_category_id);
+        if (categoryId === undefined) continue;
+        await dbClient.budget_template_rows.create({
+          data: {
+            template_id: template.template_id,
+            categories_category_id: categoryId,
+            planned_amount_credit: BigInt(row.planned_amount_credit),
+            planned_amount_debit: BigInt(row.planned_amount_debit),
+          },
+        });
+        const items = templateItems.filter((i) => templateRowKey(i) === templateRowKey(row));
+        if (items.length > 0)
+          await dbClient.budget_template_items.createMany({
+            data: items.map((i) => ({
+              template_id: template.template_id,
+              categories_category_id: categoryId,
+              direction: i.direction,
+              label: i.label.trim(),
+              amount: BigInt(i.amount),
+              sort_order: i.sort_order,
+            })),
+          });
       }
     }
 
