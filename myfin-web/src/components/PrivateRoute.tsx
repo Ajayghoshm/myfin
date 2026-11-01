@@ -120,12 +120,14 @@ const PrivateRoute = () => {
   return (
     <>
       {authStatus.isSuccess && (
-        <Box sx={{ display: 'flex' }}>
+        <Box sx={{ display: 'flex', height: '100dvh', overflow: 'hidden' }}>
           <MyFinSidebar />
+          {/* Fills what the sidebar leaves (a 100vw main next to the sidebar overflowed the window) */}
           <main
             style={{
-              width: '100vw',
-              height: '100vh',
+              flex: 1,
+              minWidth: 0,
+              height: '100%',
               overflowY: 'auto',
               overflowX: 'hidden',
             }}
