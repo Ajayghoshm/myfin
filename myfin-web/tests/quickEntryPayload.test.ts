@@ -18,7 +18,7 @@ describe('buildQuickPayload', () => {
     const out = buildQuickPayload([row('1', 0)], { '1': row('1', 50) }, true);
     assert.equal(out.length, 1);
     assert.equal(out[0].planned_value_debit, '0');
-    assert.equal(out[0].expense_items, undefined);
+    assert.deepEqual(out[0].expense_items, []);
   });
   test('never-budgeted zero row is omitted', () => {
     assert.equal(
