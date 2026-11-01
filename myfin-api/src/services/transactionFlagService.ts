@@ -43,20 +43,33 @@ async function applyLoan(userId: bigint, transactionId: bigint, loan: NonNullabl
   });
 }
 
-async function applyEvent(userId: bigint, transactionId: bigint, event: NonNullable<TransactionFlags['event']>) {
+/** new_event name (trimmed, lower-cased) to the id of the event this call created for it. */
+type CreatedEvents = Map<string, bigint>;
+
+async function applyEvent(
+  userId: bigint,
+  transactionId: bigint,
+  flag: NonNullable<TransactionFlags['event']>,
+  created: CreatedEvents
+) {
+  const nameKey = 'new_event' in flag ? flag.new_event.name.trim().toLowerCase() : null;
+  const reused = nameKey != null ? created.get(nameKey) : undefined;
+  // A later row asking for a new event of the same name reuses the one already created
+  const event = reused != null ? { event_id: String(reused) } : flag;
   const trx = await ownedTransaction(userId, transactionId);
   const day = istDate(Number(trx.date_timestamp));
   let eventId: bigint;
   let target: { date: string; repeat: string };
   if ('new_event' in event) {
-    const created = await createEvent(userId, {
+    const made = await createEvent(userId, {
       name: event.new_event.name,
       kind: event.new_event.kind ?? 'other',
       date: day,
       repeat: 'once',
     });
-    eventId = BigInt(created.event_id);
-    target = created;
+    eventId = BigInt(made.event_id);
+    target = made;
+    created.set(nameKey, eventId);
   } else {
     eventId = BigInt(event.event_id);
     const row = await prisma.events.findFirst({ where: { event_id: eventId, users_user_id: userId } });
@@ -70,7 +83,10 @@ async function applyEvent(userId: bigint, transactionId: bigint, event: NonNulla
     await linkTransaction(userId, eventId, date, transactionId);
   } catch (err) {
     // Do not leave the event this call just created behind (a retry would hit a duplicate name)
-    if ('new_event' in event) await deleteEvent(userId, eventId).catch(() => undefined);
+    if ('new_event' in event) {
+      created.delete(nameKey);
+      await deleteEvent(userId, eventId).catch(() => undefined);
+    }
     throw err;
   }
 }
@@ -78,6 +94,7 @@ async function applyEvent(userId: bigint, transactionId: bigint, event: NonNulla
 /** Marks transactions as loans and/or links them to events. A failing flag is reported and never stops the rest. */
 export async function applyFlags(userId: bigint, items: FlagItem[]): Promise<FlagResult> {
   const result: FlagResult = { applied: 0, failed: [] };
+  const createdEvents: CreatedEvents = new Map();
   for (const item of items) {
     const attempt = async (flag: 'loan' | 'event', run: () => Promise<void>) => {
       try {
@@ -102,7 +119,7 @@ export async function applyFlags(userId: bigint, items: FlagItem[]): Promise<Fla
     // The event goes first: a loan marks the row as debt bookkeeping, which can no longer be linked
     if (item.flags.event) {
       const event = item.flags.event;
-      await attempt('event', () => applyEvent(userId, transactionId, event));
+      await attempt('event', () => applyEvent(userId, transactionId, event, createdEvents));
     }
     if (item.flags.loan) {
       const loan = item.flags.loan;

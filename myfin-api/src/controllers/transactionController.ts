@@ -405,12 +405,12 @@ const importTransactionsStep2 = async (req: Request, res: Response, next: NextFu
     const payeeRules = input.payee_rules
       ? await payeeRulesSchema.validateAsync(JSON.parse(input.payee_rules))
       : [];
-    const { imported, skipped, created_ids } = await TransactionService.importTransactionsWithPayeeRules(
+    const { imported, skipped, created_ids, created_by_index } = await TransactionService.importTransactionsWithPayeeRules(
       sessionData.userId,
       JSON.parse(input.trx_list),
       payeeRules
     );
-    res.json({ imported, skipped, created_ids });
+    res.json({ imported, skipped, created_ids, created_by_index });
   } catch (err) {
     Logger.addLog(err);
     next(err || APIError.internalServerError());

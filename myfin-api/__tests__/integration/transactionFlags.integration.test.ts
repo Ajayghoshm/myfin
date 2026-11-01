@@ -174,6 +174,35 @@ describe('transaction flags', () => {
     expect(res.failed).toEqual([{ transaction_id: 'abc', flag: 'loan', message: 'Invalid transaction id.' }]);
   });
 
+  test('the same new_event name on several rows creates one event, matched case-insensitively', async () => {
+    const a = await add(userId, bankId, E, 'Hotel', 50, JUNE_10);
+    const b = await add(userId, bankId, E, 'Taxi', 20, JUNE_10 + 2 * 86_400);
+    const c = await add(userId, bankId, E, 'Food', 20, JUNE_10 + 3 * 86_400);
+    const flag = (name: string) => ({ event: { new_event: { name } } });
+    const res = await applyFlags(userId, [
+      { transaction_id: String(a), flags: flag('Goa trip') },
+      { transaction_id: String(b), flags: flag('Goa trip') },
+      { transaction_id: String(c), flags: flag('  goa TRIP ') },
+    ]);
+    expect(res).toEqual({ applied: 3, failed: [] });
+    expect(await prisma.events.count({ where: { users_user_id: userId } })).toBe(1);
+    expect(await prisma.event_occurrence_transactions.count()).toBe(3);
+  });
+
+  test('a new_event deleted after a failed link is created again for a later row', async () => {
+    const income = await add(userId, bankId, I, 'Refund');
+    const good = await add(userId, bankId, E, 'Taxi');
+    const flag = { event: { new_event: { name: 'Goa trip' } } };
+    const res = await applyFlags(userId, [
+      { transaction_id: String(income), flags: flag },
+      { transaction_id: String(good), flags: flag },
+    ]);
+    expect(res.applied).toBe(1);
+    expect(res.failed).toHaveLength(1);
+    expect(await prisma.events.count({ where: { users_user_id: userId, name: 'Goa trip' } })).toBe(1);
+    expect(await prisma.event_occurrence_transactions.count({ where: { transaction_id: good } })).toBe(1);
+  });
+
   test('bulk import returns created_by_index and omits duplicates', async () => {
     const row = (external_id: string, description: string) => ({
       account_from_id: bankId,
