@@ -5,8 +5,12 @@ import {
   AlertSeverity,
   useSnackbar,
 } from '../../providers/SnackbarProvider.tsx';
-import { useAddCategory, useEditCategory } from './CategoryHooks.tsx';
-import React, { useEffect, useState } from 'react';
+import {
+  useAddCategory,
+  useEditCategory,
+  useGetCategories,
+} from './CategoryHooks.tsx';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ColorGradient } from '../../consts';
 import {
   CATEGORY_ICON_OPTIONS,
@@ -25,6 +29,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
+import { apiErrorMessage } from '../../utils/apiErrorMessage.ts';
 import { cssGradients } from '../../utils/gradientUtils.ts';
 import Dialog from '@mui/material/Dialog';
 import Grid from '@mui/material/Grid';
@@ -61,6 +66,7 @@ const AddEditCategoryDialog = (props: Props) => {
   const loader = useLoading();
   const snackbar = useSnackbar();
 
+  const getCategoriesRequest = useGetCategories();
   const addCategoryRequest = useAddCategory();
   const editCategoryRequest = useEditCategory();
 
@@ -86,6 +92,32 @@ const AddEditCategoryDialog = (props: Props) => {
   const [descriptionValue, setDescriptionValue] = useState<string>(
     props.category?.description || '',
   );
+  const [parentValue, setParentValue] = useState<string>(
+    props.category?.parent_category_id != null
+      ? String(props.category.parent_category_id)
+      : '',
+  );
+
+  const allCategories = getCategoriesRequest.data ?? [];
+  const parentOptions = useMemo(
+    () =>
+      allCategories.filter(
+        (c) =>
+          c.parent_category_id == null &&
+          String(c.category_id) !== String(props.category?.category_id),
+      ),
+    [allCategories, props.category],
+  );
+  const hasSubcategories =
+    props.category != null &&
+    allCategories.some(
+      (c) =>
+        c.parent_category_id != null &&
+        String(c.parent_category_id) === String(props.category?.category_id),
+    );
+  const selectedParent = parentOptions.find(
+    (c) => String(c.category_id) === parentValue,
+  );
 
   // Loading
   useEffect(() => {
@@ -100,7 +132,10 @@ const AddEditCategoryDialog = (props: Props) => {
   useEffect(() => {
     if (addCategoryRequest.isError || editCategoryRequest.isError) {
       snackbar.showSnackbar(
-        t('common.somethingWentWrongTryAgain'),
+        apiErrorMessage(
+          addCategoryRequest.error ?? editCategoryRequest.error,
+          t('common.somethingWentWrongTryAgain'),
+        ),
         AlertSeverity.ERROR,
       );
     }
@@ -292,6 +327,7 @@ const AddEditCategoryDialog = (props: Props) => {
                 new_description: descriptionValue,
                 new_exclude_from_budgets: excludeFromBudgetsValue,
                 new_is_fixed: isFixedValue,
+                new_parent_category_id: selectedParent?.category_id ?? null,
               });
             } else {
               // Create
@@ -303,6 +339,7 @@ const AddEditCategoryDialog = (props: Props) => {
                 description: descriptionValue,
                 exclude_from_budgets: excludeFromBudgetsValue,
                 is_fixed: isFixedValue,
+                parent_category_id: selectedParent?.category_id,
               });
             }
           },
@@ -390,6 +427,36 @@ const AddEditCategoryDialog = (props: Props) => {
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 2 }}>
             <IconOptionsSelect />
+          </Grid>
+          <Grid size={12}>
+            <TextField
+              select
+              fullWidth
+              margin="dense"
+              id="parent-category"
+              name="parent_category_id"
+              disabled={hasSubcategories}
+              value={selectedParent ? parentValue : ''}
+              onChange={(e) => setParentValue(e.target.value)}
+              label={t('categories.parentCategory')}
+              helperText={
+                hasSubcategories
+                  ? t('categories.hasSubcategoriesCannotHaveParent')
+                  : undefined
+              }
+              slotProps={{ select: { displayEmpty: true } }}
+              InputLabelProps={{ shrink: true }}
+            >
+              <MenuItem value="">{t('categories.noParentCategory')}</MenuItem>
+              {parentOptions.map((c) => (
+                <MenuItem
+                  key={String(c.category_id)}
+                  value={String(c.category_id)}
+                >
+                  {c.name}
+                </MenuItem>
+              ))}
+            </TextField>
           </Grid>
           <Grid size={12}>
             <TextField

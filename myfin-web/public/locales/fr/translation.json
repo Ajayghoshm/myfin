@@ -547,7 +547,10 @@
     "fixedCost": "Coût fixe",
     "fixedCostTooltip": "Les coûts fixes (loyer, assurance, mensualités) reviennent quoi que vous fassiez. Les analyses répartissent les dépenses en fixes, flexibles et non classées.",
     "fixed": "Fixe",
-    "excludeFromBudgetsTooltip": "Exclure toutes les transactions de cette catégorie des calculs budgétaires"
+    "excludeFromBudgetsTooltip": "Exclure toutes les transactions de cette catégorie des calculs budgétaires",
+    "parentCategory": "Catégorie parente",
+    "noParentCategory": "Aucune (catégorie de premier niveau)",
+    "hasSubcategoriesCannotHaveParent": "Cette catégorie a des sous-catégories ; elle ne peut pas être placée sous une autre catégorie."
   },
   "entities": {
     "entities": "Entités",

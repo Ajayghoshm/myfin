@@ -595,7 +595,10 @@
     "fixedCost": "Fixed cost",
     "fixedCostTooltip": "Fixed costs (rent, insurance, EMIs) recur regardless of what you do. Insights splits spending into fixed, flexible and not yet sorted.",
     "fixed": "Fixed",
-    "excludeFromBudgetsTooltip": "Exclude all transactions associated with this category from budget calculations"
+    "excludeFromBudgetsTooltip": "Exclude all transactions associated with this category from budget calculations",
+    "parentCategory": "Parent category",
+    "noParentCategory": "None (top-level category)",
+    "hasSubcategoriesCannotHaveParent": "This category has subcategories, so it cannot be placed under another category."
   },
   "entities": {
     "entities": "Entities",

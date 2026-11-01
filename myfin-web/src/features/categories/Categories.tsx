@@ -14,6 +14,8 @@ import {
   Category,
   CategoryStatus,
 } from '../../services/category/categoryServices.ts';
+import { buildCategoryTree } from '../../services/category/categoryTree.ts';
+import { apiErrorMessage } from '../../utils/apiErrorMessage.ts';
 import CategoryIconBadge from '../../services/category/CategoryIconBadge.tsx';
 import { debounce } from 'lodash';
 import { GridColDef } from '@mui/x-data-grid';
@@ -50,17 +52,23 @@ const Categories = () => {
   const debouncedSearchQuery = useMemo(() => debounce(setSearchQuery, 300), []);
 
   const filteredCategories = useMemo(() => {
-    let filteredList = categories;
+    const lowerCaseQuery = searchQuery.toLowerCase();
+    const matches = (cat: Category) =>
+      !searchQuery || cat.name.toLowerCase().includes(lowerCaseQuery);
 
-    if (searchQuery != null) {
-      const lowerCaseQuery = searchQuery?.toLowerCase() || '';
-      filteredList = categories.filter(
-        (cat) =>
-          !searchQuery || cat.name.toLowerCase().includes(lowerCaseQuery),
-      );
+    // A matching subcategory stays under its parent; a matching parent shows
+    // all of its subcategories.
+    const result: Category[] = [];
+    for (const node of buildCategoryTree(categories)) {
+      const parentMatches = matches(node.category);
+      const children = parentMatches
+        ? node.children
+        : node.children.filter(matches);
+      if (parentMatches || children.length > 0) {
+        result.push(node.category, ...children);
+      }
     }
-
-    return filteredList.sort((a, b) => a.status.localeCompare(b.status));
+    return result;
   }, [searchQuery, categories]);
 
   // Loading
@@ -76,7 +84,10 @@ const Categories = () => {
   useEffect(() => {
     if (getCategoriesRequest.isError || removeCategoryRequest.isError) {
       snackbar.showSnackbar(
-        t('common.somethingWentWrongTryAgain'),
+        apiErrorMessage(
+          removeCategoryRequest.error,
+          t('common.somethingWentWrongTryAgain'),
+        ),
         AlertSeverity.ERROR,
       );
     }
@@ -110,6 +121,7 @@ const Categories = () => {
         description: category.description,
         status: category.status,
         isFixed: category.is_fixed === true,
+        isSubcategory: category.parent_category_id != null,
         actions: category,
       })),
     [filteredCategories],
@@ -119,15 +131,17 @@ const Categories = () => {
     {
       field: 'color',
       headerName: t('categories.color'),
-      minWidth: 56,
+      minWidth: 80,
       editable: false,
       sortable: false,
       renderCell: (params) => {
         return (
-          <CategoryIconBadge
-            iconKey={params.row.icon as string}
-            colorGradient={params.value as string}
-          />
+          <Box sx={{ pl: params.row.isSubcategory ? 3 : 0 }}>
+            <CategoryIconBadge
+              iconKey={params.row.icon as string}
+              colorGradient={params.value as string}
+            />
+          </Box>
         );
       },
     },

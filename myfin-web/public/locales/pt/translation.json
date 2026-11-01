@@ -591,7 +591,10 @@
     "fixedCost": "Custo fixo",
     "fixedCostTooltip": "Os custos fixos (renda, seguros, prestações) repetem-se independentemente do que faça. As análises dividem a despesa em fixa, flexível e por classificar.",
     "fixed": "Fixo",
-    "excludeFromBudgetsTooltip": "Excluir todas as transações associadas a esta categoria dos cálculos orçamentais"
+    "excludeFromBudgetsTooltip": "Excluir todas as transações associadas a esta categoria dos cálculos orçamentais",
+    "parentCategory": "Categoria principal",
+    "noParentCategory": "Nenhuma (categoria de nível superior)",
+    "hasSubcategoriesCannotHaveParent": "Esta categoria tem subcategorias, por isso não pode ser colocada dentro de outra categoria."
   },
   "entities": {
     "entities": "Entidades",
