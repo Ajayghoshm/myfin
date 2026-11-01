@@ -1,4 +1,4 @@
-import { KeyboardDoubleArrowRight } from '@mui/icons-material';
+import { Flag, FlagOutlined, KeyboardDoubleArrowRight } from '@mui/icons-material';
 import { categoryPickerItems } from '../../../services/category/categoryTree.ts';
 import {
   CreatableOption,
@@ -17,9 +17,12 @@ import {
   Checkbox,
   FilterOptionsState,
   FormControlLabel,
+  IconButton,
+  Popover,
   Stack,
   Switch,
   TextField,
+  Tooltip,
   Typography,
   useTheme,
 } from '@mui/material';
@@ -35,7 +38,10 @@ import {
 import dayjs from 'dayjs';
 import { ImportTrxStep1Result } from './ImportTrxStep1.tsx';
 import GenericConfirmationDialog from '../../../components/GenericConfirmationDialog.tsx';
-import { useImportTransactionsStep2 } from '../../../services/trx/trxHooks.ts';
+import {
+  useApplyTransactionFlags,
+  useImportTransactionsStep2,
+} from '../../../services/trx/trxHooks.ts';
 import { inferTrxTypeByAttributes } from '../../../utils/transactionUtils.ts';
 import { TransactionType } from '../../../services/trx/trxServices.ts';
 import ImportTrxStep2PayeeGroups from './ImportTrxStep2PayeeGroups.tsx';
@@ -48,6 +54,14 @@ import {
 } from './payeeGroups.ts';
 import ImportTrxStep2AccountsCell from './ImportTrxStep2AccountsCell.tsx';
 import { useFormatNumberAsCurrency } from '../../../utils/textHooks.ts';
+import { AccountType } from '../../../services/auth/authServices.ts';
+import TransactionFlagsControl from '../flags/TransactionFlagsControl.tsx';
+import {
+  applyInvestment,
+  FlagChoice,
+  NO_FLAGS,
+} from '../flags/flagsModel.ts';
+import { effectiveChoice, flagItemsForCreated } from './importFlags.ts';
 
 export type Props = {
   data: ImportTrxStep1Result;
@@ -65,6 +79,7 @@ type ImportedTrx = {
   accountFrom?: IdLabelPair;
   accountTo?: IdLabelPair;
   essential: boolean;
+  flags: FlagChoice;
   externalId?: string;
   // PhonePe only: set when the row has a payee that rows can be grouped by
   type?: TransactionType;
@@ -288,6 +303,63 @@ const CheckboxCell = memo(
 );
 CheckboxCell.displayName = 'CheckboxCell';
 
+const FlagsCell = memo(
+  ({
+    id,
+    choice,
+    trxType,
+    description,
+    investingAccounts,
+    onChange,
+  }: {
+    id: number;
+    choice: FlagChoice;
+    trxType: TransactionType;
+    description: string;
+    investingAccounts: IdLabelPair[];
+    onChange: (id: number, choice: FlagChoice) => void;
+  }) => {
+    const { t } = useTranslation();
+    const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+    const flagged = effectiveChoice(choice, trxType).kind !== 'none' || !!choice.event;
+    return (
+      <>
+        <Tooltip title={t('transactions.flags.title')}>
+          <IconButton
+            aria-label={t('transactions.flags.title')}
+            color={flagged ? 'primary' : 'default'}
+            onClick={(e) => setAnchor(e.currentTarget)}
+          >
+            {flagged ? <Flag /> : <FlagOutlined />}
+          </IconButton>
+        </Tooltip>
+        <Popover
+          open={!!anchor}
+          anchorEl={anchor}
+          onClose={() => setAnchor(null)}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          <Stack sx={{ p: 2, width: 280 }}>
+            <TransactionFlagsControl
+              value={choice}
+              onChange={(next) => onChange(id, next)}
+              trxType={trxType}
+              description={description}
+              investingAccounts={investingAccounts}
+              showInvestment
+            />
+          </Stack>
+        </Popover>
+      </>
+    );
+  },
+);
+FlagsCell.displayName = 'FlagsCell';
+
+const rowTrxType = (trx: Pick<ImportedTrx, 'accountFrom' | 'accountTo'>) =>
+  inferTrxTypeByAttributes(trx.accountFrom?.id, trx.accountTo?.id) ||
+  TransactionType.Transfer;
+
 const canMarkAsEssential = (trx: Pick<ImportedTrx, 'accountFrom' | 'accountTo'>) =>
   !!trx.accountFrom && !trx.accountTo;
 
@@ -303,6 +375,9 @@ const ImportTrxStep2 = (props: Props) => {
   const snackbar = useSnackbar();
 
   const importTrxStep2Request = useImportTransactionsStep2();
+  const applyFlagsRequest = useApplyTransactionFlags();
+  // The rows as submitted: the server's created_by_index counts positions in this list
+  const submittedRowsRef = useRef<Array<{ choice: FlagChoice }>>([]);
   const categoryCreate = useCreatableOptions('category');
   const entityCreate = useCreatableOptions('entity');
   const formatNumberAsCurrency = useFormatNumberAsCurrency();
@@ -346,6 +421,14 @@ const ImportTrxStep2 = (props: Props) => {
     [props.data.activeAccounts],
   );
 
+  const investingAccounts: IdLabelPair[] = useMemo(
+    () =>
+      props.data.activeAccounts
+        .filter((account) => account.type === AccountType.Investing)
+        .map((account) => ({ id: account.account_id, label: account.name })),
+    [props.data.activeAccounts],
+  );
+
   const newAccountBalance: number = useMemo(() => {
     const initialBalance = toFiniteNumber(
       props.data.activeAccounts.find(
@@ -384,6 +467,12 @@ const ImportTrxStep2 = (props: Props) => {
 
   useEffect(() => {
     if (importTrxStep2Request.data) {
+      // Loan and event marks need the new ids; the hook reports a failure without undoing the import
+      const flagItems = flagItemsForCreated(
+        submittedRowsRef.current,
+        importTrxStep2Request.data.created_by_index ?? [],
+      );
+      if (flagItems.length > 0) applyFlagsRequest.mutate({ items: flagItems });
       props.onNext({
         nrOfTrxImported: importTrxStep2Request.data.imported,
         accountName:
@@ -411,6 +500,7 @@ const ImportTrxStep2 = (props: Props) => {
       accountTo: accounts.find(
         (account) => account.id == item.selectedAccountToID,
       ),
+      flags: NO_FLAGS,
       essential:
         item.isEssential == true &&
         canMarkAsEssential({
@@ -560,6 +650,10 @@ const ImportTrxStep2 = (props: Props) => {
     [transactions],
   );
 
+  const handleFlagsChange = useCallback((id: number, flags: FlagChoice) => {
+    updateTransactionRef.current(id, { flags });
+  }, []);
+
   const handleEssentialChange = useCallback((id: number, essential: boolean) => {
     const currentTransaction = transactions.find((trx) => trx.tempId === id);
     updateTransactionRef.current(id, {
@@ -657,6 +751,11 @@ const ImportTrxStep2 = (props: Props) => {
         essential: {
           checked: item.essential && canMarkAsEssential(item),
           disabled: !canMarkAsEssential(item),
+        },
+        flags: {
+          choice: item.flags,
+          trxType: rowTrxType(item),
+          description: item.description,
         },
       })),
     [transactions],
@@ -779,9 +878,28 @@ const ImportTrxStep2 = (props: Props) => {
           />
         ),
       },
+      {
+        field: 'flags',
+        headerName: t('transactions.flags.title'),
+        editable: false,
+        sortable: false,
+        width: 100,
+        renderCell: (params) => (
+          <FlagsCell
+            id={params.id as number}
+            choice={params.value.choice}
+            trxType={params.value.trxType}
+            description={params.value.description}
+            investingAccounts={investingAccounts}
+            onChange={handleFlagsChange}
+          />
+        ),
+      },
     ],
     [
       t,
+      investingAccounts,
+      handleFlagsChange,
       categoryOptions,
       entityOptions,
       accounts,
@@ -801,26 +919,54 @@ const ImportTrxStep2 = (props: Props) => {
   );
 
   const handleContinueButtonClick = () => {
+    const unnamedEvent = filteredTransactions.some(
+      (trx) =>
+        trx.flags.event &&
+        'new_event' in trx.flags.event &&
+        !trx.flags.event.new_event.name.trim(),
+    );
+    if (unnamedEvent) {
+      snackbar.showSnackbar(
+        t('transactions.flags.newEventNameRequired'),
+        AlertSeverity.ERROR,
+      );
+      return;
+    }
     setConfirmationDialogOpen(true);
   };
 
   const importTransactions = () => {
     setConfirmationDialogOpen(false);
+    const submitted = filteredTransactions.map((trx) => {
+      const type = rowTrxType(trx);
+      const choice = effectiveChoice(trx.flags, type);
+      // An investment goes out as a transfer into the chosen investing account
+      const asSaved = applyInvestment(
+        { type },
+        choice,
+      );
+      return {
+        choice,
+        request: {
+          category_id: trx.category?.id,
+          entity_id: trx.entity?.id,
+          amount: trx.value,
+          date_timestamp: trx.date,
+          description: trx.description,
+          is_essential: trx.essential && canMarkAsEssential(trx),
+          type: asSaved.type as TransactionType,
+          account_from_id: trx.accountFrom?.id,
+          account_to_id:
+            asSaved.account_to_id != null
+              ? BigInt(asSaved.account_to_id)
+              : trx.accountTo?.id,
+          external_id: trx.externalId,
+        },
+      };
+    });
+    submittedRowsRef.current = submitted;
     importTrxStep2Request.mutate({
-      list: filteredTransactions.map((trx) => ({
-        category_id: trx.category?.id,
-        entity_id: trx.entity?.id,
-        amount: trx.value,
-        date_timestamp: trx.date,
-        description: trx.description,
-        is_essential: trx.essential && canMarkAsEssential(trx),
-        type:
-          inferTrxTypeByAttributes(trx.accountFrom?.id, trx.accountTo?.id) ||
-          TransactionType.Transfer,
-        account_from_id: trx.accountFrom?.id,
-        account_to_id: trx.accountTo?.id,
-        external_id: trx.externalId,
-      })),
+      list: submitted.map((row) => row.request),
       payeeRules: toPayeeRules(transactions, payeeGroups, lastGroupPatches),
     });
   };

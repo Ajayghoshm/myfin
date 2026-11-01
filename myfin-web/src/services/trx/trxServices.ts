@@ -264,6 +264,8 @@ export type ImportTransactionsStep2Response = {
   imported: number;
   skipped: number;
   created_ids?: Array<string | number>;
+  // Position in the submitted list -> new id; rows skipped as duplicates are absent
+  created_by_index?: Array<{ index: number; transaction_id: string }>;
 };
 
 // A remembered "payee -> category/entity/essential" choice, saved as an auto-categorize rule
