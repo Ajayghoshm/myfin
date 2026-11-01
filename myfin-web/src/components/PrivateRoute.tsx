@@ -110,6 +110,12 @@ const PrivateRoute = () => {
     };
   }, [authStatus.refetch]);
 
+  // The shell scrolls inside <main>; keep the page itself from scrolling when a popup (portalled to body) overflows
+  useEffect(() => {
+    document.body.classList.add('myfin-shell');
+    return () => document.body.classList.remove('myfin-shell');
+  }, []);
+
   useEffect(() => {
     // Navigate to the authentication route if the user is no longer authenticated
     if (!authStatus.isFetching && !authStatus.isAuthenticated) {

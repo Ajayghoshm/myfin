@@ -1,3 +1,9 @@
+@media screen {
+  body.myfin-shell {
+    overflow: hidden;
+  }
+}
+
 ::-webkit-scrollbar {
   width: 10px;
 }

@@ -52,7 +52,7 @@ const BiggestChanges = ({ ym, data }: Props) => {
             <EmptyView />
           </Box>
         ) : (
-          <Stack gap={1.5}>
+          <Stack gap={1.5} sx={{ maxHeight: 420, overflowY: 'auto', pr: 1 }}>
             {data.biggest_changes.map((change) => {
               const up = change.amount > change.typical;
               const link = linkFor(change);
