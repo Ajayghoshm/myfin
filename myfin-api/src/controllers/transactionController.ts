@@ -346,6 +346,7 @@ const importTransactionsStep1 = async (req: Request, res: Response, next: NextFu
       CategoryService.getAllCategoriesForUser(sessionData.userId, {
         category_id: true,
         name: true,
+        parent_category_id: true,
       }),
       EntityService.getAllEntitiesForUser(sessionData.userId, { entity_id: true, name: true }),
       AccountService.getAccountsForUser(sessionData.userId, {

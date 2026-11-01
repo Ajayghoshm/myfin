@@ -36,7 +36,7 @@ export type PhonePeFillItem = RuleInstructions & {
 
 export type PhonePeCategorizeResult = {
   fillData: Array<PhonePeFillItem>;
-  categories: Array<{ category_id: bigint; name: string }>;
+  categories: Array<{ category_id: bigint; name: string; parent_category_id: bigint | null }>;
   entities: Array<{ entity_id: bigint; name: string }>;
   accounts: Array<{ account_id: bigint; name: string; balance: number }>;
   duplicate_rows: number;
@@ -167,9 +167,11 @@ export async function categorizePhonePeImport(
 
   // Fetched once; also used as caches for rule matching (same shape as importTransactionsStep1)
   const [categories, entities, accounts] = await Promise.all([
-    CategoryService.getAllCategoriesForUser(userId, { category_id: true, name: true }) as Promise<
-      Array<{ category_id: bigint; name: string }>
-    >,
+    CategoryService.getAllCategoriesForUser(userId, {
+      category_id: true,
+      name: true,
+      parent_category_id: true,
+    }) as Promise<Array<{ category_id: bigint; name: string; parent_category_id: bigint | null }>>,
     EntityService.getAllEntitiesForUser(userId, { entity_id: true, name: true }) as Promise<
       Array<{ entity_id: bigint; name: string }>
     >,
