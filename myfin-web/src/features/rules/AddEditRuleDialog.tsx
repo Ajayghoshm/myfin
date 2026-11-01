@@ -59,6 +59,11 @@ const AddEditRuleDialog = (props: Props) => {
   const addRuleRequest = useAddRule();
   const editRuleRequest = useEditRule();
 
+  // A stored rule can have no operator (e.g. one saved from an import); the
+  // select shows that as Ignore, so the value field must treat it that way too.
+  const operatorOf = (operator?: string | null) =>
+    operator || RuleMatchingOperatorType.Ignore;
+
   const [rule, setRule] = useState<Partial<Rule>>(
     props?.rule || {
       matcher_description_operator: RuleMatchingOperatorType.Ignore,
@@ -233,11 +238,11 @@ const AddEditRuleDialog = (props: Props) => {
                   id="description-condition"
                   name="description-condition"
                   disabled={
-                    rule?.matcher_description_operator ==
+                    operatorOf(rule?.matcher_description_operator) ==
                     RuleMatchingOperatorType.Ignore
                   }
                   required={
-                    rule?.matcher_description_operator !=
+                    operatorOf(rule?.matcher_description_operator) !=
                     RuleMatchingOperatorType.Ignore
                   }
                   value={rule?.matcher_description_value || ''}
@@ -291,11 +296,11 @@ const AddEditRuleDialog = (props: Props) => {
                   name="amount-condition"
                   type="number"
                   disabled={
-                    rule?.matcher_amount_operator ==
+                    operatorOf(rule?.matcher_amount_operator) ==
                     RuleMatchingOperatorType.Ignore
                   }
                   required={
-                    rule?.matcher_amount_operator !=
+                    operatorOf(rule?.matcher_amount_operator) !=
                     RuleMatchingOperatorType.Ignore
                   }
                   value={rule?.matcher_amount_value || ''}
@@ -356,11 +361,11 @@ const AddEditRuleDialog = (props: Props) => {
                   name="type-condition"
                   value={rule?.matcher_type_value || ''}
                   disabled={
-                    rule?.matcher_type_operator ==
+                    operatorOf(rule?.matcher_type_operator) ==
                     RuleMatchingOperatorType.Ignore
                   }
                   required={
-                    rule?.matcher_type_operator !=
+                    operatorOf(rule?.matcher_type_operator) !=
                     RuleMatchingOperatorType.Ignore
                   }
                   onChange={(event) =>
@@ -426,7 +431,7 @@ const AddEditRuleDialog = (props: Props) => {
                     ) || null
                   }
                   disabled={
-                    rule?.matcher_account_from_id_operator ==
+                    operatorOf(rule?.matcher_account_from_id_operator) ==
                     RuleMatchingOperatorType.Ignore
                   }
                   onChange={(_event, value) =>
@@ -444,7 +449,7 @@ const AddEditRuleDialog = (props: Props) => {
                       margin="dense"
                       label={t('transactions.originAccount')}
                       required={
-                        rule?.matcher_account_from_id_operator !=
+                        operatorOf(rule?.matcher_account_from_id_operator) !=
                         RuleMatchingOperatorType.Ignore
                       }
                     />
@@ -500,7 +505,7 @@ const AddEditRuleDialog = (props: Props) => {
                     ) || null
                   }
                   disabled={
-                    rule?.matcher_account_to_id_operator ==
+                    operatorOf(rule?.matcher_account_to_id_operator) ==
                     RuleMatchingOperatorType.Ignore
                   }
                   onChange={(_event, value) =>
@@ -518,7 +523,7 @@ const AddEditRuleDialog = (props: Props) => {
                       margin="dense"
                       label={t('transactions.destinationAccount')}
                       required={
-                        rule?.matcher_account_to_id_operator !=
+                        operatorOf(rule?.matcher_account_to_id_operator) !=
                         RuleMatchingOperatorType.Ignore
                       }
                     />
