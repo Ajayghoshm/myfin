@@ -87,6 +87,7 @@ export type BudgetMatrixCategory = Pick<
   | 'exclude_from_budgets'
   | 'status'
   | 'type'
+  | 'parent_category_id'
 > &
   Pick<
     BudgetCategory,
@@ -259,6 +260,57 @@ const updateBudgetMatrixCell = (request: UpdateBudgetMatrixCellRequest) => {
   });
 };
 
+export type BudgetTemplateRow = BudgetBreakdowns & {
+  category_id: bigint | number | string;
+  planned_value_debit: number;
+  planned_value_credit: number;
+};
+
+export type BudgetTemplate = {
+  rows: BudgetTemplateRow[];
+  updated_at: number | null;
+};
+
+export type BudgetTemplateSuggestion = {
+  category_id: bigint | number | string;
+  level: 'parent' | 'category';
+  current_debit: number;
+  current_credit: number;
+  suggested_debit: number;
+  suggested_credit: number;
+};
+
+export type CreateBudgetFromTemplateRequest = { month: number; year: number };
+export type CreateBudgetFromTemplateResponse = {
+  budget_id: number;
+  skipped_category_ids: Array<bigint | number | string>;
+};
+
+const getBudgetTemplate = () => {
+  return axios.get<BudgetTemplate>(`/budgets/template`);
+};
+
+const saveBudgetTemplate = (rows: BudgetTemplateRow[]) => {
+  return axios.put<string>(`/budgets/template`, { rows });
+};
+
+const saveBudgetTemplateFromBudget = (budgetId: bigint | number) => {
+  return axios.post<string>(`/budgets/template/from-budget`, {
+    budget_id: budgetId,
+  });
+};
+
+const createBudgetFromTemplate = (request: CreateBudgetFromTemplateRequest) => {
+  return axios.post<CreateBudgetFromTemplateResponse>(`/budgets/from-template`, {
+    month: request.month,
+    year: request.year,
+  });
+};
+
+const getBudgetTemplateSuggestions = () => {
+  return axios.get<BudgetTemplateSuggestion[]>(`/budgets/template/suggestions`);
+};
+
 const updateBudgetDescription = (request: UpdateBudgetDescriptionRequest) => {
   return axios.put<string>(`/budgets/${request.budget_id}/description`, {
     observations: request.observations,
@@ -277,4 +329,9 @@ export default {
   getBudgetMatrix,
   updateBudgetMatrixCell,
   updateBudgetDescription,
+  getBudgetTemplate,
+  saveBudgetTemplate,
+  saveBudgetTemplateFromBudget,
+  createBudgetFromTemplate,
+  getBudgetTemplateSuggestions,
 };
