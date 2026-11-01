@@ -652,6 +652,7 @@
   },
   "budgets": {
     "newMonthFromTemplate": "Novo mês a partir do modelo",
+    "quickEntry": "Entrada rápida",
     "createdFromTemplate": "Orçamento criado a partir do modelo",
     "createdFromTemplateSkipped_one": "Orçamento criado a partir do modelo. {{count}} categoria inativa ou removida foi ignorada.",
     "createdFromTemplateSkipped_many": "Orçamento criado a partir do modelo. {{count}} categorias inativas ou removidas foram ignoradas.",
@@ -748,6 +749,28 @@
     "catRemainderDebitUnderClosed": "Gastou <strong>menos</strong> <strong>{{amount}}</strong> do que o orçamentado para esta categoria \uD83D\uDC4D",
     "catRemainderDebitEqualClosed": "Gastou <strong>EXATAMENTE</strong> o que orçamentou para esta categoria!",
     "catRemainderDebitOverClosed": "Gastou <strong>mais</strong> <strong>{{amount}}</strong> do que o orçamentado para esta categoria \uD83D\uDC4E"
+  },
+  "budgetQuick": {
+    "title": "Entrada rápida",
+    "strapLine": "Planeie um mês inteiro pelo teclado. Tab desce na coluna Previsto.",
+    "backToBudgets": "Voltar aos orçamentos",
+    "month": "Mês",
+    "debit": "Despesas",
+    "credit": "Receitas",
+    "save": "Guardar",
+    "hideEmpty": "Ocultar linhas vazias",
+    "editCategories": "Editar categorias",
+    "newMonth": "Ainda não há orçamento para este mês. É criado ao guardar.",
+    "closed": "Este orçamento está fechado e só pode ser lido.",
+    "unsaved": "Tem alterações por guardar. Prima Guardar para as manter.",
+    "saved": "Orçamento guardado",
+    "discardConfirm": "Descartar as alterações por guardar?",
+    "category": "Categoria",
+    "template": "Modelo",
+    "lastMonth": "Mês passado",
+    "planned": "Previsto",
+    "actual": "Real",
+    "itemsNote": "Total do detalhe. Edite-o nos detalhes do orçamento."
   },
   "budgetTemplate": {
     "title": "Modelo de orçamento",

@@ -8,6 +8,7 @@ import {
   TableView,
   ContentCopy,
   EventAvailable,
+  EditNote,
   Visibility,
 } from '@mui/icons-material';
 import { Checkbox, FormGroup, Tooltip, useTheme } from '@mui/material';
@@ -35,6 +36,7 @@ import {
   ROUTE_BUDGET_DETAILS,
   ROUTE_BUDGET_MATRIX,
   ROUTE_BUDGET_NEW,
+  ROUTE_BUDGET_QUICK,
   ROUTE_BUDGET_TEMPLATE,
 } from '../../../providers/RoutesProvider.tsx';
 import {
@@ -425,6 +427,13 @@ const BudgetList = () => {
                 onClick={handleNewMonthFromTemplateClick}
               >
                 {t('budgets.newMonthFromTemplate')}
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<EditNote />}
+                onClick={() => navigate(ROUTE_BUDGET_QUICK)}
+              >
+                {t('budgets.quickEntry')}
               </Button>
               <Button
                 variant="outlined"

@@ -656,6 +656,7 @@
   },
   "budgets": {
     "newMonthFromTemplate": "New month from template",
+    "quickEntry": "Quick entry",
     "createdFromTemplate": "Budget created from the template",
     "createdFromTemplateSkipped_one": "Budget created from the template. {{count}} inactive or removed category was skipped.",
     "createdFromTemplateSkipped_other": "Budget created from the template. {{count}} inactive or removed categories were skipped.",
@@ -751,6 +752,28 @@
     "catRemainderDebitUnderClosed": "You've <strong>underspent</strong> in this category by <strong>{{amount}}</strong> \uD83D\uDC4D",
     "catRemainderDebitEqualClosed": "You've spent <strong>EXACTLY</strong> what you've budgeted for in this category!",
     "catRemainderDebitOverClosed": "You've <strong>overspent</strong> in this category by <strong>{{amount}}</strong> \uD83D\uDC4E"
+  },
+  "budgetQuick": {
+    "title": "Quick entry",
+    "strapLine": "Plan a whole month from the keyboard. Tab moves down the Planned column.",
+    "backToBudgets": "Back to budgets",
+    "month": "Month",
+    "debit": "Expenses",
+    "credit": "Income",
+    "save": "Save",
+    "hideEmpty": "Hide empty rows",
+    "editCategories": "Edit categories",
+    "newMonth": "No budget for this month yet. It is created when you save.",
+    "closed": "This budget is closed and read-only.",
+    "unsaved": "You have unsaved changes. Press Save to keep them.",
+    "saved": "Budget saved",
+    "discardConfirm": "Discard your unsaved changes?",
+    "category": "Category",
+    "template": "Template",
+    "lastMonth": "Last month",
+    "planned": "Planned",
+    "actual": "Actual",
+    "itemsNote": "Total of the breakdown. Edit it in the budget details."
   },
   "budgetTemplate": {
     "title": "Budget template",

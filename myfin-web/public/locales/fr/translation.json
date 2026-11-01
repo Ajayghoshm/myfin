@@ -608,6 +608,7 @@
   },
   "budgets": {
     "newMonthFromTemplate": "Nouveau mois depuis le modèle",
+    "quickEntry": "Saisie rapide",
     "createdFromTemplate": "Budget créé à partir du modèle",
     "createdFromTemplateSkipped_one": "Budget créé à partir du modèle. {{count}} catégorie inactive ou supprimée a été ignorée.",
     "createdFromTemplateSkipped_many": "Budget créé à partir du modèle. {{count}} catégories inactives ou supprimées ont été ignorées.",
@@ -704,6 +705,28 @@
     "catRemainderDebitUnderClosed": "Vous avez <strong>dépensé moins</strong> que prévu dans cette catégorie de <strong>{{amount}}</strong> 👍",
     "catRemainderDebitEqualClosed": "Vous avez dépensé <strong>EXACTEMENT</strong> ce que vous aviez budgété pour cette catégorie !",
     "catRemainderDebitOverClosed": "Vous avez <strong>dépassé</strong> le budget de cette catégorie de <strong>{{amount}}</strong> 👎"
+  },
+  "budgetQuick": {
+    "title": "Saisie rapide",
+    "strapLine": "Planifiez un mois entier au clavier. Tab descend dans la colonne Prévu.",
+    "backToBudgets": "Retour aux budgets",
+    "month": "Mois",
+    "debit": "Dépenses",
+    "credit": "Revenus",
+    "save": "Enregistrer",
+    "hideEmpty": "Masquer les lignes vides",
+    "editCategories": "Modifier les catégories",
+    "newMonth": "Pas encore de budget pour ce mois. Il est créé à l'enregistrement.",
+    "closed": "Ce budget est clôturé et en lecture seule.",
+    "unsaved": "Modifications non enregistrées. Appuyez sur Enregistrer pour les conserver.",
+    "saved": "Budget enregistré",
+    "discardConfirm": "Abandonner vos modifications non enregistrées ?",
+    "category": "Catégorie",
+    "template": "Modèle",
+    "lastMonth": "Mois dernier",
+    "planned": "Prévu",
+    "actual": "Réel",
+    "itemsNote": "Total de la ventilation. Modifiez-la dans le détail du budget."
   },
   "budgetTemplate": {
     "title": "Modèle de budget",
