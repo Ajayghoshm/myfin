@@ -26,11 +26,17 @@ export function buildQuickPayload(
         hasPlanned(r) ||
         (isExisting && !!loaded[r.category_id] && hasPlanned(loaded[r.category_id])),
     )
-    .map((r) => ({
-      category_id: r.category_id,
-      planned_value_debit: String(r.planned_amount_debit),
-      planned_value_credit: String(r.planned_amount_credit),
-      expense_items: r.expense_items.length ? r.expense_items : undefined,
-      income_items: r.income_items.length ? r.income_items : undefined,
-    }));
+    .map((r) => {
+      // undefined leaves stored items untouched; [] clears them. On an edit,
+      // a row that exists in the loaded budget must send [] when it has none.
+      const stored = isExisting && !!loaded[r.category_id];
+      const empty = stored ? [] : undefined;
+      return {
+        category_id: r.category_id,
+        planned_value_debit: String(r.planned_amount_debit),
+        planned_value_credit: String(r.planned_amount_credit),
+        expense_items: r.expense_items.length ? r.expense_items : empty,
+        income_items: r.income_items.length ? r.income_items : empty,
+      };
+    });
 }

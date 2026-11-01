@@ -29,4 +29,27 @@ describe('buildQuickPayload', () => {
   test('create omits zeros', () => {
     assert.equal(buildQuickPayload([row('1', 0)], { '1': row('1', 50) }, false).length, 0);
   });
+  test('zeroed row that had items clears stored items', () => {
+    const had: QuickRow = {
+      ...row('1', 30),
+      expense_items: [{ label: 'a', amount: 30 }],
+    };
+    const out = buildQuickPayload([row('1', 0)], { '1': had }, true);
+    assert.deepEqual(out[0].expense_items, []);
+    assert.deepEqual(out[0].income_items, []);
+    assert.equal(out[0].planned_value_debit, '0');
+  });
+  test('removing all items and entering a plain amount sends []', () => {
+    const had: QuickRow = {
+      ...row('1', 30),
+      expense_items: [{ label: 'a', amount: 30 }],
+    };
+    const out = buildQuickPayload([row('1', 45)], { '1': had }, true);
+    assert.deepEqual(out[0].expense_items, []);
+    assert.equal(out[0].planned_value_debit, '45');
+  });
+  test('new row and create leave items undefined', () => {
+    assert.equal(buildQuickPayload([row('2', 5)], {}, true)[0].expense_items, undefined);
+    assert.equal(buildQuickPayload([row('2', 5)], { '2': row('2') }, false)[0].expense_items, undefined);
+  });
 });
