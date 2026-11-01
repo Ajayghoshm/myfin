@@ -545,4 +545,58 @@ describe('Budget list tests', () => {
       BudgetMatrixService.getBudgetMatrix(userId, [999999999999n])
     ).rejects.toMatchObject({ code: 404 });
   });
+
+  describe('parent_category_id exposure', () => {
+    let parentId: bigint;
+    let subId: bigint;
+
+    beforeEach(async () => {
+      const parent = await prisma.categories.create({
+        data: {
+          name: 'Parent',
+          type: MYFIN.TRX_TYPES.EXPENSE,
+          users_user_id: userId,
+          status: MYFIN.CATEGORY_STATUS.ACTIVE,
+          exclude_from_budgets: 0,
+        },
+      });
+      parentId = parent.category_id;
+      const sub = await prisma.categories.create({
+        data: {
+          name: 'Sub',
+          type: MYFIN.TRX_TYPES.EXPENSE,
+          users_user_id: userId,
+          status: MYFIN.CATEGORY_STATUS.ACTIVE,
+          exclude_from_budgets: 0,
+          parent_category_id: parentId,
+        },
+      });
+      subId = sub.category_id;
+    });
+
+    test('getBudget returns parent_category_id for subcategories and null for top-level', async () => {
+      const budget: any = await BudgetService.getBudget(userId, openBudgetId);
+      const byId = (id: bigint) =>
+        budget.categories.find((category: any) => BigInt(category.category_id) === id);
+      expect(BigInt(byId(subId).parent_category_id)).toBe(parentId);
+      expect(byId(parentId).parent_category_id).toBeNull();
+      expect(byId(expenseCategoryId).parent_category_id).toBeNull();
+    });
+
+    test('step0 categories include parent_category_id', async () => {
+      const data: any = await BudgetService.getCategoryDataForNewBudget(userId);
+      const sub = data.categories.find((category: any) => category.category_id === subId);
+      const parent = data.categories.find((category: any) => category.category_id === parentId);
+      expect(sub.parent_category_id).toBe(parentId);
+      expect(parent.parent_category_id).toBeNull();
+    });
+
+    test('matrix categories include parent_category_id', async () => {
+      const response = await BudgetMatrixService.getBudgetMatrix(userId, [openBudgetId]);
+      const sub = response.categories.find((category) => category.category_id === subId);
+      const parent = response.categories.find((category) => category.category_id === parentId);
+      expect(sub?.parent_category_id).toBe(parentId);
+      expect(parent?.parent_category_id).toBeNull();
+    });
+  });
 });

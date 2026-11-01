@@ -540,6 +540,7 @@ class CategoryService {
                                      description,
                                      color_gradient,
                                      icon_key,
+                                     parent_category_id,
                                      budgets_budget_id,
                                      exclude_from_budgets,
                                      truncate((coalesce(planned_amount_credit, 0) / 100), 2) as planned_amount_credit,

@@ -275,6 +275,7 @@ class BudgetMatrixService {
           color_gradient: true,
           icon_key: true,
           exclude_from_budgets: true,
+          parent_category_id: true,
         },
         orderBy: [{ type: 'asc' }, { name: 'asc' }],
       }),
@@ -561,6 +562,7 @@ class BudgetMatrixService {
         color_gradient: category.color_gradient,
         icon_key: category.icon_key,
         exclude_from_budgets: category.exclude_from_budgets,
+        parent_category_id: category.parent_category_id,
         avg_previous_month_credit: Math.abs(
           amountInEuros(tooltip?.previous_month_credit)
         ),
