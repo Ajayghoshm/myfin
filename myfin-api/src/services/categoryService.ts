@@ -5,6 +5,7 @@ import { Prisma } from '../generated/prisma/client.js';
 import DateTimeUtils from '../utils/DateTimeUtils.js';
 import Logger from '../utils/Logger.js';
 import ConvertUtils from '../utils/convertUtils.js';
+import BudgetTemplateService from './budgetTemplateService.js';
 import TransactionService from './transactionService.js';
 
 const BudgetHasCategories = prisma.budgets_has_categories;
@@ -294,6 +295,14 @@ class CategoryService {
         });
       }
 
+      await BudgetTemplateService.mergeCategory(
+        userId,
+        sourceId,
+        targetId,
+        { source: source.name, target: target.name },
+        tx
+      );
+
       await tx.categories.delete({ where: { category_id: sourceId } });
     });
   }
@@ -334,6 +343,12 @@ class CategoryService {
         budgets_users_user_id: userId,
       },
     });
+    const deleteTemplateRows = dbClient.budget_template_rows.deleteMany({
+      where: {
+        categories_category_id: BigInt(categoryId),
+        template: { users_user_id: userId },
+      },
+    });
     const deleteCat = dbClient.categories.delete({
       where: {
         users_user_id: userId,
@@ -347,7 +362,12 @@ class CategoryService {
       data: { category_id: null },
     });
 
-    return prisma.$transaction([deleteBudgetHasCategoriesRefs, unlinkEvents, deleteCat]);
+    return prisma.$transaction([
+      deleteBudgetHasCategoriesRefs,
+      deleteTemplateRows,
+      unlinkEvents,
+      deleteCat,
+    ]);
   }
 
   static async updateCategory(

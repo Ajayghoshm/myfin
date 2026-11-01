@@ -106,6 +106,40 @@ model budgets_has_categories {
   @@index([budgets_users_user_id], map: "budgets_has_categories_users_user_id_fk")
 }
 
+model budget_templates {
+  template_id   BigInt                @id @default(autoincrement())
+  users_user_id BigInt                @unique(map: "budget_templates_user_uq")
+  updated_at    BigInt
+  users         users                 @relation(fields: [users_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction, map: "budget_templates_users_fk")
+  rows          budget_template_rows[]
+}
+
+model budget_template_rows {
+  template_id            BigInt
+  categories_category_id BigInt
+  planned_amount_credit  BigInt                  @default(0)
+  planned_amount_debit   BigInt                  @default(0)
+  template               budget_templates        @relation(fields: [template_id], references: [template_id], onDelete: NoAction, onUpdate: NoAction, map: "budget_template_rows_template_fk")
+  categories             categories              @relation(fields: [categories_category_id], references: [category_id], onDelete: NoAction, onUpdate: NoAction, map: "budget_template_rows_category_fk")
+  items                  budget_template_items[]
+
+  @@id([template_id, categories_category_id])
+  @@index([categories_category_id], map: "budget_template_rows_category_idx")
+}
+
+model budget_template_items {
+  item_id                BigInt                @id @default(autoincrement())
+  template_id            BigInt
+  categories_category_id BigInt
+  direction              budget_item_direction
+  label                  String                @db.VarChar(255)
+  amount                 BigInt
+  sort_order             Int
+  row                    budget_template_rows  @relation(fields: [template_id, categories_category_id], references: [template_id, categories_category_id], onDelete: Cascade, map: "budget_template_items_row_fk")
+
+  @@index([template_id, categories_category_id, direction, sort_order], map: "budget_template_items_row_idx")
+}
+
 model categories {
   category_id            BigInt                   @id @default(autoincrement())
   name                   String                   @db.VarChar(255)
@@ -119,6 +153,7 @@ model categories {
   is_fixed               Boolean                  @default(false)
   parent_category_id     BigInt?
   budgets_has_categories budgets_has_categories[]
+  budget_template_rows   budget_template_rows[]
   users                  users                    @relation(fields: [users_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction, map: "categories_users_user_id_fk")
   transactions           transactions[]
   parent                 categories?              @relation("CategoryParent", fields: [parent_category_id], references: [category_id], onDelete: NoAction, onUpdate: NoAction, map: "categories_parent_fk")
@@ -286,6 +321,7 @@ model users {
   accounts                   accounts[]
   budgets                    budgets[]
   budgets_has_categories     budgets_has_categories[]
+  budget_template            budget_templates?
   categories                 categories[]
   entities                   entities[]
   invest_desired_allocations invest_desired_allocations[]

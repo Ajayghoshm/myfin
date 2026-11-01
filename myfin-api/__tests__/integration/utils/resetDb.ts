@@ -12,6 +12,8 @@ export default async () => {
     prisma.debts.deleteMany(),
     prisma.balances_snapshot.deleteMany(),
     prisma.budgets_has_categories.deleteMany(),
+    prisma.budget_template_rows.deleteMany(),
+    prisma.budget_templates.deleteMany(),
     prisma.goal_has_asset.deleteMany(),
     prisma.invest_asset_evo_snapshot.deleteMany(),
     prisma.invest_desired_allocations.deleteMany(),

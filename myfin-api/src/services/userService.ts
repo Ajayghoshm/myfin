@@ -479,6 +479,12 @@ const userService = {
           })
         );
 
+        // The budget template references categories (items cascade with their rows)
+        await prismaTx.budget_template_rows.deleteMany({
+          where: { template: { users_user_id: userId } },
+        });
+        await prismaTx.budget_templates.deleteMany({ where: { users_user_id: userId } });
+
         // Delete events (occurrences and their links cascade) and dismissed event suggestions
         await prismaTx.events.deleteMany({ where: { users_user_id: userId } });
         await prismaTx.event_suggestion_dismissals.deleteMany({ where: { users_user_id: userId } });
