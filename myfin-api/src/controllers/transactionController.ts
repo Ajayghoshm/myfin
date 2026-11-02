@@ -154,6 +154,39 @@ const getFilteredTrxByPage = async (req, res, next) => {
   }
 };
 
+const getGroupedTrxSchema = joi
+  .object({
+    group_by: joi.string().valid('payee', 'category', 'account', 'month', 'type').required(),
+    query: joi.string().empty('').default(''),
+    type: joi
+      .string()
+      .valid(MYFIN.TRX_TYPES.EXPENSE, MYFIN.TRX_TYPES.INCOME, MYFIN.TRX_TYPES.TRANSFER)
+      .empty(''),
+    ...structuredFilterKeys,
+  })
+  .unknown(true);
+
+const getGroupedTrx = async (req, res, next) => {
+  try {
+    const sessionData = await CommonsController.checkAuthSessionValidity(req);
+    const trx = await getGroupedTrxSchema.validateAsync(req.query);
+    const groups = await TransactionService.getGroupedTransactionsForUser(
+      sessionData.userId,
+      trx.group_by,
+      trx.query,
+      {
+        type: trx.type,
+        ...toTransactionFilter(trx),
+        salaryRule: await salaryRuleFor(sessionData.userId),
+      }
+    );
+    res.send({ groups });
+  } catch (err) {
+    Logger.addLog(err);
+    next(err || APIError.internalServerError());
+  }
+};
+
 // CREATE
 const createTransactionStep0 = async (req, res, next) => {
   try {
@@ -637,6 +670,7 @@ export default {
   bulkUpdateTransactions,
   getTransactionsForUser,
   getFilteredTrxByPage,
+  getGroupedTrx,
   createTransactionStep0,
   createTransaction,
   deleteTransaction,

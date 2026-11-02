@@ -9,6 +9,7 @@ import {
   FileCopy,
   Lock,
   LockOpen,
+  SaveAlt,
   TableView,
 } from '@mui/icons-material';
 import {
@@ -82,6 +83,7 @@ import { useFormatNumberAsCurrency } from '../../../utils/textHooks.ts';
 import { addLeadingZero } from '../../../utils/textUtils.ts';
 import BudgetCategoryList from './BudgetCategoryList.tsx';
 import { buildBudgetView } from './budgetView.ts';
+import SaveBudgetAsTemplateDialog from './SaveBudgetAsTemplateDialog.tsx';
 import { apiErrorMessage } from '../../../utils/apiErrorMessage.ts';
 import BudgetDescription from './BudgetDescription.tsx';
 import BudgetListSummaryDialog from './BudgetListSummaryDialog.tsx';
@@ -110,6 +112,7 @@ const BudgetDetailsScreen = () => {
   const snackbar = useSnackbar();
   const { id } = useParams();
   const [pageMenu, setPageMenu] = useState<HTMLElement | null>(null);
+  const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
   const [expenseSearch, setExpenseSearch] = useState('');
   const [incomeSearch, setIncomeSearch] = useState('');
   const [hideEmpty, setHideEmpty] = useState(false);
@@ -779,6 +782,17 @@ const BudgetDetailsScreen = () => {
                   fontSize: 11,
                 }}
               />
+              {!isNew && (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<SaveAlt />}
+                  onClick={() => setSaveTemplateOpen(true)}
+                  sx={{ textTransform: 'none', whiteSpace: 'nowrap' }}
+                >
+                  {t('budgetDetails.saveAsTemplate')}
+                </Button>
+              )}
             </Stack>
             <Typography sx={{ fontSize: 13, color: 'text.secondary', mt: 0.5 }}>
               <Trans
@@ -939,6 +953,15 @@ const BudgetDetailsScreen = () => {
           </IconButton>
         </Stack>
       </Stack>
+      {saveTemplateOpen && (
+        <SaveBudgetAsTemplateDialog
+          open
+          onClose={() => setSaveTemplateOpen(false)}
+          budgetId={BigInt(id ?? -1)}
+          monthLabel={`${getMonthsFullName(monthYear.month)} ${monthYear.year}`}
+          templates={budgetTemplatesRequest.data ?? []}
+        />
+      )}
       <Menu
         anchorEl={pageMenu}
         open={!!pageMenu}

@@ -49,3 +49,24 @@ export function previousYearMonth(ym: string): string {
     ? formatYearMonth(year - 1, 12)
     : formatYearMonth(year, month - 1);
 }
+
+/** Epoch second at which the IST calendar day 'YYYY-MM-DD' starts. */
+export function istDayStart(day: string): number {
+  const [year, month, date] = day.split('-').map(Number);
+  return Date.UTC(year, month - 1, date) / 1000 - IST_OFFSET_SECONDS;
+}
+
+/** The IST calendar day of an epoch-second timestamp, as 'YYYY-MM-DD'. */
+export function istDayOf(timestamp: number): string {
+  return new Date((timestamp + IST_OFFSET_SECONDS) * 1000)
+    .toISOString()
+    .slice(0, 10);
+}
+
+/** The month after `ym` ('YYYY-MM'), as 'YYYY-MM'. */
+export function nextYearMonth(ym: string): string {
+  const { year, month } = parseYearMonth(ym);
+  return month === 12
+    ? formatYearMonth(year + 1, 1)
+    : formatYearMonth(year, month + 1);
+}

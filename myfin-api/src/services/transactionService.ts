@@ -352,6 +352,97 @@ const getFilteredTransactionsByForUser = async (
     total_count: totalCountQueryResult[0].count,
   };
 };
+export type TransactionGroupBy = 'payee' | 'category' | 'account' | 'month' | 'type';
+
+export type TransactionGroup = {
+  /** Value to filter by when drilling into the group ('none' = uncategorised, '' = no description). */
+  key: string;
+  label: string;
+  count: number;
+  /** Currency units (not cents). Transfers are kept apart so they never skew the net. */
+  income: number;
+  expense: number;
+  transfer: number;
+};
+
+/**
+ * One row per group over everything the list filters would show (not just a page), for the grouped
+ * view. Tag joins in the shared FROM can repeat a transaction, so rows are de-duplicated by id.
+ */
+const getGroupedTransactionsForUser = async (
+  userId: bigint,
+  groupBy: TransactionGroupBy,
+  searchQuery: string,
+  options: Omit<TransactionListOptions, 'sortBy' | 'sortDir'> = {}
+): Promise<TransactionGroup[]> => {
+  const filter: TransactionFilter = { ...options, query: searchQuery };
+  const rows = await prisma.$queryRaw<
+    Array<{
+      type: string;
+      amount: bigint | number;
+      date_timestamp: bigint | number;
+      payee_key: string;
+      category_id: bigint | null;
+      category_name: string | null;
+      account_id: bigint | null;
+      account_name: string | null;
+    }>
+  >`SELECT transactions.type,
+           transactions.amount,
+           transactions.date_timestamp,
+           ${payeeKeySql} AS payee_key,
+           transactions.categories_category_id AS category_id,
+           categories.name AS category_name,
+           IF(transactions.type = 'I', transactions.accounts_account_to_id, transactions.accounts_account_from_id) AS account_id,
+           IF(transactions.type = 'I', acc_to.name, acc_from.name) AS account_name
+    ${filteredTransactionsFrom(userId, filter)}
+    GROUP BY transactions.transaction_id`;
+
+  const groups = new Map<string, TransactionGroup>();
+  for (const row of rows) {
+    let key: string;
+    let label: string;
+    switch (groupBy) {
+      case 'payee':
+        key = row.payee_key ?? '';
+        label = key;
+        break;
+      case 'category':
+        key = row.category_id == null ? 'none' : String(row.category_id);
+        label = row.category_name ?? '';
+        break;
+      case 'account':
+        key = row.account_id == null ? 'none' : String(row.account_id);
+        label = row.account_name ?? '';
+        break;
+      case 'type':
+        key = row.type;
+        label = row.type;
+        break;
+      default:
+        key = formatYearMonth(
+          effectiveMonthOf(
+            {
+              type: row.type,
+              categoryId: row.category_id == null ? null : String(row.category_id),
+              date: Number(row.date_timestamp),
+            },
+            options.salaryRule ?? NO_SALARY_RULE
+          )
+        );
+        label = key;
+    }
+    const group = groups.get(key) ?? { key, label, count: 0, income: 0, expense: 0, transfer: 0 };
+    const units = Number(row.amount) / 100;
+    group.count += 1;
+    if (row.type === MYFIN.TRX_TYPES.INCOME) group.income += units;
+    else if (row.type === MYFIN.TRX_TYPES.EXPENSE) group.expense += units;
+    else group.transfer += units;
+    groups.set(key, group);
+  }
+  return [...groups.values()];
+};
+
 const createTransactionStep0 = async (userId: bigint, dbClient = undefined) => {
   const [entities, categories, accounts, tags] = await performDatabaseRequest(async (_) => {
     const ents = await EntityService.getAllEntitiesForUser(userId);
@@ -1181,6 +1272,7 @@ const bulkUpdateTransactions = async (
 export default {
   getTransactionsForUser,
   getFilteredTransactionsByForUser,
+  getGroupedTransactionsForUser,
   bulkUpdateTransactions,
   createTransactionStep0,
   createTransaction,

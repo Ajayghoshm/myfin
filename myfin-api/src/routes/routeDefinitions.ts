@@ -432,6 +432,7 @@ export const routeGroups: RouteGroup[] = [
     routes: [
       { method: 'get', path: '/', handlerName: 'getTransactionsForUser' },
       { method: 'get', path: '/filteredByPage/:page', handlerName: 'getFilteredTrxByPage' },
+      { method: 'get', path: '/grouped', handlerName: 'getGroupedTrx' },
       { method: 'post', path: '/step0', handlerName: 'createTransactionStep0' },
       { method: 'post', path: '/step1', handlerName: 'createTransaction' },
       { method: 'delete', path: '/', handlerName: 'deleteTransaction' },
