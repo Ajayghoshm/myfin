@@ -5,6 +5,7 @@ import {
   useSnackbar,
 } from '../../providers/SnackbarProvider.tsx';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import {
   useGetCategories,
   useRemoveCategory,
@@ -27,6 +28,7 @@ import {
   CallMerge,
   Delete,
   Edit,
+  ReceiptLong,
   Search,
 } from '@mui/icons-material';
 import Box from '@mui/material/Box';
@@ -45,6 +47,7 @@ const Categories = () => {
   const loader = useLoading();
   const snackbar = useSnackbar();
   const { t } = useTranslation();
+  const navigate = useNavigate();
 
   const getCategoriesRequest = useGetCategories();
   const removeCategoryRequest = useRemoveCategory();
@@ -218,6 +221,18 @@ const Categories = () => {
             }}
           >
             <Edit fontSize="medium" color="action" />
+          </IconButton>
+          <IconButton
+            aria-label={t('categories.viewTransactions')}
+            title={t('categories.viewTransactions')}
+            onClick={(event) => {
+              event.stopPropagation();
+              navigate(
+                `/transactions?category=${(params.value as Category).category_id}`,
+              );
+            }}
+          >
+            <ReceiptLong fontSize="medium" color="action" />
           </IconButton>
           <IconButton
             aria-label={t('categories.mergeAction')}

@@ -114,6 +114,48 @@ const getTransactions = (
   });
 };
 
+export type TransactionGroupBy =
+  | 'payee'
+  | 'category'
+  | 'account'
+  | 'month'
+  | 'type';
+
+export type TransactionGroup = {
+  /** Value to filter by when opening the group; 'none' = uncategorised. */
+  key: string;
+  label: string;
+  count: number;
+  income: number;
+  expense: number;
+  transfer: number;
+};
+
+const getGroupedTransactions = (
+  groupBy: TransactionGroupBy,
+  query?: string,
+  options: TransactionListOptions = {},
+) => {
+  return axios.get<{ groups: TransactionGroup[] }>('/trxs/grouped', {
+    params: {
+      group_by: groupBy,
+      query,
+      type: options.type,
+      date_from: options.dateFrom,
+      date_to: options.dateTo,
+      category_id: options.categoryId,
+      payee_key: options.payeeKey,
+      account_id: options.accountId,
+      effective_month: options.effectiveMonth,
+      day: options.day,
+      cost_kind: options.costKind,
+      yearly_cost: options.yearlyCost,
+      amount_lt: options.amountLt,
+      adjustment: options.adjustment,
+    },
+  });
+};
+
 export type Entity = {
   entity_id: bigint;
   name: string;
@@ -421,6 +463,7 @@ export default {
   applyTransactionFlags,
   bulkUpdateTransactions,
   getTransactions,
+  getGroupedTransactions,
   removeTransaction,
   addTransactionStep0,
   addTransactionStep1,

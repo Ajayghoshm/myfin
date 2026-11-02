@@ -10,6 +10,7 @@ import TrxServices, {
   EditTransactionRequest,
   ImportTransactionsStep1Request,
   PhonePeCategorizeRequest,
+  TransactionGroupBy,
   TransactionListOptions,
   TransactionsInMonthForCategoryRequest,
 } from './trxServices.ts';
@@ -104,6 +105,45 @@ export function useGetTransactions(
       options.adjustment,
     ],
     queryFn: getTransactions,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useGetGroupedTransactions(
+  groupBy: TransactionGroupBy,
+  query?: string,
+  options: TransactionListOptions = {},
+) {
+  async function getGroupedTransactions() {
+    const data = await TrxServices.getGroupedTransactions(
+      groupBy,
+      query,
+      options,
+    );
+    return data.data.groups;
+  }
+
+  // keyed under the list's prefix so every transaction change refreshes it
+  return useQuery({
+    queryKey: [
+      QUERY_KEY_GET_TRANSACTIONS,
+      'grouped',
+      groupBy,
+      query,
+      options.type,
+      options.dateFrom,
+      options.dateTo,
+      options.effectiveMonth,
+      options.day,
+      options.categoryId,
+      options.payeeKey,
+      options.accountId,
+      options.costKind,
+      options.yearlyCost,
+      options.amountLt,
+      options.adjustment,
+    ],
+    queryFn: getGroupedTransactions,
     placeholderData: keepPreviousData,
   });
 }
