@@ -29,7 +29,7 @@ import {
 import { useFormatNumberAsCurrency } from '../../utils/textHooks.ts';
 import { inferTrxType } from '../../utils/transactionUtils.ts';
 import { formatMonthLabel } from '../insights/insightsFormat.ts';
-import { parseYearMonth } from '../../utils/istMonth.ts';
+import { isYearMonth, parseYearMonth } from '../../utils/istMonth.ts';
 
 type GroupSort = 'spend' | 'income' | 'count' | 'name';
 
@@ -178,6 +178,7 @@ const GroupedTransactions = (props: Props) => {
           ? t('transactions.filterUncategorised')
           : group.label;
       case 'month': {
+        if (!isYearMonth(group.key)) return group.key;
         const { year, month } = parseYearMonth(group.key);
         return formatMonthLabel(year, month, i18n.language);
       }

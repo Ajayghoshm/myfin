@@ -144,7 +144,9 @@ export function useGetGroupedTransactions(
       options.adjustment,
     ],
     queryFn: getGroupedTransactions,
-    placeholderData: keepPreviousData,
+    // keep the old groups while filters reload, never across a change of grouping
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[2] === groupBy ? previous : undefined,
   });
 }
 

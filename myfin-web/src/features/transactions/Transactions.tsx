@@ -70,6 +70,7 @@ import PlannedTransactionsList from './PlannedTransactionsList.tsx';
 import GroupedTransactions from './GroupedTransactions.tsx';
 import TransactionFilterBar, {
   GROUP_BY_OPTIONS,
+  GroupByToggle,
 } from './TransactionFilterBar.tsx';
 import IconButton from '@mui/material/IconButton';
 import { inferTrxType } from '../../utils/transactionUtils.ts';
@@ -967,103 +968,77 @@ const Transactions = () => {
           positiveText={t('common.delete')}
         />
       )}
-      <Box display="flex" justifyContent="space-between" flexDirection="column">
+      <Stack
+        direction="row"
+        justifyContent="space-between"
+        alignItems="flex-start"
+        flexWrap="wrap"
+        gap={2}
+        sx={{ mb: 2 }}
+      >
         <PageHeader
+          compact
           title={t('transactions.transactions')}
           subtitle={t('transactions.strapLine')}
         />
-      </Box>
-      <Grid container spacing={2}>
-        <Grid
-          container
-          spacing={2}
-          size={{
-            sm: 8,
-            xs: 12,
-          }}
-        >
-          <Grid>
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={<AddCircleOutline />}
-              onClick={() => {
-                handleAddTransactionClick();
-              }}
-            >
-              {t('transactions.addTransactionCTA')}
-            </Button>
-          </Grid>
-          <Grid>
-            <Button
-              variant="outlined"
-              color="primary"
-              startIcon={<ContentCopy />}
-              onClick={() => {
-                handleImportTransactionsClick();
-              }}
-            >
-              {t('transactions.importTransactionCTA')}
-            </Button>
-          </Grid>
-        </Grid>
-        <Grid
-          sx={{ display: 'flex', justifyContent: 'flex-end' }}
-          size={{
-            sm: 12,
-            lg: 4,
-          }}
-          offset="auto"
-        >
-          {' '}
-          <TextField
-            id="search"
-            label={t('common.search')}
-            variant="outlined"
-            onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
-              debouncedSearchQuery(event.target.value);
-            }}
-            slotProps={{
-              input: {
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <Search />
-                  </InputAdornment>
-                ),
-              },
-            }}
-          />
-        </Grid>
-        <Grid size={12}>
-          <ToggleButtonGroup
-            size="small"
-            exclusive
-            value={typeFilter ?? 'all'}
-            onChange={(_event, value: TransactionType | 'all' | null) => {
-              if (value === null) return;
-              setUrlFilter('type', value === 'all' ? null : value);
+        <Stack direction="row" gap={2}>
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<AddCircleOutline />}
+            onClick={() => {
+              handleAddTransactionClick();
             }}
           >
-            <ToggleButton value="all">{t('transactions.filterAll')}</ToggleButton>
-            <ToggleButton value={TransactionType.Expense}>
-              {t('transactions.filterDebit')}
-            </ToggleButton>
-            <ToggleButton value={TransactionType.Income}>
-              {t('transactions.filterCredit')}
-            </ToggleButton>
-            <ToggleButton value={TransactionType.Transfer}>
-              {t('transactions.filterTransfer')}
-            </ToggleButton>
-          </ToggleButtonGroup>
-          <Chip
-            sx={{ ml: 2 }}
-            label={t('planned.filterChip')}
+            {t('transactions.addTransactionCTA')}
+          </Button>
+          <Button
+            variant="outlined"
             color="primary"
-            variant={urlFilters.planned ? 'filled' : 'outlined'}
-            onClick={() =>
-              setUrlFilter('planned', urlFilters.planned ? null : '1')
-            }
-          />
+            startIcon={<ContentCopy />}
+            onClick={() => {
+              handleImportTransactionsClick();
+            }}
+          >
+            {t('transactions.importTransactionCTA')}
+          </Button>
+        </Stack>
+      </Stack>
+      <Grid container spacing={2}>
+        <Grid size={12}>
+          <Stack direction="row" gap={2} flexWrap="wrap" alignItems="center">
+            <GroupByToggle groupBy={urlFilters.group} onChange={setUrlFilters} />
+            <ToggleButtonGroup
+              size="small"
+              exclusive
+              value={typeFilter ?? 'all'}
+              onChange={(_event, value: TransactionType | 'all' | null) => {
+                if (value === null) return;
+                setUrlFilter('type', value === 'all' ? null : value);
+              }}
+            >
+              <ToggleButton value="all">
+                {t('transactions.filterAll')}
+              </ToggleButton>
+              <ToggleButton value={TransactionType.Expense}>
+                {t('transactions.filterDebit')}
+              </ToggleButton>
+              <ToggleButton value={TransactionType.Income}>
+                {t('transactions.filterCredit')}
+              </ToggleButton>
+              <ToggleButton value={TransactionType.Transfer}>
+                {t('transactions.filterTransfer')}
+              </ToggleButton>
+            </ToggleButtonGroup>
+            <Chip
+              label={t('planned.filterChip')}
+              color="primary"
+              variant={urlFilters.planned ? 'filled' : 'outlined'}
+              onClick={() =>
+                setUrlFilter('planned', urlFilters.planned ? null : '1')
+              }
+            />
+          </Stack>
         </Grid>
         {urlFilters.planned && (
           <Grid size={12}>
@@ -1077,7 +1052,26 @@ const Transactions = () => {
               range={urlFilters.range}
               category={urlFilters.category}
               account={urlFilters.account}
-              groupBy={urlFilters.group}
+              search={
+                <TextField
+                  id="search"
+                  size="small"
+                  label={t('common.search')}
+                  variant="outlined"
+                  onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
+                    debouncedSearchQuery(event.target.value);
+                  }}
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <Search />
+                        </InputAdornment>
+                      ),
+                    },
+                  }}
+                />
+              }
               categories={getCategoriesRequest.data ?? []}
               accounts={userAccounts ?? []}
               onChange={setUrlFilters}

@@ -398,6 +398,8 @@
     "nextMonth": "Next month",
     "dateFrom": "From",
     "dateTo": "To",
+    "dateRange": "Date range",
+    "moreFilters": "More filters",
     "filterCategory": "Category",
     "filterAccount": "Account",
     "groupBy": "Group by",
@@ -738,6 +740,11 @@
     "deleteBudgetModalAlert": "This action is irreversible!"
   },
   "budgetDetails": {
+    "saveAsTemplate": "Save as template",
+    "saveAsTemplateHelp": "Saves {{month}}'s budget as last saved. Save your edits first if you want them included.",
+    "saveAsNewTemplate": "New template",
+    "replaceNamedTemplate": "Replace \"{{name}}\"",
+    "newTemplateName": "New template name",
     "fillFromNamedTemplate": "Fill from template: {{name}}",
     "fillFromTemplate": "Fill from template",
     "filledFromTemplate": "Amounts filled from the template. Inactive categories were skipped.",

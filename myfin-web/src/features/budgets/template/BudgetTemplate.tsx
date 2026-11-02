@@ -4,7 +4,7 @@ import {
   AutoAwesome,
   DeleteOutline,
   EditOutlined,
-  SaveAlt,
+  ViewList,
 } from '@mui/icons-material';
 import {
   Alert,
@@ -29,7 +29,7 @@ import {
   Typography,
 } from '@mui/material';
 import dayjs from 'dayjs';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NumericFormat } from 'react-number-format';
 import { useNavigate } from 'react-router-dom';
@@ -45,10 +45,8 @@ import {
   useGetBudgetTemplate,
   useGetBudgetTemplateSuggestions,
   useGetBudgetTemplates,
-  useGetBudgets,
   useRenameBudgetTemplate,
   useSaveBudgetTemplate,
-  useSaveBudgetTemplateFromBudget,
 } from '../../../services/budget/budgetHooks.ts';
 import type {
   BudgetBreakdownItem,
@@ -57,7 +55,6 @@ import type {
 import { useGetCategories } from '../../../services/category/CategoryHooks.tsx';
 import { CategoryStatus } from '../../../services/category/categoryServices.ts';
 import { apiErrorMessage } from '../../../utils/apiErrorMessage.ts';
-import { getMonthsFullName } from '../../../utils/dateUtils.ts';
 import { useFormatNumberAsCurrency } from '../../../utils/textHooks.ts';
 import {
   type BudgetGroup,
@@ -104,6 +101,9 @@ const BudgetTemplate = () => {
   const [selectedId, setSelectedId] = useState<string | undefined>();
   // After saving a budget as a *new* template: pick it once the list has it
   const [selectByName, setSelectByName] = useState<string | null>(null);
+  // A just-created template is selected before the cached list contains it;
+  // the fallback below must not jump to the first item in that gap
+  const pendingSelectId = useRef<string | null>(null);
   const templateRequest = useGetBudgetTemplate(selectedId);
   const createTemplateRequest = useCreateBudgetTemplate();
   const renameTemplateRequest = useRenameBudgetTemplate();
@@ -113,10 +113,8 @@ const BudgetTemplate = () => {
   );
   const [nameValue, setNameValue] = useState('');
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [newTemplateName, setNewTemplateName] = useState('');
   const categoriesRequest = useGetCategories();
   const saveRequest = useSaveBudgetTemplate();
-  const fromBudgetRequest = useSaveBudgetTemplateFromBudget();
 
   const [rows, setRows] = useState<Record<string, Row>>({});
   const [dirty, setDirty] = useState(false);
@@ -128,9 +126,7 @@ const BudgetTemplate = () => {
   );
   const [picked, setPicked] = useState<Set<string>>(new Set());
 
-  const [fromBudgetOpen, setFromBudgetOpen] = useState(false);
-  const [fromBudgetId, setFromBudgetId] = useState('');
-  const budgetsRequest = useGetBudgets(0, 100, '', undefined);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
 
   const templates = templatesRequest.data;
   useEffect(() => {
@@ -142,10 +138,22 @@ const BudgetTemplate = () => {
       setSelectedId(String(byName.template_id));
       setSelectByName(null);
     } else if (
+      selectedId &&
+      selectedId === pendingSelectId.current &&
+      !templates.some((tpl) => String(tpl.template_id) === selectedId)
+    ) {
+      // wait for the refreshed list to include the new template
+    } else if (
       !selectedId ||
       !templates.some((tpl) => String(tpl.template_id) === selectedId)
     ) {
       setSelectedId(String(templates[0].template_id));
+    }
+    if (
+      selectedId &&
+      templates.some((tpl) => String(tpl.template_id) === selectedId)
+    ) {
+      pendingSelectId.current = null;
     }
   }, [templates, selectedId, selectByName]);
 
@@ -170,6 +178,7 @@ const BudgetTemplate = () => {
           setNameDialog(null);
           if (dirty && !window.confirm(t('budgetTemplate.discardConfirm')))
             return;
+          pendingSelectId.current = String(created.template_id);
           setSelectedId(String(created.template_id));
         },
         onError: showError,
@@ -276,30 +285,6 @@ const BudgetTemplate = () => {
           apiErrorMessage(error, t('common.somethingWentWrongTryAgain')),
           AlertSeverity.ERROR,
         ),
-      },
-    );
-  };
-
-  const handleFromBudget = () => {
-    const name = newTemplateName.trim();
-    fromBudgetRequest.mutate(
-      {
-        budgetId: BigInt(fromBudgetId),
-        target: name ? { name } : { template_id: selectedId },
-      },
-      {
-        onSuccess: () => {
-          setFromBudgetOpen(false);
-          setNewTemplateName('');
-          if (name) setSelectByName(name);
-          snackbar.showSnackbar(
-            name
-              ? t('budgetTemplate.savedAsNew', { name })
-              : t('budgetTemplate.savedFromBudget'),
-            AlertSeverity.SUCCESS,
-          );
-        },
-        onError: showError,
       },
     );
   };
@@ -526,10 +511,39 @@ const BudgetTemplate = () => {
       >
         {t('budgetTemplate.backToBudgets')}
       </Button>
-      <PageHeader
-        title={t('budgetTemplate.title')}
-        subtitle={t('budgetTemplate.strapLine')}
-      />
+      <Stack
+        direction="row"
+        justifyContent="space-between"
+        alignItems="flex-start"
+        flexWrap="wrap"
+        gap={2}
+        sx={{ mb: 3 }}
+      >
+        <PageHeader
+          compact
+          title={t('budgetTemplate.title')}
+          subtitle={t('budgetTemplate.strapLine')}
+        />
+        <Stack direction="row" gap={1} flexWrap="wrap">
+          <Button
+            variant="contained"
+            startIcon={<AddCircleOutline />}
+            onClick={() => {
+              setNameValue('');
+              setNameDialog('create');
+            }}
+          >
+            {t('budgetTemplate.newTemplate')}
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<AutoAwesome />}
+            onClick={openSuggestions}
+          >
+            {t('budgetTemplate.suggest')}
+          </Button>
+        </Stack>
+      </Stack>
 
       <Stack
         direction="row"
@@ -558,13 +572,10 @@ const BudgetTemplate = () => {
         </TextField>
         <Button
           size="small"
-          startIcon={<AddCircleOutline />}
-          onClick={() => {
-            setNameValue('');
-            setNameDialog('create');
-          }}
+          startIcon={<ViewList />}
+          onClick={() => setTemplatesOpen(true)}
         >
-          {t('budgetTemplate.newTemplate')}
+          {t('budgetTemplate.allTemplates')}
         </Button>
         <IconButton
           size="small"
@@ -587,54 +598,6 @@ const BudgetTemplate = () => {
         </IconButton>
       </Stack>
 
-      {(templates?.length ?? 0) > 1 && (
-        <Box sx={{ mb: 2, overflowX: 'auto' }}>
-          <Typography sx={{ fontSize: 13, color: 'text.secondary', mb: 0.5 }}>
-            {t('budgetTemplate.allTemplates')}
-          </Typography>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>{t('budgetTemplate.template')}</TableCell>
-                <TableCell align="right">
-                  {t('budgetTemplate.categories')}
-                </TableCell>
-                <TableCell align="right">{t('budgetTemplate.debit')}</TableCell>
-                <TableCell align="right">
-                  {t('budgetTemplate.credit')}
-                </TableCell>
-                <TableCell align="right">
-                  {t('budgetTemplate.updated')}
-                </TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {templates?.map((tpl) => (
-                <TableRow
-                  key={String(tpl.template_id)}
-                  hover
-                  selected={String(tpl.template_id) === selectedId}
-                  onClick={() => selectTemplate(String(tpl.template_id))}
-                  sx={{ cursor: 'pointer' }}
-                >
-                  <TableCell sx={{ fontWeight: 600 }}>{tpl.name}</TableCell>
-                  <TableCell align="right">{tpl.row_count}</TableCell>
-                  <TableCell align="right">
-                    {format.invoke(tpl.total_debit)}
-                  </TableCell>
-                  <TableCell align="right">
-                    {format.invoke(tpl.total_credit)}
-                  </TableCell>
-                  <TableCell align="right">
-                    {dayjs.unix(tpl.updated_at).format('YYYY-MM-DD')}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Box>
-      )}
-
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
         spacing={1}
@@ -647,20 +610,6 @@ const BudgetTemplate = () => {
           disabled={saveRequest.isPending || conflicts.length > 0 || !dirty}
         >
           {t('budgetTemplate.save')}
-        </Button>
-        <Button
-          variant="outlined"
-          startIcon={<AutoAwesome />}
-          onClick={openSuggestions}
-        >
-          {t('budgetTemplate.suggest')}
-        </Button>
-        <Button
-          variant="outlined"
-          startIcon={<SaveAlt />}
-          onClick={() => setFromBudgetOpen(true)}
-        >
-          {t('budgetTemplate.saveBudgetAsTemplate')}
         </Button>
       </Stack>
 
@@ -824,54 +773,60 @@ const BudgetTemplate = () => {
       </Dialog>
 
       <Dialog
-        open={fromBudgetOpen}
-        onClose={() => setFromBudgetOpen(false)}
+        open={templatesOpen}
+        onClose={() => setTemplatesOpen(false)}
         fullWidth
-        maxWidth="xs"
+        maxWidth="md"
       >
-        <DialogTitle>{t('budgetTemplate.saveBudgetAsTemplate')}</DialogTitle>
-        <DialogContent>
-          <Typography sx={{ mb: 2 }}>
-            {t('budgetTemplate.fromBudgetHelp')}
-            {dirty ? ` ${t('budgetTemplate.fromBudgetDiscards')}` : ''}
-          </Typography>
-          <TextField
-            select
-            fullWidth
-            label={t('budgetTemplate.budget')}
-            value={fromBudgetId}
-            onChange={(event) => setFromBudgetId(event.target.value)}
-          >
-            {(budgetsRequest.data?.results ?? []).map((b) => (
-              <MenuItem key={String(b.budget_id)} value={String(b.budget_id)}>
-                {getMonthsFullName(b.month)} {b.year}
-              </MenuItem>
-            ))}
-          </TextField>
-          <TextField
-            fullWidth
-            sx={{ mt: 2 }}
-            label={t('budgetTemplate.newTemplateNameOptional')}
-            helperText={t('budgetTemplate.newTemplateNameHelp', {
-              name: templateRequest.data?.name ?? '',
-            })}
-            value={newTemplateName}
-            onChange={(event) => setNewTemplateName(event.target.value)}
-            slotProps={{ htmlInput: { maxLength: 100 } }}
-          />
+        <DialogTitle>{t('budgetTemplate.allTemplates')}</DialogTitle>
+        <DialogContent sx={{ overflowX: 'auto' }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>{t('budgetTemplate.template')}</TableCell>
+                <TableCell align="right">
+                  {t('budgetTemplate.categories')}
+                </TableCell>
+                <TableCell align="right">{t('budgetTemplate.debit')}</TableCell>
+                <TableCell align="right">
+                  {t('budgetTemplate.credit')}
+                </TableCell>
+                <TableCell align="right">
+                  {t('budgetTemplate.updated')}
+                </TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {templates?.map((tpl) => (
+                <TableRow
+                  key={String(tpl.template_id)}
+                  hover
+                  selected={String(tpl.template_id) === selectedId}
+                  onClick={() => {
+                    setTemplatesOpen(false);
+                    selectTemplate(String(tpl.template_id));
+                  }}
+                  sx={{ cursor: 'pointer' }}
+                >
+                  <TableCell sx={{ fontWeight: 600 }}>{tpl.name}</TableCell>
+                  <TableCell align="right">{tpl.row_count}</TableCell>
+                  <TableCell align="right">
+                    {format.invoke(tpl.total_debit)}
+                  </TableCell>
+                  <TableCell align="right">
+                    {format.invoke(tpl.total_credit)}
+                  </TableCell>
+                  <TableCell align="right">
+                    {dayjs.unix(tpl.updated_at).format('YYYY-MM-DD')}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setFromBudgetOpen(false)}>
+          <Button onClick={() => setTemplatesOpen(false)}>
             {t('budgetTemplate.cancel')}
-          </Button>
-          <Button
-            variant="contained"
-            disabled={!fromBudgetId || fromBudgetRequest.isPending}
-            onClick={handleFromBudget}
-          >
-            {newTemplateName.trim()
-              ? t('budgetTemplate.saveAsNew')
-              : t('budgetTemplate.replaceTemplate')}
           </Button>
         </DialogActions>
       </Dialog>
